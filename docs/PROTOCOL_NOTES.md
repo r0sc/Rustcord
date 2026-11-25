@@ -1135,6 +1135,11 @@ Other values that exist: 35, 40–42, 47, 48, 50–55, 58–62, 64, 66, 68. Remo
 
 **Forward (`message_reference.type == 1`):** the outer message has `type` 0 and empty `content`. Render `message_snapshots[0].message` with a "Forwarded" label.
 Rustcord parses a snapshot into a `Message` (`MessageSnapshot { message }`): the missing `id`, `author` and `channel_id` stay at their defaults, and the view borrows the forward's own id and author. Only the first snapshot is shown. A forward without a snapshot reads "This forwarded message can't be shown."
+Sending a forward: `POST /channels/{dest}/messages` with `message_reference {type:1, message_id, channel_id, guild_id?}` and **no `content` key** (text in the same request is unconfirmed); error 160014 means the source can't be read.
+
+### Polls (a message with `poll`; sources: docs.discord.food message "Poll", docs.discord.com poll)
+- Object: `question {text}`, `answers [{answer_id, poll_media {text?, emoji?}}]`, `expiry` (ISO-8601), `allow_multiselect`, `layout_type` (only 1), `results? {is_finalized, answer_counts [{id, count, me_voted}]}`. An answer without a count entry has 0 votes. A message without `results` (a MESSAGE_UPDATE) means **unknown**, not zero: keep the last ones. Counts may be a little off until `is_finalized`. A poll message can't be edited or forwarded.
+- Vote: `PUT /channels/{c}/polls/{m}/answers/@me {"answer_ids":[…]}` (204); `[]` removes my votes. Events `MESSAGE_POLL_VOTE_ADD` / `_REMOVE {user_id, channel_id, message_id, guild_id?, answer_id}`, one per answer. Whether my own sessions get the echo is unconfirmed: counting my click once and ignoring its echo works either way.
 
 ---
 

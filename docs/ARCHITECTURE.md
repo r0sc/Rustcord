@@ -136,7 +136,7 @@ cargo check
 | theme+notify | `src/theme/*`, `src/notify.rs` |
 | ui-shell | `src/ui/mod.rs`, `login.rs`, `members.rs`, `chrome.rs` (frameless window: title bar buttons, drag, edge resize), `motion.rs` (DESIGN §7 tokens and helpers) |
 | cosmetics | `src/ui/cosmetics.rs` (shared renderers), `src/api/{cosmetics,collectibles}.rs`, `src/ui/user_settings/{cosmetics,connections}.rs`, `src/theme/gradient.rs`: see `docs/COSMETICS_NOTES.md` |
-| ui-messages | `src/ui/messages.rs`, `composer.rs`, `forward.rs` |
+| ui-messages | `src/ui/messages.rs`, `composer.rs`, `polls.rs`, `forward.rs` |
 | markdown | `src/ui/markdown.rs`, `src/ui/markdown/parse.rs` |
 | phase2-profile | `src/overrides.rs` (local banner/avatar and local cosmetics: client-only, never uploaded) |
 | social / server / settings UI | `src/ui/{sidebar,friends,inbox,profile,profile_modal,threads,forum,server_menu,server_settings,user_settings}.rs`, `src/ui/user_settings/*`: split in `docs/SOCIAL_UI_DESIGN.md` |
@@ -279,7 +279,8 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   messages), `search` / `indexing` (search results panel with cached hits for "rust" / its
   "still indexing" state) and `detached` (the older half shown as a jump window with the
   target flashed), `forward` (ui/forward.rs: a forward of the message in the middle of the loaded
-  history, with its origin link). Composer (ui/composer.rs): `attach` (tray with sample files and an error),
+  history, with its origin link), `poll` (ui/polls.rs: three polls at the end of the open channel,
+  a vote view, a multiple choice I voted in, a closed one). Composer (ui/composer.rs): `attach` (tray with sample files and an error),
   `upload` (an upload in flight), `typing` (two people typing), `gif` (GIF tab with placeholder
   category tiles; its Trending tile lists placeholder results), `ac` / `ac-channel` / `ac-emoji` (`@` / `#` / `:` autocomplete open), `cooldown`
   (send cooldown), `drop` (drag-and-drop overlay). Media (ui/viewer.rs `demo`, files seeded into

@@ -120,6 +120,17 @@ impl ApiClient {
         let url = Self::url(&["channels", &dest.to_string(), "messages"]);
         self.send(Method::POST, url, Some(forward_body(dest, nonce, src_ch, src_mid, src_guild))).await.map(drop)
     }
+
+    /// `PUT /channels/{c}/polls/{m}/answers/@me {"answer_ids":[…]}` (204); `[]` removes my
+    /// votes. The vote events from the gateway carry the counts.
+    pub async fn poll_vote(&self, channel_id: Id, message_id: Id, answer_ids: &[u32]) -> Result<(), ApiError> {
+        let url = poll_url(channel_id, message_id, "@me");
+        self.send(Method::PUT, url, Some(json!({ "answer_ids": answer_ids }))).await.map(drop)
+    }
+}
+
+fn poll_url(channel_id: Id, message_id: Id, answer: &str) -> Url {
+    ApiClient::url(&["channels", &channel_id.to_string(), "polls", &message_id.to_string(), "answers", answer])
 }
 
 /// A send body without text: forwards (and polls) carry no `content` key at all.
@@ -353,6 +364,15 @@ mod tests {
         assert_eq!(b["nonce"], "7");
         // A forward out of a DM has no guild.
         assert!(forward_body(Id(9), "7", Id(5), Id(6), None)["message_reference"].get("guild_id").is_none());
+    }
+
+    #[test]
+    fn poll_vote_url_and_body() {
+        let u = poll_url(Id(1), Id(2), "@me");
+        assert_eq!(u.as_str(), "https://discord.com/api/v9/channels/1/polls/2/answers/@me");
+        assert_eq!(route_key("PUT", u.path()).route, "PUT /channels/{channel_id}/polls/{id}/answers/@me");
+        assert_eq!(json!({ "answer_ids": [1u32, 3] }), json!({"answer_ids":[1,3]}));
+        assert_eq!(json!({ "answer_ids": &[] as &[u32] }), json!({"answer_ids":[]}));
     }
 
     #[test]

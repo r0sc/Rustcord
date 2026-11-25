@@ -28,6 +28,7 @@ pub mod motion;
 pub mod overlay;
 pub mod pickers;
 pub mod pins;
+pub mod polls;
 pub mod profile;
 pub mod profile_modal;
 pub mod quests;
@@ -193,6 +194,7 @@ pub struct ViewState {
     pub threads_ui: threads::ThreadsUi,
     pub forum_ui: forum::ForumUi,
     pub forward_ui: forward::ForwardUi,
+    pub polls_ui: polls::PollsUi,
     pub profile_modal_ui: profile_modal::ProfileModalUi,
     pub server_menu_ui: server_menu::ServerMenuUi,
     pub server_settings_ui: server_settings::ServerSettingsUi,
@@ -302,6 +304,7 @@ impl Default for ViewState {
             threads_ui: Default::default(),
             forum_ui: Default::default(),
             forward_ui: Default::default(),
+            polls_ui: Default::default(),
             profile_modal_ui: Default::default(),
             server_menu_ui: Default::default(),
             server_settings_ui: Default::default(),

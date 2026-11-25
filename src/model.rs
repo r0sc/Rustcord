@@ -850,6 +850,61 @@ pub struct Message {
     /// A forward carries the forwarded message here (one snapshot is used).
     #[serde(deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
     pub message_snapshots: Vec<MessageSnapshot>,
+    /// Boxed: a poll is rare, and every cached message carries the slot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poll: Option<Box<Poll>>,
+}
+
+/// A poll's question or answer text, with an optional emoji.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PollMedia {
+    #[serde(deserialize_with = "null_default")]
+    pub text: String,
+    pub emoji: Option<Emoji>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PollAnswer {
+    #[serde(deserialize_with = "null_default")]
+    pub answer_id: u32,
+    pub poll_media: PollMedia,
+}
+
+/// Votes for one answer; an answer without an entry has none.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PollAnswerCount {
+    #[serde(deserialize_with = "null_default")]
+    pub id: u32,
+    #[serde(deserialize_with = "null_default")]
+    pub count: u32,
+    #[serde(deserialize_with = "null_default")]
+    pub me_voted: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PollResults {
+    #[serde(deserialize_with = "null_default")]
+    pub is_finalized: bool,
+    #[serde(deserialize_with = "null_default")]
+    pub answer_counts: Vec<PollAnswerCount>,
+}
+
+/// `results` missing means unknown (not zero): keep the last ones.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Poll {
+    pub question: PollMedia,
+    #[serde(deserialize_with = "null_default")]
+    pub answers: Vec<PollAnswer>,
+    /// ISO-8601.
+    pub expiry: Option<String>,
+    #[serde(deserialize_with = "null_default")]
+    pub allow_multiselect: bool,
+    pub results: Option<PollResults>,
 }
 
 /// A forwarded message. Its fields are a subset of `Message`; the missing id/author/channel_id
@@ -861,15 +916,15 @@ pub struct MessageSnapshot {
 }
 
 impl Message {
-    /// Its author may edit its text: not a forward.
+    /// Its author may edit its text: not a forward or a poll.
     pub fn can_edit(&self) -> bool {
-        matches!(self.kind, 0 | 19) && self.message_snapshots.is_empty()
+        matches!(self.kind, 0 | 19) && self.message_snapshots.is_empty() && self.poll.is_none()
     }
 
-    /// Discord forwards plain messages only: no components, ephemeral or forward of a forward
-    /// (unconfirmed).
+    /// Discord forwards plain messages only: no poll, components, ephemeral or forward of a
+    /// forward (unconfirmed).
     pub fn forwardable(&self) -> bool {
-        matches!(self.kind, 0 | 19 | 20 | 23) && self.message_snapshots.is_empty() && self.flags & (1 << 15 | 1 << 6) == 0
+        matches!(self.kind, 0 | 19 | 20 | 23) && self.poll.is_none() && self.message_snapshots.is_empty() && self.flags & (1 << 15 | 1 << 6) == 0
     }
 
     pub fn nonce_str(&self) -> Option<String> {
@@ -897,6 +952,7 @@ pub struct MessageUpdate {
     pub attachments: Option<Vec<Attachment>>,
     pub embeds: Option<Vec<Embed>>,
     pub pinned: Option<bool>,
+    pub poll: Option<Box<Poll>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1828,6 +1884,8 @@ pub enum GatewayEvent {
     ReactionRemove { channel_id: Id, message_id: Id, user_id: Id, emoji: Emoji, burst: bool },
     ReactionRemoveAll { channel_id: Id, message_id: Id },
     ReactionRemoveEmoji { channel_id: Id, message_id: Id, emoji: Emoji },
+    /// MESSAGE_POLL_VOTE_ADD / _REMOVE, one per answer.
+    PollVote { channel_id: Id, message_id: Id, user_id: Id, answer_id: u32, add: bool },
     /// Read on another device (or echo of our own ack).
     MessageAck { channel_id: Id, message_id: Id, mention_count: Option<u32> },
     ChannelCreate(Box<Channel>),
@@ -2143,5 +2201,28 @@ mod tests {
         assert!(m(0, 1 << 2).forwardable(), "suppressed embeds are fine");
         let fwd = Message { message_snapshots: vec![MessageSnapshot::default()], ..Default::default() };
         assert!(!fwd.forwardable());
+        let poll = Message { poll: Some(Box::default()), ..Default::default() };
+        assert!(!poll.forwardable() && !poll.can_edit());
+    }
+
+    #[test]
+    fn polls_parse_with_and_without_results() {
+        let wire = |results: &str| {
+            format!(
+                r#"{{"id":"5","poll":{{"question":{{"text":"Best?"}},"answers":[{{"answer_id":1,"poll_media":{{"text":"A","emoji":{{"name":"x"}}}}}},{{"answer_id":2,"poll_media":{{"text":"B"}}}}],
+                "expiry":"2026-01-02T00:00:00.000000+00:00","allow_multiselect":false,"layout_type":1{results}}}}}"#
+            )
+        };
+        let m: Message = serde_json::from_str(&wire("")).unwrap();
+        let p = m.poll.as_deref().unwrap();
+        assert_eq!((p.question.text.as_str(), p.answers.len(), p.answers[1].answer_id), ("Best?", 2, 2));
+        assert!(p.results.is_none() && p.answers[0].poll_media.emoji.is_some());
+        let m: Message = serde_json::from_str(&wire(r#","results":{"is_finalized":true,"answer_counts":[{"id":2,"count":7,"me_voted":true}]}"#)).unwrap();
+        let r = m.poll.as_deref().unwrap().results.as_ref().unwrap();
+        assert!(r.is_finalized && (r.answer_counts[0].id, r.answer_counts[0].count, r.answer_counts[0].me_voted) == (2, 7, true));
+        // A plain message carries no poll key into the cache.
+        assert!(!serde_json::to_string(&Message::default()).unwrap().contains("\"poll\""));
+        let u: MessageUpdate = serde_json::from_str(r#"{"id":"1","channel_id":"2"}"#).unwrap();
+        assert!(u.poll.is_none());
     }
 }

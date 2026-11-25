@@ -207,6 +207,10 @@ impl AppState {
                     Err(e) => v.error = Some(e),
                 }
             }
+            E::PollVoteFailed { channel_id, message_id, restore, error } => {
+                self.set_my_poll_votes(channel_id, message_id, &restore);
+                return Some(format!("Could not vote: {error}"));
+            }
             // Answered by the UI (ui/mod.rs).
             E::Forwarded { .. } => {}
         }

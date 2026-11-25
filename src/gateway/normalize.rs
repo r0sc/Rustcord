@@ -419,6 +419,8 @@ struct Fields {
     ids: Vec<Id>,
     #[serde(deserialize_with = "null_default")]
     emoji: Emoji,
+    #[serde(deserialize_with = "null_default")]
+    answer_id: u32,
     burst: Option<bool>,
     /// Reaction type: 0 normal, 1 burst.
     #[serde(rename = "type", deserialize_with = "null_default")]
@@ -774,6 +776,10 @@ pub(super) fn dispatch(t: &str, b: &[u8], me: Id) -> serde_json::Result<Vec<Gate
             let f: Fields = data(b)?;
             E::ReactionRemoveEmoji { channel_id: f.channel_id, message_id: f.message_id, emoji: f.emoji }
         }
+        "MESSAGE_POLL_VOTE_ADD" | "MESSAGE_POLL_VOTE_REMOVE" => {
+            let f: Fields = data(b)?;
+            E::PollVote { channel_id: f.channel_id, message_id: f.message_id, user_id: f.user_id, answer_id: f.answer_id, add: t == "MESSAGE_POLL_VOTE_ADD" }
+        }
         "MESSAGE_ACK" => {
             let f: Fields = data(b)?;
             E::MessageAck { channel_id: f.channel_id, message_id: f.message_id, mention_count: f.mention_count }
@@ -1080,6 +1086,11 @@ mod tests {
         assert!(matches!(&r[..], [GatewayEvent::ReactionAdd { burst: true, user_id: Id(2), .. }]));
         let r = ev("MESSAGE_REACTION_REMOVE", r#"{"user_id":"2","channel_id":"3","message_id":"4","emoji":{"id":"5","name":null},"burst":false}"#);
         assert!(matches!(&r[..], [GatewayEvent::ReactionRemove { burst: false, .. }]));
+
+        let r = ev("MESSAGE_POLL_VOTE_ADD", r#"{"user_id":"2","channel_id":"3","message_id":"4","answer_id":2}"#);
+        assert!(matches!(&r[..], [GatewayEvent::PollVote { channel_id: Id(3), message_id: Id(4), user_id: Id(2), answer_id: 2, add: true }]));
+        let r = ev("MESSAGE_POLL_VOTE_REMOVE", r#"{"user_id":"2","channel_id":"3","message_id":"4","answer_id":1,"guild_id":"9"}"#);
+        assert!(matches!(&r[..], [GatewayEvent::PollVote { answer_id: 1, add: false, .. }]));
 
         // Someone else's member update is dropped, mine is kept.
         assert!(ev("GUILD_MEMBER_UPDATE", r#"{"guild_id":"10","user":{"id":"2"},"roles":[]}"#).is_empty());

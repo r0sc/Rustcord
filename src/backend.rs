@@ -158,6 +158,9 @@ pub enum ChatCommand {
     /// Forward one message to one channel: `POST /channels/{dest}/messages` with a type 1
     /// `message_reference` to `message_id` in `channel_id`, no content -> `Forwarded`.
     Forward { channel_id: Id, guild_id: Option<Id>, message_id: Id, dest: Id, nonce: String },
+    /// Vote: `PUT /channels/{c}/polls/{m}/answers/@me {"answer_ids"}` (`[]` removes my votes).
+    /// The UI has already counted it; a failure answers `PollVoteFailed` with `restore`.
+    PollVote { channel_id: Id, message_id: Id, answer_ids: Vec<u32>, restore: Vec<u32> },
 }
 
 /// One attachment of `ChatCommand::SendWithFiles`.
@@ -264,6 +267,8 @@ pub enum ChatEvent {
     ReactionUsers { channel_id: Id, message_id: Id, emoji: Emoji, after: Option<Id>, result: Result<Vec<User>, String> },
     /// Answer of `Forward`; the forwarded message arrives as MESSAGE_CREATE.
     Forwarded { dest: Id, result: Result<(), String> },
+    /// `PollVote` failed: put my votes back to `restore`.
+    PollVoteFailed { channel_id: Id, message_id: Id, restore: Vec<u32>, error: String },
 }
 
 /// Social requests (FEATURES_NOTES Part 2). Each is the direct result of one user action; none
@@ -1492,6 +1497,12 @@ fn handle_chat(cmd: ChatCommand, session: &mut Option<Session>, sink: &EventSink
             move |api| async move { api.forward(channel_id, guild_id, message_id, dest, &nonce).await },
             move |result| Some(chat_ev(ChatEvent::Forwarded { dest, result })),
         ),
+        C::PollVote { channel_id, message_id, answer_ids, restore } => rest(
+            session,
+            sink,
+            move |api| async move { api.poll_vote(channel_id, message_id, &answer_ids).await },
+            move |r| r.err().map(|error| chat_ev(ChatEvent::PollVoteFailed { channel_id, message_id, restore, error })),
+        ),
     }
 }
 
@@ -2719,12 +2730,14 @@ mod tests {
         run(ChatCommand::SendWithFiles { channel_id: Id(1), content: String::new(), nonce: "n".into(), reply: None, files: Vec::new() });
         run(ChatCommand::PinMessage { channel_id: Id(1), message_id: Id(2) });
         run(ChatCommand::Forward { channel_id: Id(1), guild_id: None, message_id: Id(2), dest: Id(3), nonce: "n".into() });
+        run(ChatCommand::PollVote { channel_id: Id(1), message_id: Id(2), answer_ids: vec![1], restore: vec![2] });
         let evs: Vec<BackendEvent> = rx.try_iter().collect();
         assert!(matches!(&evs[0], BackendEvent::Chat(ChatEvent::PinsLoaded { result: Err(_), .. })), "{evs:?}");
         assert!(matches!(&evs[1], BackendEvent::SendResult { result: Err(_), .. }));
         assert!(matches!(&evs[2], BackendEvent::ActionFailed(m) if m.contains("pin")));
         assert!(matches!(&evs[3], BackendEvent::Chat(ChatEvent::Forwarded { dest: Id(3), result: Err(_) })));
-        assert_eq!(evs.len(), 4, "typing and member search stay silent offline");
+        assert!(matches!(&evs[4], BackendEvent::Chat(ChatEvent::PollVoteFailed { restore, .. }) if restore == &[2]));
+        assert_eq!(evs.len(), 5, "typing and member search stay silent offline");
     }
 
     #[tokio::test]

@@ -7,6 +7,7 @@ pub mod account;
 pub mod calls;
 pub mod chat;
 mod memstats;
+pub mod polls;
 pub mod social;
 pub mod video;
 
@@ -382,6 +383,12 @@ impl AppState {
                 let me = self.is_me(user_id);
                 if let Some(m) = self.message_mut(channel_id, message_id) {
                     remove_reaction(&mut m.reactions, &emoji, burst, me);
+                }
+            }
+            GatewayEvent::PollVote { channel_id, message_id, user_id, answer_id, add } => {
+                let me = self.is_me(user_id);
+                if let Some(p) = self.message_mut(channel_id, message_id).and_then(|m| m.poll.as_deref_mut()) {
+                    polls::apply_vote(p, answer_id, add, me);
                 }
             }
             GatewayEvent::ReactionRemoveAll { channel_id, message_id } => {
@@ -1384,6 +1391,13 @@ impl AppState {
         if let Some(v) = u.pinned {
             m.pinned = v;
         }
+        // No `results` means unknown, not zero: keep the last known ones.
+        if let Some(mut p) = u.poll {
+            if p.results.is_none() {
+                p.results = m.poll.as_mut().and_then(|o| o.results.take());
+            }
+            m.poll = Some(p);
+        }
     }
 
     fn on_member_list(&mut self, u: MemberListUpdate) {
@@ -1626,6 +1640,8 @@ fn notification_body(msg: &Message) -> String {
             format!("Sent a sticker: {}", s.name)
         } else if let Some(e) = msg.embeds.first() {
             e.title.clone().or_else(|| e.description.clone()).unwrap_or_default()
+        } else if let Some(p) = &msg.poll {
+            format!("Poll: {}", p.question.text)
         } else if let Some(s) = msg.message_snapshots.first() {
             match notification_body(&s.message) {
                 inner if inner.is_empty() => "Forwarded a message".into(),
@@ -2125,6 +2141,8 @@ mod tests {
         let snap = |content: &str| Message { message_snapshots: vec![MessageSnapshot { message: Message { content: content.into(), ..Default::default() } }], ..Default::default() };
         assert_eq!(notification_body(&snap("look")), "Forwarded: look");
         assert_eq!(notification_body(&snap("")), "Forwarded a message");
+        let poll = Message { poll: Some(Box::new(Poll { question: PollMedia { text: "Best?".into(), emoji: None }, ..Default::default() })), ..Default::default() };
+        assert_eq!(notification_body(&poll), "Poll: Best?");
     }
 
     #[test]

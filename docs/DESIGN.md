@@ -688,6 +688,21 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 
 **Embeds:** `surface`, a 4 px left bar in the embed colour, radius control.
 
+**Polls** (ui/polls.rs):
+- Card: `surface`, container radius, 16 padding, at most 440 wide (High Contrast: a 1 px `rule`
+  edge). Question heading 16/600.
+- Answers are rows 40 tall, 8 apart, control radius, body 15/500, one line. Vote view: `hover`
+  fill (`selected` when hovered or picked), a radio (one answer) or checkbox (several) on the
+  right, the hint "Select one answer" above. Results view: a `hover` track and a bar from the
+  left (`chip` for my answers, else `selected`), my answers with a 1 px `link` border and a
+  `Check` 16 before the percent (ui 14/600); the winner of a closed poll is 600.
+- Footer, 12 above: votes and time left in meta `text_muted`; buttons 32 tall on the right. Vote
+  is **Secondary**, not Primary (one ember button per view); Show results, Back to voting and
+  Remove vote are Ghost.
+- Motion: the bars grow 0 -> share over BASE only after my own Vote or Show results; other
+  people's votes and the end of the poll change them without a tween; rows draw 1 px smaller while
+  held.
+
 **Forwarded:**
 - The forwarded message sits in a frame with the quote bar (3 px wide, radius 2, `text_muted`
   at 45 %), 12 px from the left.

@@ -340,7 +340,6 @@ pub(super) fn paint_checkbox(p: &egui::Painter, tk: &crate::theme::Tokens, rect:
 
 /// A radio circle (§9) in `rect` (16-20 px): off a 1.5 px `edge` ring, on a 2 px `text` ring
 /// with a `text` dot.
-#[allow(dead_code, reason = "shared §9 painter for radio rows (Create channel, menus)")]
 pub(super) fn paint_radio(p: &egui::Painter, pal: &Pal, rect: Rect, on: bool) {
     let (c, r) = (rect.center(), rect.width() / 2.0);
     if on {
@@ -1118,6 +1117,8 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>
         super::viewer::demo(ctx, cx, ch, demo);
         // Forwards (ui/forward.rs): `forward`.
         super::forward::demo(cx, ch, demo);
+        // Polls (ui/polls.rs): `poll`.
+        super::polls::demo(cx, ch, demo);
         if demo("emoji") {
             ctx.data_mut(|d| d.insert_temp(composer::emoji_picker_id(), 0u64));
         }
@@ -1955,6 +1956,9 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
             }
         });
     }
+    if let Some(p) = &msg.poll {
+        super::polls::card(ui, cx, &pal, lc.ch, msg.id, p);
+    }
     forwarded(ui, cx, lc, msg);
     media_parts(ui, cx, lc, msg);
     // Plugins (MessageLinkEmbeds): previews of linked messages; a click jumps there.
@@ -2442,7 +2446,7 @@ fn reaction_chip(ui: &mut egui::Ui, pal: &Pal, tex: Option<SizedTexture>, emoji:
 /// Custom emoji texture. The still image is used unless `animated_url` is given (the emoji
 /// should play right now), so idle animated emoji never decode all their frames; the still
 /// also covers while the animation loads.
-fn emoji_texture(ui: &egui::Ui, images: &mut images::ImageCache, id: Id, animated_url: Option<String>) -> Option<SizedTexture> {
+pub(super) fn emoji_texture(ui: &egui::Ui, images: &mut images::ImageCache, id: Id, animated_url: Option<String>) -> Option<SizedTexture> {
     animated_url
         .and_then(|url| images.get(ui.ctx(), &url, 48, true))
         .or_else(|| images.get(ui.ctx(), &cdn::emoji_url(id, false, 48), 48, false))
@@ -3063,6 +3067,8 @@ fn fingerprint(m: &Message, layout: impl Hash) -> u64 {
     (&m.content, &m.edited_timestamp, m.kind, m.flags).hash(&mut h);
     (m.attachments.len(), m.embeds.len(), m.sticker_items.len(), m.referenced_message.is_some()).hash(&mut h);
     m.message_snapshots.first().map(|s| (s.message.content.len(), s.message.attachments.len(), s.message.embeds.len())).hash(&mut h);
+    // A vote of mine flips the card between its views; the answers and the end change its height.
+    m.poll.as_ref().map(|p| (p.answers.len(), p.results.as_ref().map(|r| (r.is_finalized, r.answer_counts.iter().any(|c| c.me_voted))))).hash(&mut h);
     for r in &m.reactions {
         (&r.emoji, r.count, r.me).hash(&mut h);
     }
@@ -3163,6 +3169,9 @@ pub(super) fn preview_text(state: &AppState, m: &Message) -> String {
 }
 
 fn reply_preview(m: &Message) -> String {
+    if let Some(p) = m.poll.as_ref().filter(|_| m.content.trim().is_empty()) {
+        return truncate_chars(&format!("Poll: {}", p.question.text), 120);
+    }
     if let Some(s) = m.message_snapshots.first().filter(|_| m.content.trim().is_empty()) {
         let inner = reply_preview(&s.message);
         return if inner.is_empty() { "Forwarded message".into() } else { inner };
@@ -3256,7 +3265,7 @@ fn content_is_media_link(m: &Message) -> bool {
 }
 
 fn placeholder(m: &Message) -> Option<&'static str> {
-    if !m.content.is_empty() || !m.attachments.is_empty() || !m.embeds.is_empty() || !m.sticker_items.is_empty() || !m.message_snapshots.is_empty() {
+    if !m.content.is_empty() || !m.attachments.is_empty() || !m.embeds.is_empty() || !m.sticker_items.is_empty() || !m.message_snapshots.is_empty() || m.poll.is_some() {
         return None;
     }
     if m.message_reference.as_ref().is_some_and(|r| r.kind == 1) {
@@ -3424,7 +3433,7 @@ fn local_format(iso: &str, fmt: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{MessageReference, MessageSnapshot};
+    use crate::model::{MessageReference, MessageSnapshot, Poll};
 
     /// 2026-01-15 12:00:00 UTC.
     const NOON: u64 = 1_768_478_400_000;
@@ -3571,6 +3580,10 @@ mod tests {
         assert_eq!(reply_preview(&m), "Forwarded message");
         m.message_snapshots[0].message.content = "inner".into();
         assert_eq!(reply_preview(&m), "inner");
+        let poll = |q: &str| Message { poll: Some(Box::new(Poll { question: crate::model::PollMedia { text: q.into(), emoji: None }, ..Default::default() })), ..msg(NOON, 1) };
+        assert_eq!(reply_preview(&poll("Best?")), "Poll: Best?");
+        assert_eq!(reply_preview(&poll(&"q".repeat(300))).chars().count(), 121);
+        assert_eq!(placeholder(&poll("Best?")), None);
     }
 
     #[test]
