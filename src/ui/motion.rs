@@ -20,6 +20,8 @@ pub const LARGE: f32 = 0.30;
 pub const OUT: f32 = 0.5;
 /// Floats and modals grow from this scale (principle 11).
 pub const GROW: f32 = 0.96;
+/// A reaction pill pops to this scale and back.
+pub const POP: f32 = 1.12;
 
 /// Test hook `RUSTCORD_MOTION_SCALE=<f>`: every duration x f (10: screenshots mid-animation).
 fn scale() -> f32 {
@@ -81,6 +83,43 @@ pub fn slide(ctx: &Context, id: Id, on: bool, s: f32) -> f32 {
 /// once (principle 16), instant both ways, no frames. Hit-testing keeps the full rect.
 pub fn pressed(resp: &egui::Response, rect: egui::Rect) -> egui::Rect {
     if resp.is_pointer_button_down_on() { rect.shrink(1.0) } else { rect }
+}
+
+/// Starts a pop (1 -> `POP` -> 1 over BASE, see `popped`) for whatever draws under `id`: my own
+/// action answered before the server's echo arrives (principle 16).
+pub fn pop(ctx: &Context, id: Id) {
+    let now = ctx.input(|i| i.time);
+    ctx.data_mut(|d| d.insert_temp(id, now));
+    ctx.request_repaint();
+}
+
+/// The scale of the pop under `id` right now: 1 at rest (and with reduced motion), asking for
+/// frames only while it runs.
+pub fn popped(ctx: &Context, id: Id) -> f32 {
+    let Some(at) = ctx.data(|d| d.get_temp::<f64>(id)) else { return 1.0 };
+    let dur = secs(ctx, BASE);
+    let lin = (ctx.input(|i| i.time) - at) as f32 / dur;
+    if dur == 0.0 || lin >= 1.0 {
+        ctx.data_mut(|d| d.remove::<f64>(id));
+        return 1.0;
+    }
+    ctx.request_repaint();
+    1.0 + (POP - 1.0) * (lin * std::f32::consts::PI).sin()
+}
+
+/// `add` drawn scaled by `s` about its own centre without moving the layout around it. The
+/// centre is remembered from the last scaled frame under `id`; the first frame draws plain.
+pub fn scaled(ui: &mut Ui, id: Id, s: f32, add: impl FnOnce(&mut Ui) -> egui::Response) -> egui::Response {
+    if s == 1.0 {
+        return add(ui);
+    }
+    let key = id.with("centre");
+    let resp = match ui.data(|d| d.get_temp::<Pos2>(key)) {
+        Some(o) => ui.with_visual_transform(about(o, s), add).inner,
+        None => add(ui),
+    };
+    ui.data_mut(|d| d.insert_temp(key, resp.rect.center()));
+    resp
 }
 
 #[derive(Clone, Copy)]
@@ -358,5 +397,45 @@ mod tests {
         }
         assert_eq!((sizes[1], sizes[5]), (20.0, 20.0), "idle and released: full size");
         assert!(sizes.contains(&18.0), "held: 1 px smaller per side");
+    }
+
+    #[test]
+    fn a_pop_swells_then_rests_and_stops_asking_for_frames() {
+        let ctx = Context::default();
+        let id = Id::unique("pop");
+        let (rest, _) = run(&ctx, 0.0, 0.0, |c| popped(c, id));
+        assert_eq!(rest, 1.0);
+        run(&ctx, 0.1, 0.0, |c| {
+            pop(c, id);
+            1.0
+        });
+        let (mid, busy) = run(&ctx, 0.15, 0.03, |c| popped(c, id));
+        assert!(mid > 1.05 && mid <= POP && busy);
+        let (end, busy) = run(&ctx, 0.4, 0.2, |c| popped(c, id));
+        assert!(end == 1.0 && !busy);
+        // Reduced motion: no pop at all.
+        ctx.all_styles_mut(|s| s.animation_time = 0.0);
+        run(&ctx, 1.0, 0.0, |c| {
+            pop(c, id);
+            1.0
+        });
+        assert_eq!(run(&ctx, 1.01, 0.0, |c| popped(c, id)).0, 1.0);
+    }
+
+    #[test]
+    fn a_scaled_widget_keeps_its_layout_and_centre() {
+        let ctx = Context::default();
+        ctx.all_styles_mut(|s| s.animation_time = animation_time(false));
+        let id = Id::unique("scaled");
+        let mut rects = Vec::new();
+        for _ in 0..3 {
+            let mut out = ctx.run_ui(egui::RawInput { time: Some(0.0), ..Default::default() }, |ui| {
+                let r = scaled(ui, id, 1.5, |ui| ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover()).1);
+                rects.push(r.rect);
+                assert_eq!(ui.min_rect().size(), egui::vec2(20.0, 20.0), "layout is untouched");
+            });
+            out.textures_delta.clear();
+        }
+        assert_eq!(rects[0].center(), rects[2].center());
     }
 }

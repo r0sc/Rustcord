@@ -2310,7 +2310,9 @@ fn reactions(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, ms
             let tex = r.emoji.id.and_then(|id| emoji_texture(ui, cx.images, id, anim_url));
             let label = if r.emoji.id.is_some() { format!(":{name}:") } else { name.clone() };
             let tip = shortcode_label(&name).filter(|_| r.emoji.id.is_none()).unwrap_or_else(|| label.clone());
-            let resp = reaction_chip(ui, &pal, tex, &label, &r.count.to_string(), r.me).on_hover_text(tip);
+            let pop = pop_key(msg.id, &r.emoji);
+            let s = super::motion::popped(ui.ctx(), pop);
+            let resp = super::motion::scaled(ui, pop, s, |ui| reaction_chip(ui, &pal, tex, &label, &r.count.to_string(), r.me)).on_hover_text(tip);
             // Removing my own reaction, or joining an existing one, never needs ADD_REACTIONS.
             if resp.clicked() && (r.me || lc.can_react || lc.can_add_existing) {
                 react(ui.ctx(), cx, lc.ch, msg.id, r.emoji.clone(), r.me);
@@ -2396,12 +2398,18 @@ fn recent_reactions_id() -> egui::Id {
     egui::Id::unique("rc_recent_reactions")
 }
 
+/// Where the pop of my reaction `e` on message `m` is kept (`motion::pop`).
+fn pop_key(m: Id, e: &Emoji) -> egui::Id {
+    egui::Id::unique(("rc_react_pop", m.0, e.id.map(|i| i.0), e.name.as_deref()))
+}
+
 /// Adds my reaction (remembered for the quick-reaction buttons) or removes it.
 fn react(ctx: &egui::Context, cx: &mut UiCx<'_>, channel_id: Id, message_id: Id, emoji: Emoji, remove: bool) {
     if remove {
         cx.cmd.send(Command::RemoveReaction { channel_id, message_id, emoji });
         return;
     }
+    super::motion::pop(ctx, pop_key(message_id, &emoji));
     ctx.data_mut(|d| {
         let recent = d.get_temp_mut_or_default::<Vec<Emoji>>(recent_reactions_id());
         recent.retain(|e| !same_emoji(e, &emoji));
