@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rustcord, a lightweight desktop client for Discord written in Rust</title>
 <meta name="description" content="Rustcord is an unofficial, lightweight desktop client for Discord, written from scratch in Rust with egui and tokio. No Electron. Open source (MIT) for Windows, Linux and macOS.">
-<meta name="theme-color" content="#151a1e">
+<meta name="theme-color" content="#08070B">
 <meta name="color-scheme" content="dark">
 <link rel="canonical" href="https://r0sc.github.io/Rustcord/">
 <meta property="og:type" content="website">
@@ -13,7 +13,7 @@
 <meta property="og:description" content="A lightweight desktop client for Discord, written from scratch in Rust. No Electron.">
 <meta property="og:url" content="https://r0sc.github.io/Rustcord/">
 <meta property="og:image" content="https://r0sc.github.io/Rustcord/shots/og.png">
-<meta property="og:image:alt" content="Rustcord's main window in the Ember Dark theme">
+<meta property="og:image:alt" content="Rustcord's main window in the Nightshade theme">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icon-32.png" sizes="32x32" type="image/png">
@@ -33,33 +33,30 @@
 </head>
 <body id="top">
 <svg hidden width="0" height="0" aria-hidden="true">
-  <symbol id="i-text" viewBox="0 0 24 24"><path d="M9.5 4 7.5 20M16.5 4l-2 16M4 9h16M3.5 15h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="i-voice" viewBox="0 0 24 24"><path d="M3 9.5h4l5-4.5v14l-5-4.5H3z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 9a4.5 4.5 0 0 1 0 6M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
-  <symbol id="i-media" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m10 9 5.5 3-5.5 3z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
-  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
-  <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></symbol>
-  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/></symbol>
-  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5" fill="currentColor"/><path d="m11.5 11.5 9-9M16 7l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="i-desktop" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 20h8M12 16v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
-  <symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="m5.6 5.6 12.8 12.8" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
-  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4.5h10A2.5 2.5 0 0 1 19.5 7v7a2.5 2.5 0 0 1-2.5 2.5H4.5V7A2.5 2.5 0 0 1 7 4.5Z"/><path d="M8.5 9h7M8.5 12.5h4.5"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0v-5a3 3 0 0 0-3-3Z"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3"/></symbol>
+  <symbol id="i-media" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5v5l4.5-2.5Z"/></symbol>
+  <symbol id="i-puzzle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.5h3.98a2.5 2.5 0 1 1 3.54 0H16.5v3.48a2.5 2.5 0 1 1 0 3.54V19.5h-12Z"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.33 20.69A9 9 0 1 1 20.69 14.33L16.5 14.5 14.5 16.5Z"/><circle cx="7.75" cy="11.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7.25" r="1.5" fill="currentColor" stroke="none"/><circle cx="15.25" cy="7.75" r="1.5" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15.5" r="4"/><path d="m10.9 12.6 8.6-8.6M16.5 7l2.5 2.5"/></symbol>
+  <symbol id="i-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.75" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.27 4.5 2.98 17.25A2 2 0 0 0 4.72 20.25h14.56a2 2 0 0 0 1.74-3L13.73 4.5a2 2 0 0 0-3.46 0Z"/><path d="M12 9.5v4.5"/><circle cx="12" cy="17" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
 </svg>
 
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="#top"><img src="logo.svg" alt="" width="28" height="28"><span>Rustcord</span></a>
-    <nav aria-label="Page">
-      <a href="#tour">Tour</a>
-      <a href="#features">Features</a>
-      <a href="#download">Download</a>
-    </nav>
-    <a class="btn btn-secondary btn-small only-narrow" href="#download">Download</a>
+  <a class="brand" href="#top"><img src="favicon.svg" alt="" width="28" height="28"><span>Rustcord</span></a>
+  <nav aria-label="Page"><a href="#tour">Tour</a><a href="#features">Features</a></nav>
+  <div class="hdr-end">
     <a class="link-ext" href="https://github.com/r0sc/Rustcord">GitHub <svg class="icon" aria-hidden="true"><use href="#i-ext"/></svg></a>
+    <a class="btn btn-secondary btn-small" href="#download">Download</a>
   </div>
 </header>
 
@@ -93,26 +90,26 @@
     <div class="tour-frame">
       <ol class="tour-list">
         <li class="tour-item"><figure>
-          <div class="tour-shot"><img src="shots/main.webp" srcset="shots/main-960.webp 960w, shots/main.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" fetchpriority="high" alt="Rustcord’s main window in the Ember Dark theme: the server bar, the Rust Workshop server’s channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc’s custom status “Rewriting it in Rust”, a game and Spotify"></div>
+          <div class="tour-shot"><img src="shots/main.webp" srcset="shots/main-960.webp 960w, shots/main.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" fetchpriority="high" alt="Rustcord’s main window in the Nightshade theme: the server bar with Rust Workshop selected, its channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc’s custom status “Rewriting it in Rust”, a game and Spotify"></div>
           <figcaption><h3>Your servers and chats</h3><p>Servers, channels, DMs and the member list sit where you expect them.</p></figcaption></figure></li>
         <li class="tour-item"><figure>
-          <div class="tour-shot"><img src="shots/stream.webp" srcset="shots/stream-960.webp 960w, shots/stream.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="A voice channel in Rustcord: Cara’s live stream of Red Eclipse gameplay fills the stage, with Alice, Bob, Cara, dan_ops and rosc in the tiles below and rosc connected to Lounge in the voice panel"></div>
+          <div class="tour-shot"><img src="shots/stream.webp" srcset="shots/stream-960.webp 960w, shots/stream.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="A voice channel in Rustcord: Cara’s live stream of Red Eclipse gameplay fills the stage, with Alice, Bob, Cara, dan_ops and rosc in the tiles below, and the call island in the title bar showing rosc connected to Lounge"></div>
           <figcaption><h3>Voice, video and streams</h3><p>Join voice channels with end-to-end encryption and watch streams.</p></figcaption></figure></li>
         <li class="tour-item"><figure>
           <div class="tour-shot"><img src="shots/profile.webp" srcset="shots/profile-960.webp 960w, shots/profile.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="rosc’s profile popout above the user panel, with a local-only banner, the custom status “Rewriting it in Rust”, a game activity and the status picker"></div>
           <figcaption><h3>Profiles and status</h3><p>Set your status and custom status and see what friends are playing.</p></figcaption></figure></li>
         <li class="tour-item"><figure>
-          <div class="tour-shot"><img src="shots/plugins.webp" srcset="shots/plugins-960.webp 960w, shots/plugins.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="Settings, Plugins: the built-in Vencord-style plugins, 4 of 48 turned on"></div>
+          <div class="tour-shot"><img src="shots/plugins.webp" srcset="shots/plugins-960.webp 960w, shots/plugins.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="Settings open as a floating panel over the app, on the Plugins page: the built-in Vencord-style plugins, 4 of 48 turned on"></div>
           <figcaption><h3>48 plugins, built in</h3><p>Each plugin has its own switch in Settings.</p></figcaption></figure></li>
         <li class="tour-item"><figure>
-          <div class="tour-shot"><img src="shots/light.webp" srcset="shots/light-960.webp 960w, shots/light.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="The same #general chat in the Paper Light theme"></div>
-          <figcaption><h3>Themes</h3><p>The same chat, switched to Paper Light.</p></figcaption></figure></li>
+          <div class="tour-shot"><img src="shots/light.webp" srcset="shots/light-960.webp 960w, shots/light.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="The same #general chat in the Lilac theme"></div>
+          <figcaption><h3>Themes</h3><p>The same chat, switched to Lilac.</p></figcaption></figure></li>
       </ol>
     </div>
   </div>
 </section>
 
-<section class="sec sec-pane" id="speed" aria-labelledby="speed-title">
+<section class="sec band" id="speed" aria-labelledby="speed-title">
   <div class="wrap">
     <h2 id="speed-title">How light it is</h2>
     <p class="lede">Rustcord draws its own interface with egui and runs its network code on tokio. There’s no Electron and no bundled browser.</p>
@@ -124,7 +121,7 @@
   </div>
 </section>
 
-<section class="sec sec-chat" id="why" aria-labelledby="why-title">
+<section class="sec band" id="why" aria-labelledby="why-title">
   <div class="wrap why-grid">
     <div>
       <h2 id="why-title">Why it exists</h2>
@@ -137,21 +134,21 @@
       </ol>
     </div>
     <figure class="quote">
-      <blockquote><p>“I didn’t feel like waiting for it. So I vibe-coded my own Rust client and shipped it first.”</p></blockquote>
+      <blockquote class="bubble layer"><p>“I didn’t feel like waiting for it. So I vibe-coded my own Rust client and shipped it first.”</p></blockquote>
       <figcaption><a href="https://github.com/r0sc">rosc</a>, who made Rustcord</figcaption>
     </figure>
   </div>
 </section>
 
-<section class="sec sec-pane" id="features" aria-labelledby="features-title">
+<section class="sec" id="features" aria-labelledby="features-title">
   <div class="wrap">
     <h2 id="features-title">What it does</h2>
     <p class="lede">The layout follows Discord’s web app, so you’ll know your way around. The look, the icons and the code are Rustcord’s own.</p>
     <div class="features">
-      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-text"/></svg>Chat</h3><p>Markdown, mentions, custom emoji, replies and reactions. Edit and delete your own messages, upload files by drag and drop or paste, search, pin and mark unread. Threads and forum channels work too.</p></div>
-      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-voice"/></svg>Voice and video</h3><p>Voice channels and calls with DAVE end-to-end encryption, and you can watch anyone’s stream. Camera and screen sharing work on Windows for now. On Windows, a game overlay shows who’s talking.</p></div>
+      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>Chat</h3><p>Markdown, mentions, custom emoji, replies and reactions. Edit and delete your own messages, upload files by drag and drop or paste, search, pin and mark unread. Threads and forum channels work too.</p></div>
+      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice and video</h3><p>Voice channels and calls with DAVE end-to-end encryption, and you can watch anyone’s stream. Camera and screen sharing work on Windows for now. On Windows, a game overlay shows who’s talking.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-media"/></svg>Pictures and videos</h3><p>Uploaded MP4 videos play right in the chat, decoded by Rustcord itself. Pictures, GIFs and videos open in a viewer with zoom, pan, Save, Copy image and Copy link.</p></div>
-      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg>48 plugins</h3><p>Rebuilt in Rust from Vencord’s plugins: all off until you turn them on, and they only change this app.</p>
+      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg>48 plugins</h3><p>Rebuilt in Rust from Vencord’s plugins: all off until you turn them on, and they only change this app.</p>
         <details class="plugins"><summary>Show all 48 plugins <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
           <ul class="plugin-list">
 <li>AccountPanelServerProfile</li>
@@ -203,33 +200,34 @@
 <li>VolumeBooster (up to 400 %, local mix only)</li>
 <li>WhoReacted</li>
           </ul></details></div>
-      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-theme"/></svg>Themes and your look</h3><p>Ember Dark, Paper Light and High Contrast, plus a live editor for your own themes, saved as TOML files you can import and export. Add a banner and an animated avatar that only you see.</p></div>
+      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Themes and your look</h3><p>Nightshade, Lilac and High Contrast, plus a live editor for your own themes, saved as TOML files you can import and export. Add a banner and an animated avatar that only you see.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-person"/></svg>Profiles and activities</h3><p>Profiles show avatar decorations, nameplates, effects, badges and connections from Discord. Games and Spotify appear with their art. Rustcord can detect the game you’re playing; others see it only if you turn on sharing.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-key"/></svg>Sign-in and account</h3><p>Sign in with a QR code, with email and password (with 2FA), or with a token. Your session token is kept in your system’s credential store, never in a file. Account security, settings and server administration are built in.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-desktop"/></svg>On your desktop</h3><p>A tray icon, start at sign-in and desktop notifications on Windows, Linux and macOS. The second start shows your cached servers right away. Installed copies update themselves, and updates are signed.</p></div>
     </div>
-    <div class="not-included"><h3><svg class="icon" aria-hidden="true"><use href="#i-block"/></svg>Not included</h3>
+    <div class="not-included"><h3><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>Not included</h3>
       <p>Account creation, slash commands and bot components, the sticker picker, other Nitro features and completing quests for you. Rustcord never solves captchas: when Discord asks for one, you solve it yourself in the sign-in card on Windows and macOS.</p></div>
   </div>
 </section>
 
-<section class="sec sec-chat sec-notes" id="notes" aria-labelledby="notes-title">
+<section class="sec band sec-notes" id="notes" aria-labelledby="notes-title">
   <div class="wrap">
     <h2 id="notes-title">Before you download</h2>
     <ul class="note-list">
-      <li class="note"><h3>It’s a beta, and it was vibe-coded</h3><p>Almost all of Rustcord’s code was written with AI coding tools (Claude Code), not by hand. Many features have only been tested with offline demo data, and the Linux and macOS builds have had the least testing. If something breaks, please <a href="https://github.com/r0sc/Rustcord/issues">open an issue</a>.</p></li>
-      <li class="note"><h3>Your account is at risk</h3><p>Third-party clients that log in with a user account violate Discord’s Terms of Service and can get the account banned. You use Rustcord at your own risk. It behaves like a normal user client (no automation, nothing is sent on your behalf, all rate limits are respected), but that doesn’t remove the risk.</p></li>
-      <li class="note"><h3>It’s unofficial</h3><p>Rustcord is not affiliated with Discord. Its logo, look and icons are its own; it doesn’t use Discord’s logo, wordmark or brand colours.</p></li>
+      <li class="callout callout-info"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><div><h3>It’s a beta, and it was vibe-coded</h3><p>Almost all of Rustcord’s code was written with AI coding tools (Claude Code), not by hand. Many features have only been tested with offline demo data, and the Linux and macOS builds have had the least testing. If something breaks, please <a href="https://github.com/r0sc/Rustcord/issues">open an issue</a>.</p></div></li>
+      <li class="callout callout-warn"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><div><h3>Your account is at risk</h3><p>Third-party clients that log in with a user account violate Discord’s Terms of Service and can get the account banned. You use Rustcord at your own risk. It behaves like a normal user client (no automation, nothing is sent on your behalf, all rate limits are respected), but that doesn’t remove the risk.</p></div></li>
+      <li class="callout callout-info"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><div><h3>It’s unofficial</h3><p>Rustcord is not affiliated with Discord. Its logo, look and icons are its own; it doesn’t use Discord’s logo, wordmark or brand colours.</p></div></li>
     </ul>
   </div>
 </section>
 
-<section class="sec sec-chat sec-dl" id="download" aria-labelledby="download-title">
+<section class="sec sec-dl" id="download" aria-labelledby="download-title">
   <div class="wrap">
     <h2 id="download-title">Download</h2>
     <p class="lede">Free and open source under the MIT license. Installed copies keep themselves up to date.</p>
     <div class="dl-grid">
-    <div class="dl-panel" data-dl>
+    <div class="dl-panel layer" data-dl>
+      <h3 data-dl-title>Get Rustcord</h3>
       <p class="meta" data-dl-meta>Opens the latest release on GitHub, where you pick the file for your system.</p>
       <div data-dl-mobile hidden>
         <p>Rustcord is a desktop app for Windows, Linux and macOS. Open <strong>r0sc.github.io/Rustcord</strong> on your computer to download it.</p>
@@ -253,7 +251,7 @@
     <p class="after-list"><a href="https://github.com/r0sc/Rustcord/releases/latest">All files, checksums and release notes</a> are on GitHub. Prefer to build it yourself? The <a href="https://github.com/r0sc/Rustcord#build">build instructions</a> are in the README.</p>
 
     <h3 class="sub">Install notes</h3>
-    <div class="notes-acc">
+    <div class="acc">
       <details id="notes-windows" data-notes="windows"><summary>First start on Windows <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
         <div class="acc-body"><p>The setup isn’t code-signed, so Windows SmartScreen may say “Windows protected your PC”. Select More info, then Run anyway. Rustcord installs for your Windows user only, without administrator rights. It starts hidden in the notification area when you sign in; you can turn that off in its settings.</p></div></details>
       <details id="notes-mac" data-notes="mac"><summary>First start on macOS <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
@@ -296,7 +294,7 @@ sh rustcord-&lt;version&gt;/install.sh</code></pre><button class="btn btn-second
 <footer class="site-footer">
   <div class="wrap foot-grid">
     <div>
-      <a class="brand" href="#top"><img src="logo.svg" alt="" width="28" height="28"><span>Rustcord</span></a>
+      <a class="brand" href="#top"><img src="favicon.svg" alt="" width="28" height="28"><span>Rustcord</span></a>
       <p>Made by <a href="https://github.com/r0sc">rosc</a> and vibe-coded with Claude Code. MIT license.</p>
       <ul class="foot-links">
         <li><a href="https://github.com/r0sc/Rustcord">Source code</a></li>
