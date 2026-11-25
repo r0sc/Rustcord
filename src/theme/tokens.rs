@@ -64,8 +64,6 @@ pub struct Tokens {
     pub positive: Color32,
     /// Green text ("Voice connected").
     pub positive_text: Color32,
-    /// Check and knob glyph drawn on `positive`.
-    pub on_positive: Color32,
     /// Join / Accept call buttons, with `positive_label` on them.
     pub positive_fill: Color32,
     pub positive_label: Color32,
@@ -133,7 +131,6 @@ impl Tokens {
             sheen: if mode == Mode::Dark { Color32::from_white_alpha(15) } else { Color32::TRANSPARENT },
             positive: pick(0x50c76a, 0x1d8b3d, 0x4fe07a),
             positive_text: pick(0x50c76a, 0x00792b, 0x4fe07a),
-            on_positive: pick(0x08070b, 0xffffff, 0x000000),
             positive_fill: pick(0x25803f, 0x25803f, 0x4fe07a),
             positive_label: pick(0xffffff, 0xffffff, 0x000000),
             attention: match mode {
@@ -210,7 +207,7 @@ mod tests {
             let bg = c.background.to_color32();
             // Component boundaries and state glyphs (the switch check): at least 3:1 (WCAG 1.4.11).
             assert!(ratio(tk.edge, bg) >= 3.0 && ratio(tk.edge, c.surface.to_color32()) >= 3.0, "{} edge", t.name);
-            assert!(ratio(tk.positive, bg) >= 3.0 && ratio(tk.on_positive, tk.positive) >= 3.0, "{} positive", t.name);
+            assert!(ratio(tk.positive, bg) >= 3.0, "{} positive", t.name);
             assert!(ratio(tk.danger_label, tk.danger_fill) >= 4.5 && ratio(tk.positive_label, tk.positive_fill) >= 4.5, "{} fills", t.name);
             assert!(ratio(c.danger.to_color32(), tk.raised) >= 4.5, "{} danger on menus", t.name);
             assert!(ratio(tk.focus, c.sidebar.to_color32()) >= 3.0, "{} focus", t.name);

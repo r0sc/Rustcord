@@ -175,7 +175,7 @@ pub(super) fn show(ctx: &egui::Context, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, an
         .pivot(Align2::RIGHT_BOTTOM)
         .constrain(true)
         .show(ctx, |ui| {
-            Frame::popup(ui.style()).fill(pal.surface).corner_radius(pal.card_radius()).inner_margin(0).show(ui, |ui| {
+            Frame::popup(ui.style()).fill(pal.surface).corner_radius(pal.float_radius()).inner_margin(0).show(ui, |ui| {
                 ui.set_min_size(size);
                 ui.set_max_size(size);
                 ui.spacing_mut().item_spacing = Vec2::ZERO;

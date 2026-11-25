@@ -31,7 +31,7 @@ pub(super) fn button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, to
         ui.painter().set(fill, egui::Shape::rect_filled(resp.rect, pal.radius, pal.tint()));
     }
     let toggle = resp.clicked() || toggle_key;
-    let frame = Frame::popup(ui.style()).fill(pal.surface).corner_radius(pal.card_radius()).inner_margin(Margin::ZERO);
+    let frame = Frame::popup(ui.style()).fill(pal.surface).corner_radius(pal.float_radius()).inner_margin(Margin::ZERO);
     egui::Popup::new(id, ctx.clone(), &resp, ui.layer_id())
         .open_memory(toggle.then_some(egui::SetOpenCommand::Toggle))
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)

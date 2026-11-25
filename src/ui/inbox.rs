@@ -7,7 +7,7 @@
 //! state. The mentions list is dropped when it closes.
 //! OWNERSHIP: friends/DMs/inbox/profile engineer (docs/SOCIAL_UI_DESIGN.md).
 
-use super::messages::{Pal, icon_button, jump_to, message_card, small_button};
+use super::messages::{Pal, icon_button, jump_to, message_card, sheen, small_button};
 use super::sidebar::{self, badge, dm_avatar_at, empty_state};
 use super::icons::{self, Icon};
 use super::{UiCx, bold, one_line};
@@ -65,7 +65,7 @@ pub(super) fn button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
         cx.view.inbox_open = !cx.view.inbox_open;
     }
     let mut open = cx.view.inbox_open;
-    let frame = Frame::popup(ui.style()).fill(pal.surface).corner_radius(pal.card_radius()).inner_margin(Margin::ZERO);
+    let frame = Frame::popup(ui.style()).fill(pal.surface).corner_radius(pal.float_radius()).inner_margin(Margin::ZERO);
     egui::Popup::new(popup_id(), ui.ctx().clone(), &resp, ui.layer_id())
         .open_bool(&mut open)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -107,6 +107,7 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
     });
     let r = ui.min_rect();
     ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, pal.tk.rule));
+    sheen(ui.painter(), r, f32::from(pal.float_radius()), &pal.tk);
     ScrollArea::vertical()
         .id_salt(("rc_inbox_list", cx.view.inbox_ui.tab as u8))
         .max_height((screen.height() * 0.7 - 56.0).max(160.0))

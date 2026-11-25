@@ -108,15 +108,15 @@ fn visuals(theme: &Theme) -> egui::Visuals {
     v.error_fg_color = c.danger.to_color32();
     v.warn_fg_color = tk.attention;
     v.interact_cursor = Some(egui::CursorIcon::PointingHand);
-    v.window_corner_radius = radius(2.0);
+    v.window_corner_radius = radius(2.5);
     v.menu_corner_radius = radius(1.5);
     // E3 (modals) and E2 (menus, tooltips, popouts).
     let shadow = |y: i8, blur: u8, dark: f32, lit: f32| {
         let a = if light { lit } else { dark };
         if hc { Shadow::NONE } else { Shadow { offset: [0, y], blur, spread: 0, color: Color32::from_black_alpha((a * 255.0).round() as u8) } }
     };
-    v.window_shadow = shadow(16, 48, 0.5, 0.18);
-    v.popup_shadow = shadow(8, 24, 0.45, 0.14);
+    v.window_shadow = shadow(24, 64, 0.65, 0.18);
+    v.popup_shadow = shadow(12, 32, 0.55, 0.12);
     v.text_cursor.stroke = Stroke::new(2.0, tk.accent_ink);
 
     // Selected text in a purple tint; the stroke is also the label colour of selected buttons and

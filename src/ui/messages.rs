@@ -87,14 +87,14 @@ pub(super) struct Pal {
     pub link: Color32,
     pub danger: Color32,
     pub bg: Color32,
-    /// Control radius r (buttons, inputs, rows); `card_radius` 1.5r, `modal_radius` 2r.
+    /// Control radius r (buttons, inputs, rows); `card_radius` 1.5r, `float_radius` 2r, `modal_radius` 2.5r.
     pub radius: u8,
     /// Body text size B; the type roles (`meta`, `label`, `title` …) derive from it.
     pub size: f32,
     pub dark: bool,
     /// Label on `accent` (primary buttons).
     pub accent_text: Color32,
-    /// raised, hover, selected, rule, edge, focus, positive …, danger_fill, chip, heat, scrim.
+    /// raised, hover, selected, rule, edge, accent_ink, focus, sheen, positive …, danger_fill, chip, scrim.
     pub tk: crate::theme::Tokens,
 }
 
@@ -124,9 +124,14 @@ impl Pal {
         self.radius.saturating_add(self.radius / 2)
     }
 
-    /// Modal tier (2r): modals, profile popout, login panel.
-    pub fn modal_radius(&self) -> u8 {
+    /// Float tier (2r): profile popout, inbox, pins, pickers, toasts.
+    pub fn float_radius(&self) -> u8 {
         self.radius.saturating_mul(2)
+    }
+
+    /// Layer tier (2.5r): modals, settings panel, quick switcher, login card.
+    pub fn modal_radius(&self) -> u8 {
+        (f32::from(self.radius) * 2.5).round().min(255.0) as u8
     }
 
     // Type roles (§3), all from B = `size`. Weights: `bold`/`semibold_family`/`medium_family`.
@@ -162,15 +167,26 @@ impl Pal {
         self.size + 1.0
     }
 
-    /// B+5, 600: settings page title, modal title, popout display name.
+    /// B+5, 700: settings page title, modal title, popout display name.
     pub fn title(&self) -> f32 {
         self.size + 5.0
     }
 
-    /// B+9, 700: login title, full-profile name, DM start name.
+    /// B+13, 700: login title, full-profile name, DM start name.
     #[allow(dead_code, reason = "shared type role; login and profile adopt it")]
     pub fn display(&self) -> f32 {
-        self.size + 9.0
+        self.size + 13.0
+    }
+
+    /// Title role (B+5, 700, -0.3 px): settings page titles, modal titles, popout names.
+    pub fn title_text(&self, text: &str) -> RichText {
+        RichText::new(text).font(FontId::new(self.title(), bold_family())).extra_letter_spacing(-0.3).color(self.text)
+    }
+
+    /// Display role (B+13, 700, -0.6 px): login and update titles, full-profile name.
+    #[allow(dead_code, reason = "shared type role; login and profile adopt it")]
+    pub fn display_text(&self, text: &str) -> RichText {
+        RichText::new(text).font(FontId::new(self.display(), bold_family())).extra_letter_spacing(-0.6).color(self.text)
     }
 
     /// Hairlines (header border, date separators, card outlines).
@@ -230,7 +246,15 @@ pub(super) fn focus_ring(ui: &egui::Ui, pal: &Pal, rect: Rect, radius: f32) {
     ui.painter().rect_stroke(rect.expand(2.0), radius + 2.0, Stroke::new(2.0, pal.tk.focus), egui::StrokeKind::Outside);
 }
 
-/// Button kinds of §9. One `Primary` per view (ember); `Danger` only for destructive confirms.
+/// The lit top edge of a raised layer (`sheen`): 1 px, 1 px under the top edge (below a 1 px
+/// outline), from `radius` in on both ends. Nothing on light and high-contrast themes.
+pub(super) fn sheen(p: &egui::Painter, rect: Rect, radius: f32, tk: &crate::theme::Tokens) {
+    if tk.sheen.a() > 0 {
+        p.hline(rect.left() + radius..=rect.right() - radius, rect.top() + 1.5, Stroke::new(1.0, tk.sheen));
+    }
+}
+
+/// Button kinds of §9. One `Primary` per view (purple); `Danger` only for destructive confirms.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[allow(dead_code, reason = "shared §9 kinds; Secondary / Positive are adopted by the area views")]
 pub(super) enum Btn {
@@ -243,7 +267,7 @@ pub(super) enum Btn {
 
 /// A §9 button: 32 tall (raise with `ui.spacing_mut().interact_size.y`, e.g. 40 in modal
 /// footers), 16 px padding, at least 64 wide, label ui 14/500. Hover and press change the fill
-/// only; keyboard focus draws the focus ring. Disabled filled buttons go grey, never dim orange.
+/// only; keyboard focus draws the focus ring. Disabled filled buttons go grey, never a dim purple.
 pub(super) fn button(ui: &mut egui::Ui, pal: &Pal, kind: Btn, text: &str, enabled: bool) -> egui::Response {
     ui.scope(|ui| {
         let enabled = enabled && ui.is_enabled();
@@ -255,7 +279,7 @@ pub(super) fn button(ui: &mut egui::Ui, pal: &Pal, kind: Btn, text: &str, enable
             if enabled { ([fill, hover, press], label) } else { ([tk.selected; 3], pal.muted) }
         };
         let (fills, label) = match kind {
-            Btn::Primary => filled(pal.accent, pal.accent_text, pal.accent.lerp_to_gamma(white, 0.08), pal.accent.lerp_to_gamma(black, 0.1)),
+            Btn::Primary => filled(pal.accent, pal.accent_text, pal.accent.lerp_to_gamma(white, 0.06), pal.accent.lerp_to_gamma(black, 0.12)),
             Btn::Danger => filled(tk.danger_fill, tk.danger_label, tk.danger_fill.lerp_to_gamma(black, 0.1), tk.danger_fill.lerp_to_gamma(black, 0.18)),
             Btn::Positive => filled(tk.positive_fill, tk.positive_label, tk.positive_fill.lerp_to_gamma(black, 0.1), tk.positive_fill.lerp_to_gamma(black, 0.18)),
             Btn::Secondary => {
@@ -288,7 +312,51 @@ pub(super) fn button(ui: &mut egui::Ui, pal: &Pal, kind: Btn, text: &str, enable
     .inner
 }
 
-/// Pill switch (§9): 40 x 24. Off: `edge` track, a light knob with a ×; on: `positive` track,
+/// Callout kinds (§6.9): a note in the page's flow. Never purple: purple is "you", not "info".
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(dead_code, reason = "shared callout; the settings pages adopt it")]
+pub(super) enum Callout {
+    Info,
+    Warn,
+    Danger,
+}
+
+/// A callout: full width, card radius, a 16 px icon and wrapped ui text on the kind's colour at
+/// 8 % with a 1 px border (70 % on dark, 1.5 px on high contrast).
+#[allow(dead_code, reason = "shared callout; the settings pages adopt it")]
+pub(super) fn callout(ui: &mut egui::Ui, pal: &Pal, kind: Callout, text: &str) {
+    let (color, info) = match kind {
+        Callout::Info => (pal.link, true),
+        Callout::Warn => (pal.tk.attention, false),
+        Callout::Danger => (pal.danger, false),
+    };
+    let width = ui.available_width();
+    let galley = ui.painter().layout(text.to_owned(), FontId::proportional(pal.ui()), pal.text, (width - 48.0).max(32.0));
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, galley.size().y.max(16.0) + 24.0), Sense::hover());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        let border = match pal.tk.mode {
+            crate::theme::Mode::Dark => Stroke::new(1.0, color.gamma_multiply(0.7)),
+            crate::theme::Mode::Light => Stroke::new(1.0, color),
+            crate::theme::Mode::HighContrast => Stroke::new(1.5, color),
+        };
+        p.rect(rect, pal.card_radius(), color.gamma_multiply(0.08), border, egui::StrokeKind::Inside);
+        let c = pos2(rect.left() + 20.0, rect.top() + 12.0 + galley.size().y.min(21.0) / 2.0);
+        if info {
+            icons::paint(p, Icon::Info, Rect::from_center_size(c, Vec2::splat(16.0)), color, pal.bg);
+        } else {
+            // Warning triangle with an exclamation mark.
+            let tri = vec![c + vec2(0.0, -7.0), c + vec2(7.5, 6.0), c + vec2(-7.5, 6.0)];
+            p.add(Shape::closed_line(tri, Stroke::new(1.5, color)));
+            p.line_segment([c + vec2(0.0, -2.5), c + vec2(0.0, 1.5)], Stroke::new(1.5, color));
+            p.circle_filled(c + vec2(0.0, 3.8), 0.9, color);
+        }
+        p.galley(pos2(rect.left() + 36.0, rect.top() + 12.0), galley, pal.text);
+    }
+}
+
+/// Pill switch (§9): 40 x 24. Off: `edge` track, a light knob with a ×; on: `accent` track,
 /// the knob with a check. Slides in `FAST` (cubic in-out) and stretches mid-travel. `changed()` when clicked.
 pub(super) fn switch(ui: &mut egui::Ui, pal: &Pal, on: &mut bool, label: &str) -> egui::Response {
     let (rect, mut resp) = ui.allocate_exact_size(vec2(40.0, 24.0), Sense::click());
@@ -300,9 +368,9 @@ pub(super) fn switch(ui: &mut egui::Ui, pal: &Pal, on: &mut bool, label: &str) -
     if ui.is_rect_visible(rect) {
         let tk = &pal.tk;
         let t = super::motion::slide(ui.ctx(), resp.id, *on, super::motion::FAST);
-        let track = tk.edge.lerp_to_gamma(tk.positive, t);
+        let track = tk.edge.lerp_to_gamma(tk.accent, t);
         let off_knob = if tk.mode == crate::theme::Mode::Light { Color32::WHITE } else { pal.text };
-        let knob = off_knob.lerp_to_gamma(tk.on_positive, t);
+        let knob = off_knob.lerp_to_gamma(tk.on_accent, t);
         let c = pos2(egui::lerp(rect.left() + 12.0..=rect.right() - 12.0, t), rect.center().y);
         let p = ui.painter();
         p.rect_filled(rect, 12.0, track);
@@ -325,26 +393,26 @@ pub(super) fn switch(ui: &mut egui::Ui, pal: &Pal, on: &mut bool, label: &str) -
     resp.on_hover_cursor(CursorIcon::PointingHand)
 }
 
-/// A checkbox box (§9) in `rect` (16-20 px): off a 1.5 px `edge` ring, on `positive` with an
-/// `on_positive` check. `radius`: the chip tier (`pal.radius / 2`).
+/// A checkbox box (§9) in `rect` (16-20 px): off a 1.5 px `edge` ring, on `accent` with an
+/// `on_accent` check. `radius`: the chip tier (`pal.radius / 2`).
 pub(super) fn paint_checkbox(p: &egui::Painter, tk: &crate::theme::Tokens, rect: Rect, on: bool, radius: f32) {
     if on {
-        p.rect_filled(rect, radius, tk.positive);
+        p.rect_filled(rect, radius, tk.accent);
         let (c, s) = (rect.center(), rect.width() / 20.0);
         let tick = vec![c + vec2(-5.0, 0.5) * s, c + vec2(-1.5, 4.0) * s, c + vec2(5.0, -3.5) * s];
-        p.add(Shape::line(tick, Stroke::new(2.0 * s, tk.on_positive)));
+        p.add(Shape::line(tick, Stroke::new(2.0 * s, tk.on_accent)));
     } else {
         p.rect_stroke(rect, radius, Stroke::new(1.5, tk.edge), egui::StrokeKind::Inside);
     }
 }
 
-/// A radio circle (§9) in `rect` (16-20 px): off a 1.5 px `edge` ring, on a 2 px `text` ring
-/// with a `text` dot.
+/// A radio circle (§9) in `rect` (16-20 px): off a 1.5 px `edge` ring, on a 2 px `accent` ring
+/// with an `accent` dot.
 pub(super) fn paint_radio(p: &egui::Painter, pal: &Pal, rect: Rect, on: bool) {
     let (c, r) = (rect.center(), rect.width() / 2.0);
     if on {
-        p.circle_stroke(c, r - 1.0, Stroke::new(2.0, pal.text));
-        p.circle_filled(c, r * 0.4, pal.text);
+        p.circle_stroke(c, r - 1.0, Stroke::new(2.0, pal.tk.accent));
+        p.circle_filled(c, r * 0.4, pal.tk.accent);
     } else {
         p.circle_stroke(c, r - 0.75, Stroke::new(1.5, pal.tk.edge));
     }
@@ -3968,6 +4036,22 @@ mod tests {
         });
         out.textures_delta.clear();
         assert_eq!(got, [None, None]);
+    }
+
+    #[test]
+    fn a_callout_wraps_and_grows() {
+        let h = Harness::new();
+        let pal = Pal::new(&Theme::nightshade());
+        let mut heights = Vec::new();
+        let mut out = h.ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(200.0, 800.0))), ..Default::default() }, |ui| {
+            for text in ["Short.", "A much longer note that has to wrap over several lines in a narrow column."] {
+                let top = ui.cursor().top();
+                callout(ui, &pal, Callout::Info, text);
+                heights.push(ui.min_rect().bottom() - top);
+            }
+        });
+        out.textures_delta.clear();
+        assert!(heights[0] >= 40.0 && heights[1] > heights[0] + 20.0, "{heights:?}");
     }
 
     #[test]

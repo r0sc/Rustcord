@@ -725,6 +725,7 @@ impl RustcordApp {
             .fill(c.surface.to_color32())
             .corner_radius(self.theme.layout.corner_radius * 2.0)
             .inner_margin(egui::Margin { left: 12, right: 16, top: 8, bottom: 8 });
+        let (toast_r, tk) = (self.theme.layout.corner_radius * 2.0, self.theme.tokens());
         // Inside the message area, not straddling the member list's (or thread panel's) edge.
         let right_column = match self.view.screen {
             Screen::Main => right_column_w(&self.view, &self.settings, &self.state, ctx.content_rect().width()),
@@ -750,7 +751,7 @@ impl RustcordApp {
                     ui.scope(|ui| {
                         ui.multiply_opacity(a * b);
                         ui.with_visual_transform(egui::emath::TSTransform::from_translation(egui::vec2(0.0, 8.0 * (1.0 - a))), |ui| {
-                            card.show(ui, |ui| {
+                            let out = card.show(ui, |ui| {
                                 ui.horizontal_top(|ui| {
                                     ui.spacing_mut().item_spacing.x = 8.0;
                                     let h = ui.text_style_height(&egui::TextStyle::Body);
@@ -759,6 +760,7 @@ impl RustcordApp {
                                     ui.add(egui::Label::new(egui::RichText::new(&t.text).color(c.text.to_color32())).wrap());
                                 });
                             });
+                            messages::sheen(ui.painter(), out.response.rect, toast_r, &tk);
                         });
                     });
                 }
@@ -1457,7 +1459,7 @@ pub fn dialog_closable<R>(ctx: &egui::Context, theme: &Theme, salt: &str, width:
         ui.scope(|ui| {
             ui.set_max_width(width - 40.0);
             ui.set_min_height(32.0);
-            ui.label(egui::RichText::new(title).font(semibold(pal.title())).color(pal.text));
+            ui.label(pal.title_text(title));
         });
         let x = egui::Rect::from_min_size(corner + egui::vec2(-28.0, -4.0), egui::Vec2::splat(32.0));
         if closable && messages::vector_button(&mut ui.new_child(egui::UiBuilder::new().max_rect(x)), &pal, icons::Icon::Close, "Close", 32.0, false, pal.text).clicked() {
@@ -1466,11 +1468,14 @@ pub fn dialog_closable<R>(ctx: &egui::Context, theme: &Theme, salt: &str, width:
         // No fade: it would dim the pinned buttons. Scroll areas inside `add` keep theirs.
         let fade = ui.spacing().scroll.fade;
         ui.spacing_mut().scroll.fade.strength = 0.0;
-        egui::ScrollArea::vertical().max_height(ui.available_height()).auto_shrink([false, true]).show(ui, |ui| {
+        let out = egui::ScrollArea::vertical().max_height(ui.available_height()).auto_shrink([false, true]).show(ui, |ui| {
             ui.spacing_mut().scroll.fade = fade;
             add(ui)
         })
-        .inner
+        .inner;
+        // The frame's outer rect: the content plus its 24 px margin.
+        messages::sheen(ui.painter(), ui.min_rect().expand(24.0), f32::from(pal.modal_radius()), &pal.tk);
+        out
     })
 }
 
@@ -1635,7 +1640,7 @@ pub fn nav_item(ui: &mut egui::Ui, theme: &Theme, label: &str, selected: bool, d
 /// Page title at the top of a settings page (the title role).
 pub fn page_title(ui: &mut egui::Ui, theme: &Theme, text: &str) {
     let pal = messages::Pal::new(theme);
-    ui.label(egui::RichText::new(text).font(semibold(pal.title())).color(pal.text));
+    ui.label(pal.title_text(text));
     ui.add_space(8.0);
 }
 

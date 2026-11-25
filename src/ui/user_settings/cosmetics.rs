@@ -504,9 +504,9 @@ fn tile_ui(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, k: u8, size: Vec2, i
     p.galley(pos2(rect.center().x - g.size().x / 2.0, rect.max.y - 19.0), g, pal.text);
     if owned {
         let c = pos2(rect.right() - 10.0, rect.top() + 10.0);
-        // Owned: a check on `positive` (a state, with its shape), never the accent.
-        p.circle_filled(c, 7.0, pal.tk.positive);
-        super::super::icons::paint(&p, super::super::icons::Icon::Check, Rect::from_center_size(c, Vec2::splat(10.0)), pal.tk.on_positive, pal.tk.positive);
+        // Owned: a check on the primary (a state, with its shape).
+        p.circle_filled(c, 7.0, pal.tk.accent);
+        super::super::icons::paint(&p, super::super::icons::Icon::Check, Rect::from_center_size(c, Vec2::splat(10.0)), pal.tk.on_accent, pal.tk.accent);
     }
     if selected {
         p.rect_stroke(rect, pal.radius, Stroke::new(2.0, pal.text), egui::StrokeKind::Inside);

@@ -267,8 +267,8 @@ pub(super) fn swatches(ui: &mut egui::Ui, themes: &[Theme], current: &Theme, gra
             }
             if selected {
                 let badge = rect.right_top() + vec2(-8.0, 8.0);
-                p.circle_filled(badge, 8.0, tk.positive);
-                crate::ui::icons::paint(p, Icon::Check, egui::Rect::from_center_size(badge, egui::Vec2::splat(12.0)), tk.on_positive, tk.positive);
+                p.circle_filled(badge, 8.0, tk.accent);
+                crate::ui::icons::paint(p, Icon::Check, egui::Rect::from_center_size(badge, egui::Vec2::splat(12.0)), tk.on_accent, tk.accent);
             }
         }
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, selected, &t.name));

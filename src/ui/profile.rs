@@ -9,7 +9,7 @@
 //! OWNERSHIP: friends/DMs/inbox/profile engineer (docs/SOCIAL_UI_DESIGN.md).
 
 use super::icons::Icon;
-use super::messages::{menu_item, menu_setup, tag, vector_button, Btn, MenuIcon, Pal};
+use super::messages::{menu_item, menu_setup, sheen, tag, vector_button, Btn, MenuIcon, Pal};
 use super::profile_modal::{self, Tab};
 use super::sidebar::{paint_status_text, status_label, status_tooltip, user_dot, user_presence, user_presence_label, user_status_text};
 use super::{cosmetics, images, rgb, Modal, UiCx};
@@ -90,7 +90,7 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let app = Pal::new(cx.theme);
     // A float (E2, docs/DESIGN.md §6): `raised`, which the avatar ring and art tiles follow.
     let pal = look.theme.map_or(Pal { surface: app.tk.raised, ..app }, |t| cosmetics::theme_pal(&app, t));
-    let r = pal.modal_radius();
+    let r = pal.float_radius();
     let shadow = ctx.global_style().visuals.popup_shadow;
     // The footer's More menu, a badge's popover and the server tag card are layers of their own:
     // a click or Escape while one is open closes only that (read before it closes itself).
@@ -144,6 +144,8 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
             let rect = framed.response.rect;
             if let Some(colors) = look.theme {
                 ui.painter().add(cosmetics::theme_outline(rect, r, colors));
+            } else {
+                sheen(ui.painter(), rect, f32::from(r), &pal.tk);
             }
             let animate = cosmetics::animates(cx, ui.rect_contains_pointer(rect));
             look.finish(ui, cx.images, rect, r, behind, cosmetics::shown_for(ui.ctx(), ("card", user.id)), animate);
@@ -225,7 +227,15 @@ fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Op
     Frame::new().inner_margin(Margin { left: 16, right: 16, top: 0, bottom: 16 }).show(ui, |ui| {
         ui.set_width(WIDTH - 32.0);
         let style = fx.name_style.as_ref();
-        let name_g = cosmetics::name_galley(ui, &name, FontId::new(pal.title(), bold_family()), style, pal.text, WIDTH - 32.0);
+        let name_g = if style.is_some() {
+            cosmetics::name_galley(ui, &name, FontId::new(pal.title(), bold_family()), style, pal.text, WIDTH - 32.0)
+        } else {
+            // The title role's tight tracking (a name style keeps its own letters).
+            let mut job = egui::text::LayoutJob { wrap: egui::text::TextWrapping::truncate_at_width(WIDTH - 32.0), break_on_newline: false, ..Default::default() };
+            let format = egui::TextFormat { extra_letter_spacing: -0.3, ..egui::TextFormat::simple(FontId::new(pal.title(), bold_family()), pal.text) };
+            crate::theme::append_boxed(&mut job, &name, &format);
+            ui.painter().layout_job(job)
+        };
         let (r, _) = ui.allocate_exact_size(name_g.size(), Sense::hover());
         cosmetics::paint_name(ui.painter(), r.min, name_g, style, pal.text, pal.dark);
         let handle = match user.discriminator.as_deref() {

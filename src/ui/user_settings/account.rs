@@ -586,7 +586,7 @@ fn preview(ui: &mut egui::Ui, images_cache: &mut images::ImageCache, pal: &Pal, 
     let pal = &theme.map_or(*pal, |t| cosmetics::theme_pal(pal, t));
     let real = crate::overrides::real_for(me);
     let stroke = if theme.is_some() { Stroke::NONE } else { Stroke::new(1.0, pal.tk.rule) };
-    let r = pal.modal_radius();
+    let r = pal.float_radius();
     Frame::new().fill(pal.surface).corner_radius(r).stroke(stroke).show(ui, |ui| {
         if theme.is_some() {
             cosmetics::theme_visuals(ui, pal);

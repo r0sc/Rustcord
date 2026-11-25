@@ -100,10 +100,15 @@ pub fn slide(ctx: &Context, id: Id, on: bool, s: f32) -> f32 {
     easing::cubic_in_out(ctx.animate_bool_with_time(id, on, secs(ctx, s)))
 }
 
-/// `rect` drawn 1 px smaller per side while the pointer holds `resp` down: pressing answers at
-/// once (principle 16), instant both ways, no frames. Hit-testing keeps the full rect.
+/// `rect` drawn at 97 % about its centre (at least 1 px smaller per side) while the pointer holds
+/// `resp` down: pressing answers at once (principle 16), instant both ways, no frames.
+/// Hit-testing keeps the full rect.
 pub fn pressed(resp: &egui::Response, rect: egui::Rect) -> egui::Rect {
-    if resp.is_pointer_button_down_on() { rect.shrink(1.0) } else { rect }
+    if resp.is_pointer_button_down_on() { held(rect) } else { rect }
+}
+
+fn held(rect: egui::Rect) -> egui::Rect {
+    rect.shrink2(egui::vec2((rect.width() * 0.015).max(1.0), (rect.height() * 0.015).max(1.0)))
 }
 
 /// Starts a pop (1 -> `POP` -> 1 over BASE, see `popped`) for whatever draws under `id`: my own
@@ -421,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn a_held_button_draws_one_pixel_smaller() {
+    fn a_held_button_draws_at_97_percent() {
         use egui::{Event, PointerButton, RawInput};
         let ctx = Context::default();
         let at = egui::pos2(10.0, 10.0);
@@ -441,7 +446,8 @@ mod tests {
             }
         }
         assert_eq!((sizes[1], sizes[5]), (20.0, 20.0), "idle and released: full size");
-        assert!(sizes.contains(&18.0), "held: 1 px smaller per side");
+        assert!(sizes.contains(&18.0), "held: a 20 px rect is 1 px smaller per side");
+        assert_eq!(held(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::splat(100.0))).width(), 97.0, "a 100 px rect is 97 px");
     }
 
     #[test]
