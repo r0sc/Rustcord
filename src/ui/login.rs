@@ -155,10 +155,17 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
                 // Short windows: 16 px padding, so the panel fits above the two-line footer.
                 let pad: i8 = if compact { 16 } else { 32 };
                 let w = CARD_W.min(ui.available_width() - 32.0);
-                let card = card_frame(ui.ctx(), cx.theme, pad).show(ui, |ui| {
-                    ui.set_width(w - 2.0 * f32::from(pad));
-                    ui.vertical(|ui| card(ui, cx, compact));
-                });
+                // A new error shakes the card: 3 swings of 6 px, decaying over LARGE (principle 9).
+                let t = super::motion::anim(ui.ctx(), ui.make_persistent_id("rc_login_shake"), cx.view.login_error.is_some(), super::motion::LARGE, 0.0);
+                let dx = 6.0 * (t * 6.0 * std::f32::consts::PI).sin() * (1.0 - t);
+                let card = ui
+                    .with_visual_transform(egui::emath::TSTransform::from_translation(vec2(dx, 0.0)), |ui| {
+                        card_frame(ui.ctx(), cx.theme, pad).show(ui, |ui| {
+                            ui.set_width(w - 2.0 * f32::from(pad));
+                            ui.vertical(|ui| card(ui, cx, compact));
+                        })
+                    })
+                    .inner;
                 let tallest = card.response.rect.height().max(seen.map_or(0.0, |(_, h)| h));
                 ui.ctx().data_mut(|d| d.insert_temp(height_id, (avail_h, tallest)));
                 if tallest != card_h {

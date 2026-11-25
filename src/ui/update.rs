@@ -91,10 +91,15 @@ fn title_copy(phase: &Phase, kind: Kind, busy: bool) -> Option<TitleButton> {
 /// 8 px left of the inbox button when it shows (`inbox`), else 8 px from the row's end. The row
 /// is chrome's content rect, so it never reaches the window buttons.
 pub(super) fn title_button(ui: &mut egui::Ui, cx: &UiCx<'_>, up: &Status, inbox: bool) {
-    let Some(b) = title_copy(&up.phase, up.kind, busy(cx.state, cx.view, false)) else { return };
+    let b = title_copy(&up.phase, up.kind, busy(cx.state, cx.view, false));
+    // Fades in and slides 8 px in from the right; never on the first frame it is drawn (principle 19).
+    let t = super::motion::anim(ui.ctx(), egui::Id::unique("rc_update_pill"), b.is_some(), super::motion::LARGE, 0.0);
+    let Some(b) = b else { return };
     let pal = Pal::new(cx.theme);
     let (ink, icon) = if b.enabled { (pal.tk.positive_text, pal.tk.positive) } else { (pal.muted, pal.muted) };
-    let g = ui.painter().layout_no_wrap(b.label.to_owned(), semibold(pal.label()), ink);
+    let mut p = ui.painter().clone();
+    p.multiply_opacity(t);
+    let g = p.layout_no_wrap(b.label.to_owned(), semibold(pal.label()), ink);
     let row = ui.max_rect();
     // The inbox button: 28 px, 8 px from the end (sidebar::title_bar).
     let right = row.right() - if inbox { 8.0 + 28.0 + 8.0 } else { 8.0 };
@@ -105,12 +110,13 @@ pub(super) fn title_button(ui: &mut egui::Ui, cx: &UiCx<'_>, up: &Status, inbox:
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, b.enabled, b.label));
     let bg = cx.theme.panel_fills().frame.to_color32();
     let fill = if b.enabled && resp.hovered() { pal.tk.hover } else { Color32::TRANSPARENT };
-    ui.painter().rect_filled(rect, pal.radius, fill);
-    let icon_rect = Rect::from_min_size(pos2(rect.left() + 8.0, rect.center().y - 8.0), Vec2::splat(16.0));
-    icons::paint(ui.painter(), icons::Icon::Download, icon_rect, icon, bg.blend(fill));
-    ui.painter().galley(pos2(icon_rect.right() + 6.0, rect.center().y - g.size().y / 2.0), g, ink);
+    let paint = rect.translate(vec2(8.0 * (1.0 - t), 0.0));
+    p.rect_filled(paint, pal.radius, fill);
+    let icon_rect = Rect::from_min_size(pos2(paint.left() + 8.0, paint.center().y - 8.0), Vec2::splat(16.0));
+    icons::paint(&p, icons::Icon::Download, icon_rect, icon, bg.blend(fill));
+    p.galley(pos2(icon_rect.right() + 6.0, paint.center().y - g.size().y / 2.0), g, ink);
     if resp.has_focus() {
-        messages::focus_ring(ui, &pal, rect, f32::from(pal.radius));
+        messages::focus_ring(ui, &pal, paint, f32::from(pal.radius));
     }
     let resp = resp.on_hover_text(&b.tip);
     if b.enabled && resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
