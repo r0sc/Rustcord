@@ -146,6 +146,27 @@ pub struct Settings {
     pub auto_update: bool,
     /// Windows, Settings > Game overlay (ui/overlay).
     pub overlay: OverlaySettings,
+    /// Notifications > Sounds (`src/sounds.rs`).
+    pub sounds: SoundSettings,
+}
+
+/// Notifications > Sounds (`src/sounds.rs`): Rustcord's own sounds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SoundSettings {
+    /// "Play sounds".
+    pub enabled: bool,
+    /// Percent 0-100 (gain = (v/100)^2).
+    pub volume: u8,
+    /// `sounds::Sound::key`s switched off. Strings, so a removed or renamed sound never breaks
+    /// loading settings.toml; unknown keys are ignored.
+    pub off: Vec<String>,
+}
+
+impl Default for SoundSettings {
+    fn default() -> Self {
+        Self { enabled: true, volume: 70, off: Vec::new() }
+    }
 }
 
 /// Settings > Streamer Mode.
@@ -158,13 +179,15 @@ pub struct StreamerMode {
     /// Invite links (Invite People, server Invites) show masked; Copy still works.
     pub hide_invite_links: bool,
     pub disable_notifications: bool,
+    /// No app sounds (`sounds::volume`).
+    pub disable_sounds: bool,
     /// The window is left out of screen capture (Windows `WDA_EXCLUDEFROMCAPTURE`).
     pub hide_from_capture: bool,
 }
 
 impl Default for StreamerMode {
     fn default() -> Self {
-        Self { enabled: false, hide_personal_info: true, hide_invite_links: true, disable_notifications: true, hide_from_capture: false }
+        Self { enabled: false, hide_personal_info: true, hide_invite_links: true, disable_notifications: true, disable_sounds: true, hide_from_capture: false }
     }
 }
 
@@ -263,6 +286,7 @@ impl Default for Settings {
             flash_taskbar: true,
             auto_update: true,
             overlay: OverlaySettings::default(),
+            sounds: SoundSettings::default(),
         }
     }
 }
@@ -369,6 +393,18 @@ mod tests {
         assert!(old.auto_update && back.auto_update);
         let off: Settings = toml::from_str(&toml::to_string_pretty(&Settings { auto_update: false, ..Default::default() }).unwrap()).unwrap();
         assert!(!off.auto_update);
+    }
+
+    #[test]
+    fn sound_settings_default_and_load() {
+        let old: Settings = toml::from_str("theme = \"Ember Dark\"
+").unwrap();
+        assert_eq!((old.sounds.enabled, old.sounds.volume, old.sounds.off.len(), old.streamer.disable_sounds), (true, 70, 0, true));
+        let s: Settings = toml::from_str("[sounds]
+off = [\"mention\", \"gone\"]
+volume = 30
+").unwrap();
+        assert_eq!((s.sounds.volume, s.sounds.off.as_slice()), (30, ["mention".to_string(), "gone".to_string()].as_slice()));
     }
 
     #[test]

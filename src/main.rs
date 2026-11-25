@@ -17,6 +17,8 @@ mod notify;
 mod overrides;
 mod plugins;
 mod quests;
+#[allow(dead_code)] // wired up by the next commits
+mod sounds;
 mod state;
 mod theme;
 mod ui;
