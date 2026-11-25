@@ -178,8 +178,9 @@ fn waiting(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id) {
             None => super::images::paint_initial(ui.painter(), a, AVATAR / 2.0, p.id.0, &p.name, true),
         }
         let painter = ui.painter();
-        if p.speaking {
-            painter.circle_stroke(a.center(), AVATAR / 2.0 + 3.0, Stroke::new(2.5, green));
+        let speak = super::motion::anim(ui.ctx(), egui::Id::unique(("rc_speak_dm", p.id)), p.speaking, 0.0, super::motion::FAST);
+        if speak > 0.0 {
+            painter.circle_stroke(a.center(), AVATAR / 2.0 + 3.0, Stroke::new(2.5, green.gamma_multiply(speak)));
         }
         if p.muted || p.deaf {
             // 24 px badge, cut out of the avatar by a 2 px ring of the stage.
@@ -258,6 +259,8 @@ pub(super) fn incoming(ctx: &egui::Context, cx: &mut UiCx<'_>, accept: bool) {
     // Some(Some(video)) = accept, Some(None) = decline.
     let mut action = accept.then_some(Some(false));
     let card = egui::Frame::popup(&ctx.global_style()).fill(STAGE).corner_radius(12).inner_margin(24);
+    // Reduced motion: the ring stands still and nothing repaints.
+    let still = super::motion::secs(ctx, 1.0) == 0.0;
     egui::Area::new(egui::Id::unique("rc_incoming_call"))
         .order(egui::Order::Foreground)
         .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
@@ -266,7 +269,7 @@ pub(super) fn incoming(ctx: &egui::Context, cx: &mut UiCx<'_>, accept: bool) {
                 ui.set_width(200.0);
                 ui.vertical_centered(|ui| {
                     let (slot, _) = ui.allocate_exact_size(Vec2::splat(112.0), Sense::hover());
-                    let phase = (ui.input(|i| i.time) % PULSE_S / PULSE_S) as f32;
+                    let phase = if still { 0.5 } else { (ui.input(|i| i.time) % PULSE_S / PULSE_S) as f32 };
                     let ring = 40.0 + 14.0 * phase;
                     ui.painter().circle_stroke(slot.center(), ring, Stroke::new(3.0, green.gamma_multiply(1.0 - phase)));
                     let a = Rect::from_center_size(slot.center(), Vec2::splat(80.0));
@@ -294,7 +297,9 @@ pub(super) fn incoming(ctx: &egui::Context, cx: &mut UiCx<'_>, accept: bool) {
             });
         });
     // The pulse: a few frames a second while the popup is up (no repaint otherwise).
-    ctx.request_repaint_after(Duration::from_millis(33));
+    if !still {
+        ctx.request_repaint_after(Duration::from_millis(33));
+    }
     match action {
         Some(Some(video)) => open_and_join(cx, ch, video),
         Some(None) => {

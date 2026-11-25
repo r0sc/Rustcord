@@ -497,17 +497,23 @@ fn tile(ui: &mut egui::Ui, cx: &mut UiCx<'_>, t: &Tile, rect: Rect) {
         }
         if t.ringing {
             // The incoming-call popup's ring, pulsing outward; frames only while someone rings.
-            let phase = (ui.input(|i| i.time) % PULSE_S / PULSE_S) as f32;
+            // Reduced motion: a still ring at mid-phase.
+            let still = super::motion::secs(ui.ctx(), 1.0) == 0.0;
+            let phase = if still { 0.5 } else { (ui.input(|i| i.time) % PULSE_S / PULSE_S) as f32 };
             p.circle_stroke(c, side / 2.0 + 2.0 + side * 0.18 * phase, Stroke::new(3.0, green.gamma_multiply(1.0 - phase)));
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+            if !still {
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+            }
         }
     }
     // High Contrast: every tile outlined, like the rest of that theme. Speaking: the tile, green.
     if crate::theme::is_high_contrast(&c) {
         p.rect_stroke(rect, 8, Stroke::new(1.0, FG_MUTED), StrokeKind::Inside);
     }
-    if t.speaking {
-        p.rect_stroke(rect, 8, Stroke::new(2.0, green), StrokeKind::Inside);
+    // On at once, off fading over FAST: the ring does not flicker with the voice (principle 18).
+    let speak = super::motion::anim(ui.ctx(), ui.make_persistent_id(("rc_speak", &t.key)), t.speaking, 0.0, super::motion::FAST);
+    if speak > 0.0 {
+        p.rect_stroke(rect, 8, Stroke::new(2.0, green.gamma_multiply(speak)), StrokeKind::Inside);
     }
     if t.stream.is_some() {
         live_pill(&p, rect.left_top() + vec2(8.0, 16.0), red);

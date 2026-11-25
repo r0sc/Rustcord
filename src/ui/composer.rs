@@ -1022,13 +1022,17 @@ fn typing_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, wait_ms:
     let Some(text) = cx.state.typing_text(ch, now) else { return };
     let names = cx.state.typing_users(ch, now);
     let p = ui.painter();
+    // Reduced motion: the dots stand still at one alpha and nothing repaints for them.
+    let still = super::motion::secs(ui.ctx(), 1.0) == 0.0;
     let t = ui.input(|i| i.time) * 3.0;
     let step = t as usize % 3;
     for i in 0..3 {
-        let alpha = if i == step { 1.0 } else { 0.35 };
+        let alpha = if still { 0.6 } else if i == step { 1.0 } else { 0.35 };
         p.circle_filled(pos2(rect.left() + 12.0 + i as f32 * 6.0, rect.center().y), 2.2, pal.text.gamma_multiply(alpha));
     }
-    ui.ctx().request_repaint_after(Duration::from_secs_f64((1.0 - t.fract()) / 3.0));
+    if !still {
+        ui.ctx().request_repaint_after(Duration::from_secs_f64((1.0 - t.fract()) / 3.0));
+    }
     let mut job = typing_job(&text, &names, FontId::proportional(size), FontId::new(size, bold_family()), pal.muted, pal.text);
     // TypingTweaks: avatars before the text, role colours on the names.
     crate::plugins::chat::tint_typing_names(cx.state, cx.theme, ch, &mut job, pal.bg);

@@ -1278,8 +1278,9 @@ fn voice_user_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, u: &VoiceU
 
     let c = &cx.theme.colors;
     let size = cx.theme.font.size;
-    if cx.state.voice.speaking.contains(&u.id) {
-        ui.painter().circle_stroke(avatar.center(), 13.5, Stroke::new(2.0, presence_color(Presence::Online, c)));
+    let speak = super::motion::anim(ui.ctx(), resp.id.with("rc_speak"), cx.state.voice.speaking.contains(&u.id), 0.0, super::motion::FAST);
+    if speak > 0.0 {
+        ui.painter().circle_stroke(avatar.center(), 13.5, Stroke::new(2.0, presence_color(Presence::Online, c).gamma_multiply(speak)));
     }
     let bg = row_bg(c, fill);
     let (muted, mark) = (c.text_muted.to_color32(), if u.by_server { c.danger } else { c.text_muted }.to_color32());
