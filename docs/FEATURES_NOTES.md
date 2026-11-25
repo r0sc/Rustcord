@@ -826,6 +826,8 @@ Density (`.density-compact | default | cozy`): `--space-xs/sm/md/lg/xl/xxl` = 6/
 
 egui: `ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::ALT, Key::ArrowUp)))` when no text field has focus; Esc and Ctrl+K work everywhere.
 
+**Rustcord** (`ui/switcher.rs` `keys`, from `user_settings/app.rs` `global_keys`): Ctrl+K, Ctrl+/ (opens Settings > Keybinds: that page is the list), Alt+↑/↓, Alt+Shift+↑/↓, Ctrl+Alt+↑/↓, Shift+Esc and Esc (mark the channel read, after closing layers or cancelling a reply or edit; `messages.rs`). All but Esc are rebindable. Navigation takes only a fresh press: key repeat is consumed and ignored, so holding Alt+↓ sends no burst of history fetches. Alt+↑/↓ skip voice and stage channels (a click there joins). Unread navigation stays in the open server or DM list (whether Discord's crosses servers is UNCONFIRMED). Not done: Ctrl+Shift+Alt+↑/↓ (mentions), Ctrl+T, back / forward.
+
 ## 4.11 Server icon context menu (UNCONFIRMED order)
 Mark As Read | Invite to Server | Mute Server ▸ (15 min / 1 h / 3 h / 8 h / 24 h / Until I turn it back on), Notification Settings ▸, Hide Muted Channels | Server Settings ▸, Privacy Settings, Edit Per-server Profile | Create Channel, Create Category, Create Event | **Leave Server** (red) | Copy Server ID (dev mode).
 

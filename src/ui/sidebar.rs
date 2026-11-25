@@ -294,7 +294,8 @@ fn demo_boost(state: &mut AppState) {
 /// (inbox mentions from cached messages), `profile` (loaded profiles: bio, pronouns, mutual
 /// servers and friends, a note), `tab:<online|all|pending|blocked|add>` (Friends tab), `icons`
 /// (every vector icon over the window, `icons::sheet`), `no-tray` (Linux: the settings page as
-/// without a tray host, `user_settings/app.rs`).
+/// without a tray host, `user_settings/app.rs`), `press:<shortcut>` (that key combination,
+/// e.g. `Alt+Down`, pressed once at frame 14 where the focus is; `user_settings::parse` names).
 pub(super) fn nav_demo(flag: &str) -> bool {
     nav_flags().split(',').any(|f| f.trim() == flag)
 }
@@ -1027,7 +1028,6 @@ fn stays_listed(s: &AppState, id: Id) -> bool {
 
 /// Channel and thread ids of a server in sidebar order, as the list shows them (voice channels
 /// included; the caller filters).
-#[cfg_attr(not(test), allow(dead_code, reason = "the navigation keys use it next"))]
 pub(super) fn listed_channels(s: &AppState, view: &ViewState, guild_id: Id) -> Vec<Id> {
     let mut items = s.sidebar_channels(guild_id);
     if view.hide_muted.contains(&guild_id) {
@@ -1047,6 +1047,16 @@ pub(super) fn listed_channels(s: &AppState, view: &ViewState, guild_id: Id) -> V
         }
     }
     out
+}
+
+fn reveal_id() -> egui::Id {
+    egui::Id::unique("rc_reveal_row")
+}
+
+/// Scrolls the sidebar to channel `id` once its row is drawn (the navigation keys, the quick
+/// switcher). Guild channel rows only: DM rows are virtualised.
+pub(super) fn reveal(ctx: &egui::Context, id: Id) {
+    ctx.data_mut(|d| d.insert_temp(reveal_id(), id));
 }
 
 /// What a click on a channel row does: join a voice or stage channel, else open it.
@@ -1166,6 +1176,10 @@ fn channel_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     let connected = voice && cx.state.voice.channel_id == Some(id);
 
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
+    if ui.data(|d| d.get_temp::<Id>(reveal_id())) == Some(id) {
+        ui.scroll_to_rect(row, None);
+        ui.data_mut(|d| d.remove::<Id>(reveal_id()));
+    }
     let shown = in_view(ui, row);
     let bg_slot = shown.then(|| ui.painter().add(Shape::Noop));
     let resp = ui.interact(row, ui.make_persistent_id(("channel", id)), if supported { Sense::click() } else { Sense::hover() });

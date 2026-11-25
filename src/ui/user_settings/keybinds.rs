@@ -1,6 +1,6 @@
 //! Settings → Keybinds (docs/SETTINGS_NOTES.md §3 Keybinds, this device only): the app's
 //! shortcuts with Discord's defaults, each re-recordable (click, press the new combination;
-//! Esc cancels, Backspace clears). `shortcut` is what the call sites read (inbox, search, pins,
+//! Esc cancels, Backspace clears; Shift+Esc can be recorded). `shortcut` is what the call sites read (inbox, search, pins,
 //! accept call, the quick switcher's keys in `ui/switcher.rs`); mute / deafen / Streamer Mode are handled in `app::frame`. Push to talk stays
 //! on Voice & Video (it needs a key-up, outside egui).
 //! OWNERSHIP: user-settings engineer.
@@ -20,10 +20,35 @@ pub enum Bind {
     Pins,
     AcceptCall,
     QuickSwitcher,
+    Shortcuts,
+    PrevChannel,
+    NextChannel,
+    PrevUnread,
+    NextUnread,
+    PrevServer,
+    NextServer,
+    MarkServerRead,
 }
 
 impl Bind {
-    pub(super) const ALL: [Bind; 8] = [Bind::ToggleMute, Bind::ToggleDeafen, Bind::ToggleStreamerMode, Bind::Inbox, Bind::Search, Bind::Pins, Bind::AcceptCall, Bind::QuickSwitcher];
+    pub(super) const ALL: [Bind; 16] = [
+        Bind::ToggleMute,
+        Bind::ToggleDeafen,
+        Bind::ToggleStreamerMode,
+        Bind::Inbox,
+        Bind::Search,
+        Bind::Pins,
+        Bind::AcceptCall,
+        Bind::QuickSwitcher,
+        Bind::Shortcuts,
+        Bind::PrevChannel,
+        Bind::NextChannel,
+        Bind::PrevUnread,
+        Bind::NextUnread,
+        Bind::PrevServer,
+        Bind::NextServer,
+        Bind::MarkServerRead,
+    ];
 
     /// Key in `Settings::keybinds`.
     fn name(self) -> &'static str {
@@ -36,6 +61,14 @@ impl Bind {
             Bind::Pins => "pins",
             Bind::AcceptCall => "accept_call",
             Bind::QuickSwitcher => "quick_switcher",
+            Bind::Shortcuts => "shortcuts",
+            Bind::PrevChannel => "prev_channel",
+            Bind::NextChannel => "next_channel",
+            Bind::PrevUnread => "prev_unread",
+            Bind::NextUnread => "next_unread",
+            Bind::PrevServer => "prev_server",
+            Bind::NextServer => "next_server",
+            Bind::MarkServerRead => "mark_server_read",
         }
     }
 
@@ -49,6 +82,14 @@ impl Bind {
             Bind::Pins => "Pinned messages",
             Bind::AcceptCall => "Answer incoming call",
             Bind::QuickSwitcher => "Open quick switcher",
+            Bind::Shortcuts => "Show keyboard shortcuts",
+            Bind::PrevChannel => "Previous channel",
+            Bind::NextChannel => "Next channel",
+            Bind::PrevUnread => "Previous unread channel",
+            Bind::NextUnread => "Next unread channel",
+            Bind::PrevServer => "Previous server",
+            Bind::NextServer => "Next server",
+            Bind::MarkServerRead => "Mark server as read",
         }
     }
 
@@ -62,6 +103,14 @@ impl Bind {
             Bind::Pins => "Ctrl+P",
             Bind::AcceptCall => "Ctrl+Enter",
             Bind::QuickSwitcher => "Ctrl+K",
+            Bind::Shortcuts => "Ctrl+Slash",
+            Bind::PrevChannel => "Alt+Up",
+            Bind::NextChannel => "Alt+Down",
+            Bind::PrevUnread => "Alt+Shift+Up",
+            Bind::NextUnread => "Alt+Shift+Down",
+            Bind::PrevServer => "Ctrl+Alt+Up",
+            Bind::NextServer => "Ctrl+Alt+Down",
+            Bind::MarkServerRead => "Shift+Escape",
         }
     }
 }
@@ -72,7 +121,7 @@ pub fn shortcut(s: &Settings, b: Bind) -> Option<KeyboardShortcut> {
 }
 
 /// "Ctrl+Shift+M" (egui key names; "Ctrl" is the platform command key).
-fn parse(text: &str) -> Option<KeyboardShortcut> {
+pub(in crate::ui) fn parse(text: &str) -> Option<KeyboardShortcut> {
     let (mut mods, mut key) = (Modifiers::NONE, None);
     for part in text.split('+').map(str::trim).filter(|p| !p.is_empty()) {
         match part.to_ascii_lowercase().as_str() {
@@ -115,7 +164,7 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         if let Some((key, mods)) = pressed {
             let b = Bind::ALL[i];
             let text = match key {
-                Key::Escape => None,
+                Key::Escape if mods.is_none() => None,
                 Key::Backspace | Key::Delete => Some(String::new()),
                 _ => Some(format(&KeyboardShortcut::new(mods, key))),
             };
@@ -169,7 +218,7 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         });
     });
     section(ui, cx.theme, "Built in");
-    for (what, keys) in [("Close settings, popups and dialogs", "Esc"), ("Zoom in / out / reset", "Ctrl + / Ctrl − / Ctrl 0"), ("New line in a message", "Shift+Enter")] {
+    for (what, keys) in [("Close settings, popups and dialogs", "Esc"), ("Mark channel as read", "Esc"), ("Zoom in / out / reset", "Ctrl + / Ctrl − / Ctrl 0"), ("New line in a message", "Shift+Enter")] {
         ui.horizontal(|ui| {
             ui.label(RichText::new(what).color(pal.muted));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(RichText::new(keys).monospace().color(pal.muted)));
@@ -209,6 +258,8 @@ mod tests {
         s.keybinds.insert("inbox".into(), String::new());
         assert_eq!(shortcut(&s, Bind::Inbox), None);
         assert_eq!(parse("Ctrl+Nope"), None);
+        assert_eq!(parse("Shift+Escape"), Some(KeyboardShortcut::new(Modifiers::SHIFT, Key::Escape)));
+        assert_eq!(parse("Ctrl+Slash"), Some(KeyboardShortcut::new(Modifiers::COMMAND, Key::Slash)));
         assert_eq!(parse("Ctrl+Minus").map(|k| k.logical_key), Some(Key::Minus));
     }
 }

@@ -864,6 +864,9 @@ fn chat(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, panel: bool) {
     }
 
     let ctx = ui.ctx().clone();
+    // Esc with nothing to close or cancel marks the open channel read (FEATURES_NOTES §4.10); checked
+    // before the composer, acted on after it (its completion popup takes its own Esc).
+    let esc_reads = !panel && cx.view.reply_to.is_none() && cx.view.editing.is_none() && !cx.view.dialog_open() && !overlay_open(&ctx, cx);
     let memo_key = if panel { memo_id().with("thread_panel") } else { memo_id() };
     let mut memo: Memo = ctx.data_mut(|d| d.remove_temp(memo_key)).unwrap_or_default();
     let jumping = !panel && settle_jump(&ctx, cx, ch);
@@ -917,6 +920,10 @@ fn chat(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, panel: bool) {
     message_menu(ui, cx, &lc, &mut memo);
     delete_modal(&ctx, cx, &lc);
     reaction_picker(&ctx, cx, &lc, &mut memo);
+    if esc_reads && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+        super::sidebar::mark_read(cx, [ch]); // also ends a "Mark unread" pause; acks only if it advanced
+        memo.bar_closed = true; // as the new-messages bar's own "Mark as read"
+    }
     ctx.data_mut(|d| d.insert_temp(memo_key, memo));
 }
 
@@ -3853,6 +3860,42 @@ mod tests {
         assert!(texts.iter().any(|t| t == "Messages load when you're connected."), "{texts:?}");
     }
 
+    /// The open channel with its read state behind the newest message.
+    fn unread_harness() -> (Harness, Id, Id) {
+        let mut h = Harness::new();
+        let ch = h.state.selected_channel.unwrap();
+        let ids: Vec<Id> = h.state.messages[&ch].msgs.iter().map(|m| m.id).collect();
+        let (read, newest) = (ids[ids.len() - 2], *ids.last().unwrap());
+        h.state.channels.get_mut(&ch).unwrap().last_message_id = Some(newest);
+        h.state.read_states.get_mut(&ch).unwrap().last_message_id = Some(read);
+        h.state.read_states.get_mut(&ch).unwrap().mention_count = 0;
+        h.frame();
+        assert!(h.state.is_unread(ch), "set up unread");
+        (h, ch, newest)
+    }
+
+    fn esc() -> egui::Event {
+        egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
+    }
+
+    #[test]
+    fn escape_marks_the_open_channel_read() {
+        let (mut h, ch, newest) = unread_harness();
+        h.frame_with(vec![esc()]);
+        assert_eq!(h.state.read_states[&ch].last_message_id, Some(newest));
+        assert_eq!(h.view.pending_acks.get(&ch), Some(&newest));
+        assert!(h.memo().bar_closed);
+    }
+
+    #[test]
+    fn escape_cancels_a_reply_before_it_reads() {
+        let (mut h, ch, newest) = unread_harness();
+        h.view.reply_to = Some((ch, newest, true));
+        h.frame_with(vec![esc()]);
+        assert!(h.state.is_unread(ch), "the first Esc only cancels the reply");
+        assert!(h.view.pending_acks.is_empty());
+    }
+
     #[test]
     fn context_menu_opens_and_closes_on_escape() {
         let mut h = Harness::new();
@@ -3869,6 +3912,7 @@ mod tests {
         h.frame_with(vec![esc]);
         h.frame();
         assert!(h.memo().menu.is_none() && !egui::Popup::is_any_open(&h.ctx));
+        assert!(h.view.pending_acks.is_empty(), "closing a menu does not mark the channel read");
     }
 
     #[test]

@@ -322,7 +322,8 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   state, `ui/guild_card.rs` `demo`), `boost` (server marks: the first server boost level 2 with
   9 boosts, the second verified, the third partnered; the rail tooltip shows them with
   `RUSTCORD_POINTER` on a server tile, the header without),
-  `tab:<online|all|pending|blocked|add>` (Friends tab), `settings` (sample devices, authorized apps
+  `tab:<online|all|pending|blocked|add>` (Friends tab), `press:<shortcut>` (that key combination,
+  e.g. `Alt+Down`, once at frame 14, wherever the focus is), `settings` (sample devices, authorized apps
   and consents on those Settings pages, two sample security keys),
   `account:<password|totp|scan|sms|codes-key|codes|mfa|removal>` (that My Account security dialog
   with sample data; `mfa` = the 2FA re-check prompt), `games` (Registered Games with its "Add it!"

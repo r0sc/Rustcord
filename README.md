@@ -140,7 +140,9 @@ What's in it so far:
   tray, open at login, and an installer for each system that keeps Rustcord up to date (see
   [Install](#install) and [Updates](#updates)).
 - File uploads (button, drag & drop, paste), emoji and GIF pickers, `@ # :` autocomplete,
-  typing indicator, online status + custom status, pins, search, mark unread.
+  typing indicator, online status + custom status, pins, search, mark unread. Quick switcher (Ctrl+K: servers, channels, DMs and
+  friends; `@ # ! *` prefixes) and Discord's navigation keys (Alt+↑/↓, Alt+Shift+↑/↓, Ctrl+Alt+↑/↓,
+  Esc / Shift+Esc mark read, Ctrl+/), all changeable under Settings → Keybinds.
 - Threads (sidebar rows, thread panel, create), forum/media channels (posts, tags, new post).
 - Friends (online/all/pending/blocked, add by username), DMs and group DMs, message requests
   (accept, ignore, spam), inbox (mentions/unreads), full user profiles with notes.

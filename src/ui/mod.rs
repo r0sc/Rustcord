@@ -1006,7 +1006,8 @@ impl eframe::App for RustcordApp {
     /// counts as focused (text focus, completion popups, read acks), whatever is in front.
     /// RUSTCORD_NAV_DEMO=focus:<n> drops the focus and presses Tab n times (Shift+Tab for a
     /// negative n: from the last control, e.g. an open menu's), one per frame from frame 14, to
-    /// show the focus ring wherever it lands.
+    /// show the focus ring wherever it lands. RUSTCORD_NAV_DEMO=press:<shortcut> presses that
+    /// combination once at frame 14 (Focus stays where it is, so it goes through a focused composer).
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         // Runs for every viewport's pass; the pointer, click and focus hooks below are the root's.
         if raw.viewport_id != egui::ViewportId::ROOT {
@@ -1029,6 +1030,13 @@ impl eframe::App for RustcordApp {
             }
             for pressed in [true, false] {
                 raw.events.push(egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed, repeat: false, modifiers });
+            }
+        }
+        if self.frame_no == 14
+            && let Some(k) = sidebar::nav_demo_value("press").and_then(user_settings::parse)
+        {
+            for pressed in [true, false] {
+                raw.events.push(egui::Event::Key { key: k.logical_key, physical_key: None, pressed, repeat: false, modifiers: k.modifiers });
             }
         }
         static POINTER: std::sync::OnceLock<Option<egui::Pos2>> = std::sync::OnceLock::new();

@@ -38,7 +38,7 @@ pub mod theme_editor;
 mod voice;
 
 pub(super) use app::{frame, in_tray, logic};
-pub(super) use keybinds::{Bind, shortcut};
+pub(super) use keybinds::{Bind, parse, shortcut};
 pub(super) use status::account_popout;
 pub use status::custom_status_modal;
 pub(super) use voice::restore as restore_voice;

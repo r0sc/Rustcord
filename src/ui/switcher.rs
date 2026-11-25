@@ -58,9 +58,19 @@ fn fresh(ctx: &egui::Context, k: &egui::KeyboardShortcut) -> bool {
     })
 }
 
-const KEYS: [Bind; 1] = [Bind::QuickSwitcher];
+const KEYS: [Bind; 9] = [
+    Bind::QuickSwitcher,
+    Bind::Shortcuts,
+    Bind::PrevChannel,
+    Bind::NextChannel,
+    Bind::PrevUnread,
+    Bind::NextUnread,
+    Bind::PrevServer,
+    Bind::NextServer,
+    Bind::MarkServerRead,
+];
 
-/// The switcher's shortcuts (called from `user_settings::app::global_keys`, main screen only).
+/// The switcher's and the navigation shortcuts (called from `user_settings::app::global_keys`, main screen only).
 pub(super) fn keys(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let open = cx.view.modal == Some(Modal::QuickSwitcher);
     if cx.view.chat_hidden() || cx.view.editing.is_some() || messages::overlay_open(ctx, cx) || (cx.view.dialog_open() && !open) {
@@ -70,21 +80,79 @@ pub(super) fn keys(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let mut binds: Vec<(Bind, egui::KeyboardShortcut)> = KEYS.iter().filter_map(|&b| Some((b, shortcut(cx.settings, b)?))).collect();
     binds.sort_by_key(|(_, k)| std::cmp::Reverse(u8::from(k.modifiers.command || k.modifiers.ctrl) + u8::from(k.modifiers.alt) + u8::from(k.modifiers.shift)));
     for (b, k) in binds {
-        // While the switcher is open only its own key (close) counts.
+        // While the switcher is open only its own key (close) counts; Alt+Down etc. reach its list as Down.
         if (open && b != Bind::QuickSwitcher) || !fresh(ctx, &k) {
             continue;
         }
-        act(cx, b, open);
+        act(ctx, cx, b, open);
         return;
     }
 }
 
-fn act(cx: &mut UiCx<'_>, b: Bind, open: bool) {
+fn act(ctx: &egui::Context, cx: &mut UiCx<'_>, b: Bind, open: bool) {
     match b {
         Bind::QuickSwitcher if open => cx.view.modal = None,
         Bind::QuickSwitcher => self::open(cx.view, ""),
+        // The page is the shortcut list; the layer's gate above keeps this from running under settings.
+        Bind::Shortcuts => (cx.view.settings_page, cx.view.settings_open) = (super::user_settings::Page::Keybinds, true),
+        Bind::PrevChannel | Bind::NextChannel | Bind::PrevUnread | Bind::NextUnread => {
+            let (down, unread) = (matches!(b, Bind::NextChannel | Bind::NextUnread), matches!(b, Bind::PrevUnread | Bind::NextUnread));
+            if let Some(c) = next_channel(cx.state, cx.view, down, unread) {
+                cx.state.select_channel(c);
+                sidebar::reveal(ctx, c);
+            }
+        }
+        Bind::PrevServer | Bind::NextServer => {
+            if let Some(g) = step(&rail(cx.state), Some(cx.state.selected_guild), b == Bind::NextServer, |_| true) {
+                cx.state.select_guild(g);
+            }
+        }
+        Bind::MarkServerRead => {
+            if let Some(g) = cx.state.selected_guild {
+                super::server_menu::mark_server_read(cx, g);
+            }
+        }
+        // The other binds are handled elsewhere.
         _ => {}
     }
+}
+
+/// The next (`down`) or previous entry of `list` after `at` that `ok` accepts, wrapping around;
+/// from outside the list (or None) the first / last accepted. None when nothing else qualifies.
+fn step<T: Copy + PartialEq>(list: &[T], at: Option<T>, down: bool, ok: impl Fn(T) -> bool) -> Option<T> {
+    let n = list.len();
+    let order: Vec<usize> = match at.and_then(|a| list.iter().position(|&x| x == a)) {
+        Some(p) if down => (1..n).map(|i| (p + i) % n).collect(),
+        Some(p) => (1..n).map(|i| (p + n - i) % n).collect(),
+        None if down => (0..n).collect(),
+        None => (0..n).rev().collect(),
+    };
+    order.into_iter().map(|i| list[i]).find(|&x| ok(x))
+}
+
+/// Home (None), then every server in rail order, folders opened up, unavailable ones left out.
+fn rail(s: &AppState) -> Vec<Option<Id>> {
+    use crate::state::account::ServerBarItem;
+    let ids = s.server_bar().into_iter().flat_map(|it| match it {
+        ServerBarItem::Guild(g) => vec![g],
+        ServerBarItem::Folder(f) => f.guild_ids,
+    });
+    std::iter::once(None).chain(ids.filter(|&g| s.guild(g).is_some_and(|g| !g.unavailable)).map(Some)).collect()
+}
+
+/// The channel Alt+Up / Down (`unread`: Alt+Shift) lands on in the open server or the DM list.
+fn next_channel(s: &AppState, v: &ViewState, down: bool, unread: bool) -> Option<Id> {
+    let list = match s.selected_guild {
+        Some(g) => sidebar::listed_channels(s, v, g),
+        None => sidebar::listed_dms(s, v).0,
+    };
+    // Voice and stage channels keep their place in the order but are never landed on: a click there joins.
+    let lands = |id: Id| {
+        s.channels.get(&id).is_some_and(|c| {
+            !matches!(c.kind, ct::GUILD_VOICE | ct::GUILD_STAGE_VOICE) && (c.is_text_chat() || matches!(c.kind, ct::GUILD_FORUM | ct::GUILD_MEDIA))
+        }) && (!unread || s.is_unread(id))
+    };
+    step(&list, s.selected_channel, down, lands)
 }
 
 // ---------------------------------------------------------------------------
@@ -370,19 +438,22 @@ pub(super) fn modal(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     });
     cx.view.switcher_ui = st;
     if let Some(t) = pick {
-        go(cx, t);
+        go(ctx, cx, t);
     } else if resp.should_close() {
         cx.view.modal = None;
     }
 }
 
 /// Opens a result like its click does.
-fn go(cx: &mut UiCx<'_>, t: Target) {
+fn go(ctx: &egui::Context, cx: &mut UiCx<'_>, t: Target) {
     cx.view.modal = None;
     match t {
         Target::Server(g) => cx.state.select_guild(Some(g)),
         Target::Channel(c) => sidebar::open_channel(cx, c),
         Target::Person(u) => super::friends::message_user(cx, u),
+    }
+    if let Some(c) = cx.state.selected_channel {
+        sidebar::reveal(ctx, c);
     }
 }
 
@@ -570,6 +641,97 @@ mod tests {
     }
 
     #[test]
+    fn step_wraps_and_skips() {
+        let l = [1, 2, 3];
+        assert_eq!(step(&l, Some(2), true, |_| true), Some(3));
+        assert_eq!(step(&l, Some(2), false, |_| true), Some(1));
+        assert_eq!(step(&l, Some(3), true, |_| true), Some(1));
+        assert_eq!(step(&l, None, true, |_| true), Some(1));
+        assert_eq!(step(&l, None, false, |_| true), Some(3));
+        assert_eq!(step(&l, Some(2), true, |x| x != 3), Some(1));
+        assert_eq!(step(&l, Some(2), true, |x| x == 2), None, "only itself qualifies");
+        assert_eq!(step(&[] as &[u8], None, true, |_| true), None);
+    }
+
+    #[test]
+    fn rail_lists_home_then_the_servers() {
+        assert_eq!(rail(&state()), [None, Some(id(6)), Some(id(15)), Some(id(21))]);
+    }
+
+    /// Makes `ch` unread: its newest message is past what I read.
+    fn make_unread(h: &mut Harness, ch: Id) {
+        h.state.channels.get_mut(&ch).unwrap().last_message_id = Some(Id(1569710445428736029));
+        let rs = crate::model::ReadState { id: ch, last_message_id: Some(Id(1569637741363200001)), ..Default::default() };
+        h.state.read_states.insert(ch, rs);
+        assert!(h.state.is_unread(ch));
+    }
+
+    /// Presses and lets go, so the next press is a new one.
+    fn tap(h: &mut Harness, mods: Modifiers, key: Key) {
+        h.press(mods, key);
+        h.release(mods, key);
+    }
+
+    #[test]
+    fn alt_arrows_step_through_the_channels() {
+        let mut h = Harness::new();
+        tap(&mut h, Modifiers::ALT, Key::ArrowDown);
+        assert_eq!(h.state.selected_channel, Some(id(11)));
+        tap(&mut h, Modifiers::ALT, Key::ArrowUp);
+        tap(&mut h, Modifiers::ALT, Key::ArrowUp);
+        assert_eq!(h.state.selected_channel, Some(id(12)), "wraps, and never lands on the voice channel");
+        tap(&mut h, Modifiers::ALT, Key::ArrowDown);
+        assert_eq!(h.state.selected_channel, Some(id(10)));
+    }
+
+    #[test]
+    fn unread_keys_skip_read_channels_and_win_over_plain_ones() {
+        let mut h = Harness::new();
+        make_unread(&mut h, id(12));
+        tap(&mut h, Modifiers::ALT | Modifiers::SHIFT, Key::ArrowDown);
+        assert_eq!(h.state.selected_channel, Some(id(12)), "help is read: skipped, and not the next channel");
+    }
+
+    #[test]
+    fn server_keys_move_along_the_rail() {
+        let mut h = Harness::new();
+        tap(&mut h, Modifiers::COMMAND | Modifiers::ALT, Key::ArrowDown);
+        assert_eq!(h.state.selected_guild, Some(id(15)));
+        tap(&mut h, Modifiers::COMMAND | Modifiers::ALT, Key::ArrowUp);
+        tap(&mut h, Modifiers::COMMAND | Modifiers::ALT, Key::ArrowUp);
+        assert_eq!(h.state.selected_guild, None, "Home sits before the first server");
+    }
+
+    #[test]
+    fn a_held_key_steps_once_and_dialogs_block_it() {
+        let mut h = Harness::new();
+        h.press(Modifiers::ALT, Key::ArrowDown);
+        h.press(Modifiers::ALT, Key::ArrowDown);
+        h.press(Modifiers::ALT, Key::ArrowDown);
+        assert_eq!(h.state.selected_channel, Some(id(11)), "repeats are consumed, not stepped");
+        h.release(Modifiers::ALT, Key::ArrowDown);
+        h.view.modal = Some(Modal::JoinServer);
+        tap(&mut h, Modifiers::ALT, Key::ArrowDown);
+        assert_eq!(h.state.selected_channel, Some(id(11)));
+    }
+
+    #[test]
+    fn shift_escape_marks_the_server_read() {
+        let mut h = Harness::new();
+        assert!(h.state.is_unread(id(10)));
+        tap(&mut h, Modifiers::SHIFT, Key::Escape);
+        assert!(!h.state.is_unread(id(10)));
+        assert!(matches!(h.rx.try_recv(), Ok(crate::backend::Command::Social(crate::backend::SocialCommand::MarkAllRead { .. }))));
+    }
+
+    #[test]
+    fn ctrl_slash_opens_the_keybinds_page() {
+        let mut h = Harness::new();
+        tap(&mut h, Modifiers::COMMAND, Key::Slash);
+        assert!(h.view.settings_open && h.view.settings_page == super::super::user_settings::Page::Keybinds);
+    }
+
+    #[test]
     fn ctrl_k_opens_and_closes_the_switcher() {
         let mut h = Harness::new();
         h.press(Modifiers::COMMAND, Key::K);
@@ -583,6 +745,5 @@ mod tests {
         h.view.modal = Some(Modal::JoinServer);
         h.press(Modifiers::COMMAND, Key::K);
         assert_eq!(h.view.modal, Some(Modal::JoinServer), "not over another dialog");
-        let _ = &h.rx;
     }
 }

@@ -298,6 +298,7 @@ All ✔ except spell check. They are cheap render gates in the message view.
 
 - Actions (list UNCONFIRMED): PTT (normal, priority), push to mute, toggle mute / deafen / VAD, streamer mode, back/forward, disconnect, camera, go live, overlay.
 - A read-only list of defaults (Ctrl+K, Alt+↑/↓, Shift+Esc, Ctrl+Shift+M/D…).
+  - Rustcord: the navigation binds (quick switcher, shortcut list, channel / unread / server steps, mark server read) are rebindable on the page, under "Navigation". Plain Esc stays built in (close, cancel, then mark the channel read); Shift+Esc can be recorded.
 - ✔ for voice and navigation.
   - Toggles: `RegisterHotKey`.
   - PTT needs key-up: Rustcord stores a VK; `Win32_UI_Input_KeyboardAndMouse` is enabled.
