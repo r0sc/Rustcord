@@ -31,8 +31,6 @@ const ICON: f32 = 40.0;
 pub(super) const ICON_PX: u32 = 80;
 /// Server icons are squircles; hover/selection only changes their colours.
 const ICON_R: f32 = 12.0;
-/// Duration of the icon colour change and the pill animation, seconds.
-const ANIM: f32 = 0.15;
 /// Channel-list header; the chat header (messages.rs) has the same height. Incl. the 1 px border.
 const HEADER_H: f32 = 49.0;
 /// Account row of the floating user panel, and the voice section above it while in a call.
@@ -318,7 +316,7 @@ fn icon_slot(ui: &mut egui::Ui, salt: impl egui::AsIdSalt, selected: bool) -> (R
     let icon = Rect::from_center_size(row.center(), Vec2::splat(ICON));
     let resp = ui.interact(icon, ui.make_persistent_id(salt), Sense::click());
     let target = if selected || resp.hovered() { 1.0 } else { 0.0 };
-    let morph = ui.ctx().animate_value_with_time(resp.id.with("morph"), target, super::messages::motion(ui, ANIM));
+    let morph = super::motion::value(ui.ctx(), resp.id.with("morph"), target, super::motion::FAST);
     (row, icon, resp, morph)
 }
 
@@ -334,7 +332,7 @@ fn decorate(ui: &egui::Ui, c: &ThemeColors, row: Rect, icon: Rect, resp: &egui::
     } else {
         0.0
     };
-    let h = ui.ctx().animate_value_with_time(resp.id.with("pill"), target, super::messages::motion(ui, ANIM));
+    let h = super::motion::value(ui.ctx(), resp.id.with("pill"), target, super::motion::FAST);
     let tk = crate::theme::applied_tokens(ui.ctx());
     if h >= 1.0 {
         let pill = Rect::from_min_size(pos2(row.left(), row.center().y - h / 2.0), vec2(4.0, h));
@@ -1031,13 +1029,13 @@ fn drop_muted(s: &AppState, items: &mut Vec<SidebarItem>) {
 }
 
 /// Category header: its name in the label role (13/600) in the case given, after a 12 px
-/// chevron that turns from down (open) to right (collapsed) in 120 ms.
+/// chevron that turns from down (open) to right (collapsed) in `FAST`.
 fn category_row(ui: &mut egui::Ui, cx: &UiCx<'_>, id: Id, name: &str, collapsed: bool) -> egui::Response {
     let c = &cx.theme.colors;
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
     let resp = ui.interact(row, ui.make_persistent_id(("category", id)), Sense::click());
     let color = if resp.hovered() || resp.has_focus() { c.text } else { c.text_muted }.to_color32();
-    let open = ui.ctx().animate_bool_with_time(resp.id.with("open"), !collapsed, super::messages::motion(ui, 0.12));
+    let open = super::motion::slide(ui.ctx(), resp.id.with("open"), !collapsed, super::motion::FAST);
     if in_view(ui, row) {
         let turn = egui::emath::Rot2::from_angle((open - 1.0) * FRAC_PI_2);
         let center = pos2(row.left() + PAD - 2.0, row.center().y);

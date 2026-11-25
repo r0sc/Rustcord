@@ -229,12 +229,6 @@ pub(super) fn focus_ring(ui: &egui::Ui, pal: &Pal, rect: Rect, radius: f32) {
     ui.painter().rect_stroke(rect.expand(2.0), radius + 2.0, Stroke::new(2.0, pal.tk.focus), egui::StrokeKind::Outside);
 }
 
-/// Animation length for motion that answers an action (§7): `secs`, or 0 with reduced motion
-/// (`user_settings::app::frame` sets `animation_time` to 0 then).
-pub(super) fn motion(ui: &egui::Ui, secs: f32) -> f32 {
-    if ui.style().animation_time > 0.0 { secs } else { 0.0 }
-}
-
 /// Button kinds of §9. One `Primary` per view (ember); `Danger` only for destructive confirms.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[allow(dead_code, reason = "shared §9 kinds; Secondary / Positive are adopted by the area views")]
@@ -294,7 +288,7 @@ pub(super) fn button(ui: &mut egui::Ui, pal: &Pal, kind: Btn, text: &str, enable
 }
 
 /// Pill switch (§9): 40 x 24. Off: `edge` track, a light knob with a ×; on: `positive` track,
-/// the knob with a check. Slides in 120 ms. `changed()` when clicked.
+/// the knob with a check. Slides in `FAST` (cubic in-out) and stretches mid-travel. `changed()` when clicked.
 pub(super) fn switch(ui: &mut egui::Ui, pal: &Pal, on: &mut bool, label: &str) -> egui::Response {
     let (rect, mut resp) = ui.allocate_exact_size(vec2(40.0, 24.0), Sense::click());
     if resp.clicked() {
@@ -304,14 +298,17 @@ pub(super) fn switch(ui: &mut egui::Ui, pal: &Pal, on: &mut bool, label: &str) -
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Switch, ui.is_enabled(), *on, label));
     if ui.is_rect_visible(rect) {
         let tk = &pal.tk;
-        let t = ui.ctx().animate_bool_with_time(resp.id, *on, motion(ui, 0.12));
+        let t = super::motion::slide(ui.ctx(), resp.id, *on, super::motion::FAST);
         let track = tk.edge.lerp_to_gamma(tk.positive, t);
         let off_knob = if tk.mode == crate::theme::Mode::Light { Color32::WHITE } else { pal.text };
         let knob = off_knob.lerp_to_gamma(tk.on_positive, t);
         let c = pos2(egui::lerp(rect.left() + 12.0..=rect.right() - 12.0, t), rect.center().y);
         let p = ui.painter();
         p.rect_filled(rect, 12.0, track);
-        p.circle_filled(c, 9.0, knob);
+        // The knob stretches 15 % along the travel (squash and stretch), same area at rest.
+        let k = (t * std::f32::consts::PI).sin();
+        let r = Rect::from_center_size(c, vec2(18.0 * (1.0 + 0.15 * k), 18.0 * (1.0 - 0.12 * k)));
+        p.rect_filled(r, r.height() / 2.0, knob);
         let glyph = Stroke::new(1.5, track);
         if t < 0.5 {
             for d in [vec2(3.0, 3.0), vec2(3.0, -3.0)] {

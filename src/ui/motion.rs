@@ -72,6 +72,36 @@ pub fn anim(ctx: &Context, id: Id, on: bool, open: f32, close: f32) -> f32 {
     ease(ctx.animate_bool_with_time(id, on, secs(ctx, if on { open } else { close })))
 }
 
+/// `anim` for a move between two spots (switch knob, chevron): cubic in-out both ways.
+pub fn slide(ctx: &Context, id: Id, on: bool, s: f32) -> f32 {
+    easing::cubic_in_out(ctx.animate_bool_with_time(id, on, secs(ctx, s)))
+}
+
+#[derive(Clone, Copy)]
+struct Tween {
+    from: f32,
+    to: f32,
+    at: f64,
+}
+
+/// `target`, reached in `s` s with cubic in-out from wherever the value is (a new target
+/// mid-way starts there): rail pill height, segmented selection.
+pub fn value(ctx: &Context, id: Id, target: f32, s: f32) -> f32 {
+    let (now, dur) = (ctx.input(|i| i.time), f64::from(secs(ctx, s)));
+    if dur == 0.0 {
+        return target;
+    }
+    let w = ctx.data_mut(|d| *d.get_temp_mut_or(id, Tween { from: target, to: target, at: now }));
+    let cur = egui::lerp(w.from..=w.to, easing::cubic_in_out(((now - w.at) / dur).clamp(0.0, 1.0) as f32));
+    if w.to != target {
+        ctx.data_mut(|d| d.insert_temp(id, Tween { from: cur, to: target, at: now }));
+    }
+    if cur != target {
+        ctx.request_repaint();
+    }
+    cur
+}
+
 #[derive(Clone, Default)]
 struct Own(Vec<LayerId>);
 fn own_id() -> Id {
@@ -225,6 +255,20 @@ mod tests {
         assert!(end == 1.0 && !busy);
         let (shut, _) = run(&ctx, 1.0, 0.0, |c| anim(c, id, false, LARGE, 0.0));
         assert_eq!(shut, 0.0, "a zero close time is instant");
+    }
+
+    #[test]
+    fn value_settles_and_stops_asking_for_frames() {
+        let ctx = Context::default();
+        let v = Id::unique("value");
+        run(&ctx, 0.0, 0.0, |c| value(c, v, 0.0, FAST));
+        let (mid, busy) = run(&ctx, 0.1, 0.05, |c| value(c, v, 40.0, FAST));
+        assert!(mid > 0.0 && mid < 40.0 && busy);
+        let (end, busy) = run(&ctx, 0.2, 0.3, |c| value(c, v, 40.0, FAST));
+        assert!(end == 40.0 && !busy);
+        // A new target mid-way starts from where the value is, not from the old target.
+        let (back, _) = run(&ctx, 1.0, 0.03, |c| value(c, v, 0.0, FAST));
+        assert!(back > 0.0 && back < 40.0);
     }
 
     #[test]

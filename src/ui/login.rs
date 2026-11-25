@@ -315,6 +315,10 @@ pub(crate) fn segmented<T: Copy + PartialEq>(ui: &mut egui::Ui, theme: &Theme, v
     let inset = 2.0;
     let seg_r = (radius - inset).max(2.0);
     let seg_w = (track.width() - 2.0 * inset) / options.len() as f32;
+    // The lifted fill slides to the selected segment (§7).
+    let idx = options.iter().position(|(v, _)| v == value).unwrap_or(0) as f32;
+    let x = super::motion::value(ui.ctx(), ui.make_persistent_id(("rc_segment", options.first().map_or("", |o| o.1))), idx, super::motion::FAST);
+    ui.painter().rect_filled(Rect::from_min_size(track.min + vec2(inset + x * seg_w, inset), vec2(seg_w, SEGMENT_H - 2.0 * inset)), seg_r, lifted);
     for (i, &(v, label)) in options.iter().enumerate() {
         let min = track.min + vec2(inset + i as f32 * seg_w, inset);
         let rect = Rect::from_min_size(min, vec2(seg_w, SEGMENT_H - 2.0 * inset));
@@ -326,9 +330,7 @@ pub(crate) fn segmented<T: Copy + PartialEq>(ui: &mut egui::Ui, theme: &Theme, v
         let selected = *value == v;
         let hovered = resp.hovered() && ui.is_enabled();
         let painter = ui.painter();
-        if selected {
-            painter.rect_filled(rect, seg_r, lifted);
-        } else if hovered {
+        if hovered && !selected {
             painter.rect_filled(rect, seg_r, tk.hover);
         }
         if resp.has_focus() {
