@@ -55,6 +55,8 @@ use std::time::{Duration, Instant};
 pub const GUILD_BAR_W: f32 = 72.0;
 /// Narrower windows hide the member list so the message area keeps ~450 px.
 pub const MEMBER_LIST_MIN_WINDOW_W: f32 = 1000.0;
+/// How long a toast stays before it fades out.
+const TOAST_FOR: Duration = Duration::from_secs(5);
 const MEMBER_LIST_W: f32 = 264.0;
 /// Title bar above all columns.
 pub(crate) const TITLE_BAR_H: f32 = 32.0;
@@ -308,7 +310,7 @@ impl Default for ViewState {
 
 impl ViewState {
     pub fn toast(&mut self, text: impl Into<String>, error: bool) {
-        self.toasts.push(Toast { text: text.into(), error, until: Instant::now() + Duration::from_secs(5) });
+        self.toasts.push(Toast { text: text.into(), error, until: Instant::now() + TOAST_FOR });
     }
 
     /// Open the profile card for a user (clicking the same user again closes it).
@@ -654,8 +656,13 @@ impl RustcordApp {
 
     fn show_toasts(&mut self, ctx: &egui::Context) {
         let now = Instant::now();
-        self.view.toasts.retain(|t| t.until > now);
-        let Some(next_expiry) = self.view.toasts.iter().map(|t| t.until).min() else { return };
+        // A toast rises and fades in over BASE, stays TOAST_FOR, then fades out over BASE x OUT (§7).
+        let (enter, leave) = (motion::secs(ctx, motion::BASE), motion::secs(ctx, motion::BASE * motion::OUT));
+        self.view.toasts.retain(|t| t.until + Duration::from_secs_f32(leave) > now);
+        if self.view.toasts.is_empty() {
+            return;
+        }
+        let mut moving = false;
         let c = &self.theme.colors;
         // Quiet cards (popup style); errors are marked by a small danger dot, not a red fill.
         let card = egui::Frame::popup(&ctx.global_style())
@@ -672,24 +679,39 @@ impl RustcordApp {
             .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-right, -80.0))
             .order(egui::Order::Foreground)
             .interactable(false)
+            .fade_in(false)
             .show(ctx, |ui| {
                 motion::own(ctx, ui.layer_id());
                 ui.set_max_width(360.0);
                 ui.spacing_mut().item_spacing.y = 8.0;
                 for t in &self.view.toasts {
                     let dot = if t.error { c.danger } else { c.text_muted }.to_color32();
-                    card.show(ui, |ui| {
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = 8.0;
-                            let h = ui.text_style_height(&egui::TextStyle::Body);
-                            let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, h), egui::Sense::hover());
-                            ui.painter().circle_filled(r.center(), 3.5, dot);
-                            ui.add(egui::Label::new(egui::RichText::new(&t.text).color(c.text.to_color32())).wrap());
+                    let age = (now + TOAST_FOR).saturating_duration_since(t.until).as_secs_f32();
+                    let gone = now.saturating_duration_since(t.until).as_secs_f32();
+                    let a = if enter > 0.0 { motion::ease((age / enter).min(1.0)) } else { 1.0 };
+                    let b = if leave > 0.0 { 1.0 - egui::emath::easing::cubic_in((gone / leave).min(1.0)) } else { 1.0 };
+                    moving |= a < 1.0 || gone > 0.0;
+                    ui.scope(|ui| {
+                        ui.multiply_opacity(a * b);
+                        ui.with_visual_transform(egui::emath::TSTransform::from_translation(egui::vec2(0.0, 8.0 * (1.0 - a))), |ui| {
+                            card.show(ui, |ui| {
+                                ui.horizontal_top(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 8.0;
+                                    let h = ui.text_style_height(&egui::TextStyle::Body);
+                                    let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, h), egui::Sense::hover());
+                                    ui.painter().circle_filled(r.center(), 3.5, dot);
+                                    ui.add(egui::Label::new(egui::RichText::new(&t.text).color(c.text.to_color32())).wrap());
+                                });
+                            });
                         });
                     });
                 }
             });
-        ctx.request_repaint_after(next_expiry.saturating_duration_since(now));
+        if moving {
+            ctx.request_repaint();
+        } else if let Some(next) = self.view.toasts.iter().map(|t| t.until).filter(|u| *u > now).min() {
+            ctx.request_repaint_after(next - now);
+        }
     }
 
     fn startup_hooks(&mut self, ctx: &egui::Context) {
