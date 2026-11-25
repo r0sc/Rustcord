@@ -133,6 +133,11 @@ pub(crate) enum Icon {
     Bulb,
     Heart,
     Flag,
+    // Settings pages.
+    Palette,
+    Accessibility,
+    Keyboard,
+    Puzzle,
 }
 
 /// Small mark at the bottom right of a channel icon: private (`Lock`) or age-restricted
@@ -145,7 +150,7 @@ pub(crate) enum Badge {
 
 impl Icon {
     /// Every icon, in declaration order (the icon sheet hook, tests).
-    pub(crate) const ALL: [Icon; 104] = {
+    pub(crate) const ALL: [Icon; 108] = {
         use Icon::*;
         [
             Text, Voice, Announcement, Stage, Forum, Media, Thread, Rules, Directory, Playing, Listening, Streaming, Watching, Competing, Mic, MicOff, Headphones,
@@ -154,6 +159,7 @@ impl Icon {
             SplitView, File, Attach, Hourglass, Key, Desktop, Card, Video, Eye, EyeOff, Lock, Unlock, Boost, Clock, Star, Globe, Info, Poll, Quest, Orb, Gift, Verified, Partnered, BoostTier1, BoostTier2, BoostTier3, Play, Pause, Download, VoiceOff, Expand, Collapse, ArrowLeft, ArrowRight, ChevronUp,
             ChevronDown,
             ChevronLeft, ChevronRight, Smile, Leaf, Food, Ball, Car, Bulb, Heart, Flag,
+            Palette, Accessibility, Keyboard, Puzzle,
         ]
     };
 
@@ -794,6 +800,38 @@ fn draw(k: &mut Pen, icon: Icon, locked: bool) {
             k.fill(&[at(0.0, 0.0), at(4.0, -2.5), at(4.0, 2.5)]);
             k.line(&[at(15.0, -2.5), at(15.0, 2.5)]);
         }
+        Palette => {
+            // Open ring with a thumb dip at the lower right, three paint dots.
+            let mut pts = arc(12.0, 12.0, 9.0, 75.0, 375.0);
+            pts.extend([(16.5, 14.5), (14.5, 16.5)]);
+            k.closed(&pts);
+            k.disc(7.75, 11.5, 1.5);
+            k.disc(10.5, 7.25, 1.5);
+            k.disc(15.25, 7.75, 1.5);
+        }
+        Accessibility => {
+            k.ring(12.0, 12.0, 9.0);
+            k.disc(12.0, 7.25, 1.6);
+            k.line(&[(7.5, 10.0), (12.0, 11.0), (16.5, 10.0)]);
+            k.line(&[(12.0, 11.0), (12.0, 14.0)]);
+            k.line(&[(9.5, 18.0), (12.0, 14.0), (14.5, 18.0)]);
+        }
+        Keyboard => {
+            k.rrect_line(2.5, 6.0, 21.5, 18.0, 2.5);
+            for x in [6.5, 10.0, 13.5, 17.0] {
+                k.disc(x, 10.0, 1.0);
+            }
+            k.line(&[(8.5, 14.5), (15.5, 14.5)]);
+        }
+        Puzzle => {
+            // One piece: knobs on the top and right edges.
+            let mut pts = vec![(4.5, 8.5), (8.48, 8.5)];
+            pts.extend(arc(10.25, 6.75, 2.5, 135.0, 405.0));
+            pts.extend([(16.5, 8.5), (16.5, 11.98)]);
+            pts.extend(arc(18.25, 13.75, 2.5, 225.0, 495.0));
+            pts.extend([(16.5, 19.5), (4.5, 19.5)]);
+            k.closed(&pts);
+        }
         Trash => {
             k.line(&[(3.5, 6.0), (20.5, 6.0)]);
             k.line(&[(9.0, 6.0), (9.5, 3.0), (14.5, 3.0), (15.0, 6.0)]);
@@ -1300,8 +1338,8 @@ mod tests {
         assert_eq!(guild_mark(&[], 1).map(|m| m.0), Some(Icon::BoostTier1));
         assert_eq!(guild_mark(&[], 0), None);
         assert_eq!(guild_mark(&[], 4), None, "no such level");
-        // `ALL` lists every variant in order (`Flag` stays last).
-        assert_eq!(Icon::ALL.len(), Icon::Flag as usize + 1);
+        // `ALL` lists every variant in order (`Puzzle` stays last).
+        assert_eq!(Icon::ALL.len(), Icon::Puzzle as usize + 1);
         assert!(Icon::ALL.iter().enumerate().all(|(i, x)| *x as usize == i));
     }
 }
