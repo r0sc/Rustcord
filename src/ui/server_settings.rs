@@ -63,6 +63,18 @@ impl Page {
         }
     }
 
+    /// The nav row's line icon.
+    fn icon(self) -> Icon {
+        match self {
+            Page::Overview | Page::Channel(_) => Icon::Gear,
+            Page::Roles | Page::Role(_) => Icon::Shield,
+            Page::Emoji => Icon::Smile,
+            Page::Members => Icon::Members,
+            Page::Invites => Icon::Link,
+            Page::Bans => Icon::Ban,
+        }
+    }
+
     /// `RUSTCORD_OPEN=server-settings:<name>`: overview, roles, emoji, members, invites, bans,
     /// `role-<id>` (Edit Role), `channel-<id>` (Edit Channel).
     pub fn from_name(name: &str) -> Option<Page> {
@@ -266,35 +278,34 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, page: Page) {
                 let category = ch.is_some_and(|c| c.kind == ct::GUILD_CATEGORY);
                 let parent = ch.and_then(|c| c.parent_id).map(|p| cx.state.channel_name(p));
                 let prefix = if category { "" } else { "# " };
-                nav_heading(ui, cx.theme, &format!("{prefix}{}", cx.state.channel_name(c)));
+                nav_heading(ui, cx.theme, &format!("{prefix}{}", cx.state.channel_name(c)), true);
                 if let Some(p) = parent {
                     hint(ui, cx.theme, &p);
                 }
                 let perms = cx.view.server_settings_ui.perms_tab;
-                if nav_item(ui, cx.theme, "Overview", !perms, false) {
+                if nav_item(ui, cx.theme, Icon::Gear, "Overview", !perms, false) {
                     tab = Some(false);
                 }
-                if nav_item(ui, cx.theme, "Permissions", perms, false) {
+                if nav_item(ui, cx.theme, Icon::Lock, "Permissions", perms, false) {
                     tab = Some(true);
                 }
                 if cx.state.account_check(&AccountCommand::DeleteChannel { channel_id: c }).is_ok() {
-                    ui.separator();
-                    delete = nav_item(ui, cx.theme, if category { "Delete category" } else { "Delete channel" }, false, true);
+                    delete = nav_item(ui, cx.theme, Icon::Trash, if category { "Delete category" } else { "Delete channel" }, false, true);
                 }
             }
             _ => {
+                let mut first = true;
                 for (heading, pages) in [(name.as_str(), &Page::SERVER), ("User management", &Page::PEOPLE)] {
                     let shown: Vec<Page> = pages.iter().copied().filter(|p| p.allowed(cx.state, guild_id) || *p == page).collect();
                     if shown.is_empty() {
                         continue;
                     }
-                    nav_heading(ui, cx.theme, heading);
+                    nav_heading(ui, cx.theme, heading, std::mem::take(&mut first));
                     for p in shown {
-                        if nav_item(ui, cx.theme, p.title(), page.title() == p.title(), false) {
+                        if nav_item(ui, cx.theme, p.icon(), p.title(), page.title() == p.title(), false) {
                             pick = Some(p);
                         }
                     }
-                    ui.add_space(8.0);
                 }
             }
         },

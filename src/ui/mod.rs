@@ -1679,25 +1679,29 @@ pub fn settings_layer(
     close.clicked() || esc
 }
 
-/// Heading over a group of nav rows ("User settings"): the label role, muted, as written.
-pub fn nav_heading(ui: &mut egui::Ui, theme: &Theme, text: &str) {
+/// Heading over a group of nav rows ("User settings"): the label role, muted, as written; 16 px
+/// above (12 for the `first` one), 4 below.
+pub fn nav_heading(ui: &mut egui::Ui, theme: &Theme, text: &str, first: bool) {
     let pal = messages::Pal::new(theme);
-    ui.add_space(8.0);
+    ui.add_space(if first { 12.0 } else { 16.0 } - ui.spacing().item_spacing.y);
     ui.add(egui::Label::new(egui::RichText::new(text).font(semibold(pal.label())).color(pal.muted)).selectable(false).truncate());
+    ui.add_space(4.0 - ui.spacing().item_spacing.y);
 }
 
-/// One 32 px nav row of a settings layer (selected: the `selected` fill; `danger`: red text,
-/// e.g. Log out). True when clicked.
-pub fn nav_item(ui: &mut egui::Ui, theme: &Theme, label: &str, selected: bool, danger: bool) -> bool {
+/// One 36 px nav row of a settings layer: an 18 px line icon, the label (selected: the `selected`
+/// fill and the icon in `accent_ink`; `danger`: red, e.g. Log out). True when clicked.
+pub fn nav_item(ui: &mut egui::Ui, theme: &Theme, icon: icons::Icon, label: &str, selected: bool, danger: bool) -> bool {
     let pal = messages::Pal::new(theme);
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 32.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 36.0), egui::Sense::click());
     let hot = resp.hovered() || resp.has_focus();
     let fill = if selected { pal.tk.selected } else if resp.hovered() { pal.tk.hover } else { egui::Color32::TRANSPARENT };
     ui.painter().rect_filled(rect, pal.radius, fill);
     let color = if danger { pal.danger } else if selected || hot { pal.text } else { pal.muted };
+    let icon_color = if danger { pal.danger } else if selected { pal.tk.accent_ink } else { color };
+    icons::paint(ui.painter(), icon, egui::Rect::from_center_size(egui::pos2(rect.left() + 19.0, rect.center().y), egui::Vec2::splat(18.0)), icon_color, egui::Color32::TRANSPARENT);
     let font = egui::FontId::new(pal.body(), crate::theme::medium_family());
-    let g = one_line(ui, label, font, color, rect.width() - 20.0);
-    ui.painter().galley(egui::pos2(rect.left() + 10.0, rect.center().y - g.size().y / 2.0), g, color);
+    let g = one_line(ui, label, font, color, rect.width() - 38.0 - 10.0);
+    ui.painter().galley(egui::pos2(rect.left() + 38.0, rect.center().y - g.size().y / 2.0), g, color);
     if resp.has_focus() {
         messages::focus_ring(ui, &pal, rect, f32::from(pal.radius));
     }

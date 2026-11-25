@@ -219,7 +219,7 @@ pub(super) fn streamer(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
 /// Advanced (this device).
 pub(super) fn advanced(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     section(ui, cx.theme, "Hardware acceleration");
-    hint(ui, cx.theme, "Always on: Rustcord draws with the GPU (OpenGL).");
+    crate::ui::messages::callout(ui, &crate::ui::messages::Pal::new(cx.theme), crate::ui::messages::Callout::Info, "Always on: Rustcord draws with the GPU (OpenGL).");
 }
 
 // ---------------------------------------------------------------------------

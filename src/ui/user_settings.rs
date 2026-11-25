@@ -228,6 +228,40 @@ impl Page {
         self.info().0
     }
 
+    /// The nav row's line icon.
+    fn icon(self) -> Icon {
+        match self {
+            Page::MyAccount => Icon::Person,
+            Page::Profiles => Icon::IdCard,
+            Page::Cosmetics => Icon::Star,
+            Page::ContentSocial => Icon::Shield,
+            Page::Privacy => Icon::Lock,
+            Page::FamilyCenter => Icon::Members,
+            Page::AuthorizedApps => Icon::Key,
+            Page::Devices => Icon::Phone,
+            Page::Connections => Icon::Link,
+            Page::FriendRequests => Icon::PersonAdd,
+            Page::Billing => Icon::Card,
+            Page::Appearance => Icon::Palette,
+            Page::Accessibility => Icon::Accessibility,
+            Page::VoiceVideo => Icon::Mic,
+            Page::Clips => Icon::Video,
+            Page::Chat => Icon::Message,
+            Page::Notifications => Icon::Bell,
+            Page::Keybinds => Icon::Keyboard,
+            Page::Language => Icon::Globe,
+            Page::Windows => Icon::Desktop,
+            Page::StreamerMode => Icon::Streaming,
+            Page::Advanced => Icon::Gear,
+            Page::ActivityPrivacy => Icon::Eye,
+            Page::RegisteredGames => Icon::Playing,
+            Page::GameOverlay => Icon::Screen,
+            Page::Plugins => Icon::Puzzle,
+            Page::LocalProfile => Icon::File,
+            Page::ThemeEditor => Icon::Edit,
+        }
+    }
+
     /// `RUSTCORD_OPEN=settings:<name>`: my-account, profiles, cosmetics, content, privacy,
     /// family, apps, devices, connections, friend-requests, billing, appearance, accessibility,
     /// voice, clips, chat, notifications, keybinds, language, windows, streamer, advanced, activity,
@@ -353,12 +387,18 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     }
 }
 
-/// The nav column: search box, the groups (only matching pages while searching), Log Out.
-/// True when Log Out was clicked (the caller asks before logging out).
+/// The nav column: my header (Edit profile), the search box, the groups (only matching pages
+/// while searching), Log Out. True when Log Out was clicked (the caller asks before logging out).
 fn nav(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
-    let search = egui::TextEdit::singleline(&mut cx.view.user_settings_ui.search).hint_text("Search").desired_width(f32::INFINITY);
-    ui.add(search);
-    ui.add_space(6.0);
+    user_header(ui, cx);
+    ui.add_space(8.0 - ui.spacing().item_spacing.y);
+    let pal = Pal::new(cx.theme);
+    let search = egui::TextEdit::singleline(&mut cx.view.user_settings_ui.search)
+        .hint_text("Search settings")
+        .desired_width(f32::INFINITY)
+        .margin(egui::Margin { left: 32, right: 8, top: 6, bottom: 6 });
+    let well = ui.add(search).rect;
+    icons::paint(ui.painter(), Icon::Search, egui::Rect::from_center_size(egui::pos2(well.left() + 18.0, well.center().y), egui::Vec2::splat(16.0)), pal.muted, egui::Color32::TRANSPARENT);
     let q = cx.view.user_settings_ui.search.trim().to_lowercase();
     cx.view.settings_page = search_page(cx.view.settings_page, &mut cx.view.user_settings_ui.before_search, &q);
     let mut any = false;
@@ -367,21 +407,55 @@ fn nav(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         if shown.peek().is_none() {
             continue;
         }
+        nav_heading(ui, cx.theme, heading, !any);
         any = true;
-        nav_heading(ui, cx.theme, heading);
         for p in shown {
-            if nav_item(ui, cx.theme, p.title(), cx.view.settings_page == p, false) {
+            if nav_item(ui, cx.theme, p.icon(), p.title(), cx.view.settings_page == p, false) {
                 cx.view.settings_page = p;
                 cx.view.user_settings_ui.before_search = None;
             }
         }
-        ui.separator();
     }
     if !any {
         hint(ui, cx.theme, "No settings match. Try another word.");
-        ui.separator();
     }
-    nav_item(ui, cx.theme, "Log out", false, true)
+    ui.add_space(8.0);
+    nav_item(ui, cx.theme, Icon::Leave, "Log out", false, true)
+}
+
+/// Top of the nav: my avatar (with its status), name and "Edit profile"; a click opens Profiles.
+fn user_header(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
+    use egui::{FontId, Rect, pos2, vec2};
+    let pal = Pal::new(cx.theme);
+    let Some(me) = cx.state.me.clone() else { return };
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 56.0), Sense::click());
+    let fill = if resp.hovered() { pal.tk.hover } else { egui::Color32::TRANSPARENT };
+    ui.painter().rect_filled(rect, pal.radius, fill);
+    let avatar = Rect::from_center_size(pos2(rect.left() + 8.0 + 20.0, rect.center().y), vec2(40.0, 40.0));
+    let url = super::images::user_avatar_url(None, &me, None, 80, false);
+    super::sidebar::user_avatar_at(ui, cx.images, &url, avatar, false, 1.0, (me.id, me.display_name()));
+    let ring = cx.theme.colors.sidebar.to_color32().blend(fill);
+    super::sidebar::status_dot(ui.painter(), avatar, super::sidebar::my_presence(cx.state), &cx.theme.colors, ring);
+    let x = rect.left() + 56.0;
+    let name = super::one_line(ui, me.display_name(), super::semibold(pal.body()), pal.text, rect.right() - x - 8.0);
+    let edit = super::one_line(ui, "Edit profile", FontId::new(pal.meta(), crate::theme::medium_family()), pal.muted, rect.right() - x - 8.0 - 16.0);
+    let top = rect.center().y - (name.size().y + edit.size().y) / 2.0;
+    let edit_pos = pos2(x, top + name.size().y);
+    let edit_right = edit_pos.x + edit.size().x;
+    let edit_mid = edit_pos.y + edit.size().y / 2.0;
+    ui.painter().galley(pos2(x, top), name, pal.text);
+    ui.painter().galley(edit_pos, edit, pal.muted);
+    icons::paint(ui.painter(), Icon::Edit, Rect::from_center_size(pos2(edit_right + 4.0 + 6.0, edit_mid), vec2(12.0, 12.0)), pal.muted, egui::Color32::TRANSPARENT);
+    if resp.has_focus() {
+        super::messages::focus_ring(ui, &pal, rect, f32::from(pal.radius));
+    }
+    let label = format!("Edit profile, {}", me.display_name());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
+    if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+        cx.view.settings_page = Page::Profiles;
+        cx.view.user_settings_ui.search.clear();
+        cx.view.user_settings_ui.before_search = None;
+    }
 }
 
 /// The page to show for the search `q` (lowercase, trimmed): the open one while it matches,
