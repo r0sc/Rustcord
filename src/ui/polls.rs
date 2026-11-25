@@ -13,13 +13,14 @@
 //! OWNERSHIP: ui-messages.
 
 use super::icons::{self, Icon};
-use super::messages::{Btn, Pal, button, emoji_texture, focus_ring, paint_checkbox, paint_radio, small_button};
-use super::{UiCx, motion, one_line, semibold};
-use crate::backend::{ChatCommand, Command};
-use crate::model::{Embed, EmbedField, Id, Message, MessageReference, Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};
+use super::messages::{Btn, Pal, button, emoji_texture, focus_ring, paint_checkbox, paint_radio, small_button, vector_button};
+use super::threads::field_label;
+use super::{Modal, UiCx, ViewState, composer, dialog, dialog_buttons, motion, one_line, semibold};
+use crate::backend::{ChatCommand, Command, PollDraft};
+use crate::model::{Embed, EmbedField, Id, Message, MessageReference, Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults, perm};
 use crate::state::chat::PollVotersView;
 use crate::state::polls::my_votes;
-use egui::{Align, FontId, Frame, Image, Label, Layout, Margin, Rect, RichText, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
+use egui::{Align, FontId, Frame, Image, Label, Layout, Margin, Rect, RichText, Sense, Stroke, StrokeKind, TextEdit, Vec2, pos2, vec2};
 use std::time::Duration;
 
 /// Widest a poll card gets.
@@ -34,6 +35,13 @@ pub struct PollsUi {
     peek: Option<Id>,
     /// The open voters popover: poll, answer, and "opened this pass" (it opens its popup once).
     voters: Option<(Id, u32, bool)>,
+    // The create dialog's draft.
+    question: String,
+    answers: Vec<String>,
+    hours: u32,
+    multi: bool,
+    busy: bool,
+    error: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +324,132 @@ fn send_vote(cx: &mut UiCx<'_>, ch: Id, mid: Id, answers: Vec<u32>, mine: &[u32]
     cx.cmd.send(Command::Chat(ChatCommand::PollVote { channel_id: ch, message_id: mid, answer_ids: answers, restore }));
     cx.view.polls_ui.picked = None;
     cx.view.polls_ui.peek = None;
+}
+
+// ---------------------------------------------------------------------------
+// Create a poll
+// ---------------------------------------------------------------------------
+
+/// Question and answer limits (Discord's).
+const QUESTION_MAX: usize = 300;
+const ANSWER_MAX: usize = 55;
+const ANSWERS_MAX: usize = 10;
+const HOURS: [(u32, &str); 7] = [(1, "1 hour"), (4, "4 hours"), (8, "8 hours"), (24, "24 hours"), (72, "3 days"), (168, "1 week"), (336, "2 weeks")];
+
+impl PollsUi {
+    fn reset_draft(&mut self) {
+        (self.question, self.answers, self.hours, self.multi, self.busy, self.error) = Default::default();
+    }
+}
+
+/// What the dialog sends: everything trimmed, empty answers dropped, at most ten; None without
+/// a question or an answer.
+fn draft(question: &str, answers: &[String], hours: u32, multi: bool) -> Option<PollDraft> {
+    let answers: Vec<String> = answers.iter().map(|a| a.trim()).filter(|a| !a.is_empty()).take(ANSWERS_MAX).map(str::to_owned).collect();
+    let question = question.trim().to_owned();
+    (!question.is_empty() && !answers.is_empty()).then_some(PollDraft { question, answers, hours, multi })
+}
+
+/// Create poll from the composer's "+" menu.
+pub(super) fn open_create(cx: &mut UiCx<'_>, channel_id: Id) {
+    cx.view.modal = Some(Modal::CreatePoll { channel_id });
+}
+
+fn close_create(cx: &mut UiCx<'_>) {
+    if !cx.view.polls_ui.busy {
+        cx.view.polls_ui.reset_draft();
+    }
+    cx.view.modal = None;
+}
+
+/// `Modal::CreatePoll`: question, 2 to 10 answers, duration, multiple answers.
+pub fn create_modal(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id) {
+    let pal = Pal::new(cx.theme);
+    let theme = cx.theme.clone();
+    let can_poll = cx.state.channel_permissions(ch) & perm::SEND_POLLS != 0;
+    let st = &mut cx.view.polls_ui;
+    if st.hours == 0 {
+        st.hours = 24;
+    }
+    while st.answers.len() < 2 {
+        st.answers.push(String::new());
+    }
+    let ready = can_poll && !st.busy && draft(&st.question, &st.answers, st.hours, st.multi).is_some();
+    let resp = dialog(ctx, &theme, "rc_create_poll", 520.0, "Create a poll", |ui| {
+        field_label(ui, &pal, "Question");
+        let q = ui.add(TextEdit::singleline(&mut st.question).char_limit(QUESTION_MAX).hint_text("What do you want to ask?").desired_width(f32::INFINITY));
+        if ui.memory(|m| m.focused().is_none()) {
+            q.request_focus();
+        }
+        field_label(ui, &pal, "Answers");
+        let removable = st.answers.len() > 2;
+        let mut remove = None;
+        for (i, a) in st.answers.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                let w = ui.available_width() - if removable { 32.0 + ui.spacing().item_spacing.x } else { 0.0 };
+                ui.add(TextEdit::singleline(a).char_limit(ANSWER_MAX).hint_text("Type an answer").desired_width(w));
+                if removable && vector_button(ui, &pal, Icon::Close, "Remove answer", 32.0, false, pal.text).clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove {
+            st.answers.remove(i);
+        }
+        if st.answers.len() < ANSWERS_MAX && button(ui, &pal, Btn::Ghost, "Add answer", true).clicked() {
+            st.answers.push(String::new());
+        }
+        field_label(ui, &pal, "Duration");
+        super::server_menu::choice(ui, "rc_poll_hours", &mut st.hours, &HOURS);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Allow multiple answers").font(FontId::new(pal.ui(), crate::theme::medium_family())).color(pal.text));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                super::messages::switch(ui, &pal, &mut st.multi, "Allow multiple answers");
+            });
+        });
+        if !can_poll {
+            ui.label(RichText::new("You can't create polls in this channel.").size(pal.meta()).color(pal.danger));
+        }
+        if let Some(e) = &st.error {
+            ui.label(RichText::new(e).size(pal.meta()).color(pal.danger));
+        }
+        dialog_buttons(ui, &theme, if st.busy { "Posting…" } else { "Post" }, false, ready)
+    });
+    match resp.inner {
+        Some(true) => {
+            let st = &mut cx.view.polls_ui;
+            if let Some(poll) = draft(&st.question, &st.answers, st.hours, st.multi).filter(|_| ready) {
+                (st.busy, st.error) = (true, None);
+                cx.cmd.send(Command::Chat(ChatCommand::SendPoll { channel_id: ch, nonce: composer::new_nonce(), poll }));
+            }
+        }
+        Some(false) => close_create(cx),
+        None if resp.should_close() => close_create(cx),
+        None => {}
+    }
+}
+
+/// `ChatEvent::PollPosted`: the dialog closes, or shows what went wrong (a toast when it was
+/// closed meanwhile; the draft stays).
+pub fn posted(view: &mut ViewState, channel_id: Id, result: Result<(), String>) {
+    let open = view.modal == Some(Modal::CreatePoll { channel_id });
+    match result {
+        Ok(()) => {
+            view.polls_ui.reset_draft();
+            if open {
+                view.modal = None;
+            }
+        }
+        Err(e) => {
+            let text = format!("Could not post the poll: {e}");
+            view.polls_ui.busy = false;
+            if open {
+                view.polls_ui.error = Some(text);
+            } else {
+                view.toast(text, true);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -646,6 +780,39 @@ mod tests {
         let none = embed(&[("poll_question_text", "Best?"), ("total_votes", "0")]);
         assert_eq!((result_summary(&none).total, result_summary(&none).winner), (0, None));
         assert_eq!(result_summary(&embed(&[("total_votes", "many")])).total, 0);
+    }
+
+    #[test]
+    fn draft_trims_drops_empty_answers_and_caps_at_ten() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(draft("  ", &a(&["x", "y"]), 24, false).is_none(), "a blank question");
+        assert!(draft("Q?", &a(&["", "  "]), 24, false).is_none(), "no answers");
+        let d = draft("  Q?  ", &a(&[" x ", "", "y", "  "]), 72, true).unwrap();
+        assert_eq!((d.question.as_str(), d.answers.as_slice(), d.hours, d.multi), ("Q?", &a(&["x", "y"])[..], 72, true));
+        let many: Vec<String> = (0..14).map(|i| format!("a{i}")).collect();
+        let d = draft("Q?", &many, 24, false).unwrap();
+        assert_eq!((d.answers.len(), d.answers[9].as_str()), (10, "a9"));
+    }
+
+    #[test]
+    fn posting_ends_in_a_closed_dialog_or_an_error() {
+        let mut v = ViewState::default();
+        v.polls_ui.question = "Q?".into();
+        v.polls_ui.busy = true;
+        v.modal = Some(Modal::CreatePoll { channel_id: Id(5) });
+        // Failed with the dialog open: the error shows in it, the draft stays.
+        posted(&mut v, Id(5), Err("Forbidden".into()));
+        assert_eq!((v.polls_ui.busy, v.polls_ui.question.as_str()), (false, "Q?"));
+        assert_eq!(v.polls_ui.error.as_deref(), Some("Could not post the poll: Forbidden"));
+        assert!(v.modal.is_some() && v.toasts.is_empty());
+        // Failed after it closed: a toast.
+        v.modal = None;
+        posted(&mut v, Id(5), Err("Forbidden".into()));
+        assert_eq!(v.toasts.len(), 1);
+        // Posted: the draft is reset and the dialog closes.
+        v.modal = Some(Modal::CreatePoll { channel_id: Id(5) });
+        posted(&mut v, Id(5), Ok(()));
+        assert!(v.modal.is_none() && v.polls_ui.question.is_empty() && v.polls_ui.error.is_none());
     }
 
     #[test]

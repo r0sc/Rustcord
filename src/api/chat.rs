@@ -6,7 +6,7 @@
 //! OWNERSHIP: REST engineer (docs/CHAT_ESSENTIALS_DESIGN.md). The signatures are the contract.
 
 use super::{ApiClient, ApiError, net_err, reaction_path_emoji, send_body};
-use crate::backend::{SearchOutcome, SearchQuery, SearchScope, SearchSort};
+use crate::backend::{PollDraft, SearchOutcome, SearchQuery, SearchScope, SearchSort};
 use crate::model::{Channel, Emoji, GifItem, Id, Message, PinsPage, SearchPage, User, null_default};
 use reqwest::{Method, Url};
 use serde::Deserialize;
@@ -121,6 +121,13 @@ impl ApiClient {
         self.send(Method::POST, url, Some(forward_body(dest, nonce, src_ch, src_mid, src_guild))).await.map(drop)
     }
 
+    /// Create a poll: `POST /channels/{c}/messages` with `poll`, no content. MESSAGE_CREATE
+    /// brings the poll.
+    pub async fn send_poll(&self, channel_id: Id, nonce: &str, draft: &PollDraft) -> Result<(), ApiError> {
+        let url = Self::url(&["channels", &channel_id.to_string(), "messages"]);
+        self.send(Method::POST, url, Some(poll_body(channel_id, nonce, draft))).await.map(drop)
+    }
+
     /// `PUT /channels/{c}/polls/{m}/answers/@me {"answer_ids":[…]}` (204); `[]` removes my
     /// votes. The vote events from the gateway carry the counts.
     pub async fn poll_vote(&self, channel_id: Id, message_id: Id, answer_ids: &[u32]) -> Result<(), ApiError> {
@@ -167,6 +174,19 @@ fn bare_body(channel_id: Id, nonce: &str) -> Value {
     if let Some(o) = body.as_object_mut() {
         o.remove("content");
     }
+    body
+}
+
+/// `duration` is always sent: the documented default differs (1 h or 24 h).
+fn poll_body(channel_id: Id, nonce: &str, d: &PollDraft) -> Value {
+    let mut body = bare_body(channel_id, nonce);
+    body["poll"] = json!({
+        "question": { "text": d.question },
+        "answers": d.answers.iter().map(|a| json!({ "poll_media": { "text": a } })).collect::<Vec<_>>(),
+        "duration": d.hours,
+        "allow_multiselect": d.multi,
+        "layout_type": 1,
+    });
     body
 }
 
@@ -392,6 +412,18 @@ mod tests {
         assert_eq!(b["nonce"], "7");
         // A forward out of a DM has no guild.
         assert!(forward_body(Id(9), "7", Id(5), Id(6), None)["message_reference"].get("guild_id").is_none());
+    }
+
+    #[test]
+    fn poll_body_has_no_content_and_always_a_duration() {
+        let d = PollDraft { question: "Best?".into(), answers: vec!["A".into(), "B".into()], hours: 72, multi: true };
+        let b = poll_body(Id(9), "7", &d);
+        assert!(b.get("content").is_none());
+        assert_eq!(b["nonce"], "7");
+        assert_eq!(
+            b["poll"],
+            json!({"question":{"text":"Best?"},"answers":[{"poll_media":{"text":"A"}},{"poll_media":{"text":"B"}}],"duration":72,"allow_multiselect":true,"layout_type":1})
+        );
     }
 
     #[test]

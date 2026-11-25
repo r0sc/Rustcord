@@ -260,7 +260,7 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   order, e.g. `channel:<group dm id>,toast`. Social / server / settings surfaces (no request is
   sent by the hook; an opened view sends its one fetch, answered "Not connected" offline):
   `settings:<page>`, `settings-search:<text>` (the settings sidebar search filled in), `server-settings[:<page>|role-<id>|channel-<id>]`, `server-menu`,
-  `friends`, `inbox`, `threads`, `thread:<id>`, `card:<user id>`, `modal:<name>` (`modal:forward` = Forward on the newest message of the open channel), `confirm`; see
+  `friends`, `inbox`, `threads`, `thread:<id>`, `card:<user id>`, `modal:<name>` (`modal:forward` = Forward on the newest message of the open channel, `modal:create-poll`), `confirm`; see
   `docs/SOCIAL_UI_DESIGN.md`. `modal:apply` / `modal:apply-rules`: the join form for the open
   server with sample questions / its rules only (no fetch).
 - `RUSTCORD_PLUGINS=all|<Name>,<Name>`: switches those plugins on for this run (`plugins::apply_env`),

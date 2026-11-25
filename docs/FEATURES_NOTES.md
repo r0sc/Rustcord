@@ -341,7 +341,7 @@ Provider is **Klipy** (LIVE responses point to `static.klipy.com`; Tenor's API s
 - **Vote:** `PUT /channels/{c}/polls/{m}/answers/@me {"answer_ids":[1]}` (empty array clears) → 204; events `MESSAGE_POLL_VOTE_ADD/REMOVE {user_id, channel_id, message_id, guild_id?, answer_id}`. Voters: `GET /channels/{c}/polls/{m}/answers/{answer_id}?after=&limit=`. End early (author): `POST /channels/{c}/polls/{m}/expire`. Source: https://docs.discord.food/resources/message (poll endpoints).
 - **Create poll:** message with `"poll":{"question":{"text"},"answers":[{"poll_media":{"text","emoji"?}}],"duration":24,"allow_multiselect":false,"layout_type":1}` (`duration` in hours, default 1, max 32 days; question ≤300 chars, answer ≤55 chars, up to 10 answers; UD message.mdx poll create object). Needs SEND_POLLS (1<<49).
 
-**Checklist:** [ ] sticker tab in picker + `sticker_ids` send [ ] poll rendering with results bar, vote/unvote, voter list [ ] create-poll dialog
+**Checklist:** [ ] sticker tab in picker + `sticker_ids` send [x] poll rendering with results bar, vote/unvote, voter list [x] create-poll dialog (no answer emoji; no "end poll now")
 
 ## 1.12 Apps: slash commands, buttons, selects, modals (gap not covered by the drafts)
 
@@ -848,6 +848,7 @@ Mark As Read | Invite to Server | Mute Server ▸ (15 min / 1 h / 3 h / 8 h / 24
 - Forward + content in one request (Rustcord sends none).
 - Forwarding a message that is itself a forward (Rustcord hides the action).
 - POLL_RESULT (type 46): whether its `message_reference` points at the poll.
+- SEND_POLLS in DMs (Rustcord offers Create poll there and lets the server answer).
 - Poll voters are fetched with limit=100 (the documented maximum; the default is 25).
 - Poll vote echo to my own sessions (a vote of mine is counted once, from the click).
 - Search GET vs `/search/tabs` in today's client; forum listing sequence (search vs sync + post-data); op 28 payload; forum ack on view.

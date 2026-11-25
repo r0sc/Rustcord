@@ -241,6 +241,8 @@ pub enum Modal {
     Media,
     /// forward.rs: forward a message to one channel or DM.
     Forward { channel_id: Id, message_id: Id },
+    /// polls.rs: create a poll in `channel_id` (its draft lives in `ViewState::polls_ui`).
+    CreatePoll { channel_id: Id },
 }
 
 /// A pending confirmation: `show_modals` asks, `then` goes out on the danger button.
@@ -518,8 +520,9 @@ impl RustcordApp {
                         self.view.toast(msg, true);
                     }
                 }
-                // The Forward dialog answers its own request.
+                // The Forward and Create poll dialogs answer their own requests.
                 BackendEvent::Chat(ChatEvent::Forwarded { dest, result }) => forward::answered(&mut self.view, &self.state, dest, result),
+                BackendEvent::Chat(ChatEvent::PollPosted { channel_id, result }) => polls::posted(&mut self.view, channel_id, result),
                 // Chat essentials (pins, search, GIFs, uploads…) live in AppState::chat.
                 BackendEvent::Chat(ev) => {
                     // Plugins (MessageLinkEmbeds) take the answers to their own fetches.
@@ -1303,6 +1306,7 @@ pub fn show_modals(ctx: &egui::Context, cx: &mut UiCx<'_>) {
         Some(Modal::JoinApplication { guild_id }) => server_menu::join_application_modal(ctx, cx, guild_id),
         Some(Modal::Media) => viewer::lightbox(ctx, cx),
         Some(Modal::Forward { channel_id, message_id }) => forward::modal(ctx, cx, channel_id, message_id),
+        Some(Modal::CreatePoll { channel_id }) => polls::create_modal(ctx, cx, channel_id),
         // A server just joined from its tag card wants its rules accepted first.
         None => {
             if let Some(g) = cx.state.account.verify_after_join.take() {
@@ -1584,6 +1588,7 @@ fn demo_modal(state: &AppState, name: &str) -> Option<Modal> {
     let user = || state.users.keys().filter(|&&u| Some(u) != me && Some(u) != owner).min().copied();
     Some(match name {
         "create-thread" => Modal::CreateThread { channel_id: ch?, from_message: None },
+        "create-poll" => Modal::CreatePoll { channel_id: ch? },
         "new-post" => Modal::NewForumPost { forum_id: ch? },
         "profile" => Modal::Profile { user_id: user()?, guild_id: g },
         "group-dm" => Modal::GroupDm { channel_id: None },

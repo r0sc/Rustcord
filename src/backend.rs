@@ -164,6 +164,19 @@ pub enum ChatCommand {
     /// Who voted for an answer: `GET /channels/{c}/polls/{m}/answers/{a}?limit=100[&after=]`
     /// -> `PollVoters`.
     FetchPollVoters { channel_id: Id, message_id: Id, answer_id: u32, after: Option<Id> },
+    /// Create a poll: `POST /channels/{c}/messages` with `poll` and no content -> `PollPosted`
+    /// (MESSAGE_CREATE brings the poll).
+    SendPoll { channel_id: Id, nonce: String, poll: PollDraft },
+}
+
+/// A poll as the create dialog sends it: trimmed, empty answers dropped.
+#[derive(Debug, Clone)]
+pub struct PollDraft {
+    pub question: String,
+    pub answers: Vec<String>,
+    /// How long it runs, in hours (always sent: the documented default differs).
+    pub hours: u32,
+    pub multi: bool,
 }
 
 /// One attachment of `ChatCommand::SendWithFiles`.
@@ -273,6 +286,8 @@ pub enum ChatEvent {
     /// `PollVote` failed: put my votes back to `restore`.
     PollVoteFailed { channel_id: Id, message_id: Id, restore: Vec<u32>, error: String },
     PollVoters { channel_id: Id, message_id: Id, answer_id: u32, after: Option<Id>, result: Result<Vec<User>, String> },
+    /// Answer of `SendPoll`.
+    PollPosted { channel_id: Id, result: Result<(), String> },
 }
 
 /// Social requests (FEATURES_NOTES Part 2). Each is the direct result of one user action; none
@@ -1513,6 +1528,15 @@ fn handle_chat(cmd: ChatCommand, session: &mut Option<Session>, sink: &EventSink
             move |api| async move { api.poll_voters(channel_id, message_id, answer_id, after).await },
             move |result| Some(chat_ev(ChatEvent::PollVoters { channel_id, message_id, answer_id, after, result })),
         ),
+        C::SendPoll { channel_id, nonce, poll } => {
+            chat.typing.reset(channel_id);
+            rest(
+                session,
+                sink,
+                move |api| async move { api.send_poll(channel_id, &nonce, &poll).await },
+                move |result| Some(chat_ev(ChatEvent::PollPosted { channel_id, result })),
+            );
+        }
     }
 }
 
@@ -2742,6 +2766,8 @@ mod tests {
         run(ChatCommand::Forward { channel_id: Id(1), guild_id: None, message_id: Id(2), dest: Id(3), nonce: "n".into() });
         run(ChatCommand::PollVote { channel_id: Id(1), message_id: Id(2), answer_ids: vec![1], restore: vec![2] });
         run(ChatCommand::FetchPollVoters { channel_id: Id(1), message_id: Id(2), answer_id: 3, after: None });
+        let poll = PollDraft { question: "Q?".into(), answers: vec!["a".into(), "b".into()], hours: 24, multi: false };
+        run(ChatCommand::SendPoll { channel_id: Id(1), nonce: "n".into(), poll });
         let evs: Vec<BackendEvent> = rx.try_iter().collect();
         assert!(matches!(&evs[0], BackendEvent::Chat(ChatEvent::PinsLoaded { result: Err(_), .. })), "{evs:?}");
         assert!(matches!(&evs[1], BackendEvent::SendResult { result: Err(_), .. }));
@@ -2749,7 +2775,8 @@ mod tests {
         assert!(matches!(&evs[3], BackendEvent::Chat(ChatEvent::Forwarded { dest: Id(3), result: Err(_) })));
         assert!(matches!(&evs[4], BackendEvent::Chat(ChatEvent::PollVoteFailed { restore, .. }) if restore == &[2]));
         assert!(matches!(&evs[5], BackendEvent::Chat(ChatEvent::PollVoters { answer_id: 3, result: Err(_), .. })));
-        assert_eq!(evs.len(), 6, "typing and member search stay silent offline");
+        assert!(matches!(&evs[6], BackendEvent::Chat(ChatEvent::PollPosted { channel_id: Id(1), result: Err(_) })));
+        assert_eq!(evs.len(), 7, "typing and member search stay silent offline");
     }
 
     #[tokio::test]

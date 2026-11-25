@@ -705,6 +705,10 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
   role (600, muted) and the vote count in meta; rows 32 tall with an avatar 24 and the name body
   15/500, `hover` fill, a click opens the profile; "Show more" (Ghost) pages by 100, a failure
   shows the error and a small Retry.
+- Create dialog (520 wide, composer "+" menu, needs SEND_POLLS): Question (300), Answers (55 each,
+  2 to start, up to 10, a Close button on each from the third on, Ghost "Add answer"), Duration
+  (1 hour to 2 weeks, default 24 hours), the "Allow multiple answers" switch, and the one Primary
+  button "Post". Answers can't carry an emoji here.
 - **Poll result** (the message Discord posts when a poll ends): `surface`, control radius, 12
   padding, at most 440 wide. `Poll` 16 and "Poll closed" in meta `text_muted`, the question body
   15/600, then `Check` 16 with the winner (ui 14/500) and "9 votes, 45%" in meta, or "The poll ended

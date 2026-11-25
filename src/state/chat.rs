@@ -244,7 +244,7 @@ impl AppState {
                 return Some(format!("Could not vote: {error}"));
             }
             // Answered by the UI (ui/mod.rs).
-            E::Forwarded { .. } => {}
+            E::Forwarded { .. } | E::PollPosted { .. } => {}
         }
         None
     }

@@ -140,6 +140,7 @@ pub mod perm {
     pub const CREATE_PUBLIC_THREADS: u64 = 1 << 35;
     pub const CREATE_PRIVATE_THREADS: u64 = 1 << 36;
     pub const SEND_MESSAGES_IN_THREADS: u64 = 1 << 38;
+    pub const SEND_POLLS: u64 = 1 << 49;
     pub const BYPASS_SLOWMODE: u64 = 1 << 52;
     // Server administration (FEATURES_NOTES Part 3).
     pub const CREATE_INSTANT_INVITE: u64 = 1 << 0;

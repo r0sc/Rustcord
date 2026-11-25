@@ -14,6 +14,7 @@
 //! OWNERSHIP: composer engineer.
 
 use super::autocomplete::{self, Row};
+use super::icons::Icon;
 use super::messages::{channel_prefix, demo, icon_button, menu_item, menu_setup, message_member, overlay_open, small_button, status_chip, MenuIcon, Pal, COUNTER_FROM};
 use super::pickers::{self, Pick, Tab};
 use super::{images, one_line, sidebar, UiCx};
@@ -186,6 +187,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
     let offline = cx.state.conn == ConnState::Offline && !demo("online");
     let wait_ms = slowmode_wait(cx, ch).max(cooldown_ms(cx, ch, Instant::now()));
     let can_attach = cx.state.channels.get(&ch).is_some_and(|c| c.guild_id.is_none()) || cx.state.channel_permissions(ch) & perm::ATTACH_FILES != 0;
+    let can_poll = cx.state.channel_permissions(ch) & perm::SEND_POLLS != 0;
     let now = ctx.input(|i| i.time);
 
     // Focus the input when the channel changes, a reply starts or an inline edit here ends.
@@ -229,7 +231,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
         _ => len_before,
     };
     let picker_tab = pickers::open_tab(&ctx);
-    let (mut toggle, mut pick_files, mut new_thread) = (None, false, false);
+    let (mut toggle, mut pick_files, mut new_thread, mut new_poll) = (None, false, false, false);
     let thread_ok = super::threads::has_threads(kind) && cx.state.can_create_thread(ch, false);
     let mut member_query = None;
     let ac_id = edit_id.with("ac");
@@ -280,14 +282,16 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
                         status_chip(ui, &pal, Some(pal.muted), "Offline", pal.muted).on_hover_text("Offline – sending disabled until reconnected");
                     }
                     ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                        if can_attach {
+                        if can_attach || can_poll {
                             ui.spacing_mut().item_spacing.x = 12.0;
-                            let plus = slot_button(ui, row_h, |ui| painted_button(ui, &pal, "Upload a file", false, paint_plus));
+                            let tip = if can_attach { "Upload a file" } else { "Create poll" };
+                            let plus = slot_button(ui, row_h, |ui| painted_button(ui, &pal, tip, false, paint_plus));
                             // Fully above the box with 8 px of air (Discord), whatever sits above the row.
                             egui::Popup::menu(&plus).align(RectAlign::TOP_START).gap(plus.rect.top() - card_top + 8.0).show(|ui| {
                                 menu_setup(ui);
-                                pick_files = menu_item(ui, "Upload a file", MenuIcon::Glyph("📎"), pal.text);
+                                pick_files = can_attach && menu_item(ui, "Upload a file", MenuIcon::Glyph("📎"), pal.text);
                                 new_thread = thread_ok && menu_item(ui, "Create thread", MenuIcon::Glyph("🧵"), pal.text);
+                                new_poll = can_poll && menu_item(ui, "Create poll", MenuIcon::Icon(Icon::Poll), pal.text);
                             });
                         }
                         let state = &*cx.state;
@@ -449,6 +453,9 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
     }
     if new_thread {
         super::threads::open_create(cx, ch, None);
+    }
+    if new_poll {
+        super::polls::open_create(cx, ch);
     }
     // The one blocking call the UI allows: the user's own file dialog.
     if pick_files && let Some(paths) = rfd::FileDialog::new().set_title("Upload a file").pick_files() {
