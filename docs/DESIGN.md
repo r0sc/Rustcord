@@ -934,6 +934,7 @@ Playing                                     <- label role: "Playing" / "Listenin
 - Page title in the title role.
 - Section heading in the heading role with 32 above. No rule under it (ui/mod.rs:1292 `section`).
 - Notifications page order: Desktop notifications, Flash the taskbar, Quiet hours, (Keyword alerts), Sounds, Discord's synced groups, Servers. "Quiet hours": a switch row; when on, "From" [time] "to" [time] (two 96 px combos in 30-minute steps), then seven day check rows (Mon to Sun). An error line in `danger`, meta size, under them: "Pick an end time different from the start." or "Pick at least one day."
+- Account popout: directly under the status row a pause row ("Pause notifications", "Paused until 14:30" or "Quiet hours until 07:00"), a bell (muted: bell off) at x+16 and the submenu arrow. Its flyout (same helper as the status flyout, 188 px, 32 px items): "For 1 hour", "Until tomorrow", and "Resume notifications" only while paused. A pick toasts the result and closes the popout.
 - Notifications > Sounds: section "Sounds", the "Play sounds" switch row, a "Volume" label with a slider (a release plays the message sound), then a row per sound (title, optional meta) with a 28 px play button, 8 px, and a switch on the right. Play buttons are disabled while deafened (a hint says so); the rows are disabled while Play sounds is off.
 - Setting row:
   - left: title ui 14/500 and a meta `text_muted` description
@@ -960,7 +961,7 @@ Playing                                     <- label role: "Playing" / "Listenin
   - "Third-party clients can break Discord's Terms of Service."
 
 **Desktop surfaces** (owned by the desktop spec; these are the copy and look rules only)
-- **Tray menu:** "Open Rustcord", "Quit Rustcord". Tooltip "Rustcord".
+- **Tray menu:** "Open Rustcord", Mute, Deafen, "Pause notifications for 1 hour", "Pause notifications until tomorrow", "Resume notifications" (greyed unless paused), "Quit Rustcord". Tooltip "Rustcord".
 - **App settings > Windows:**
   - "Minimize to tray when I close the window". Description: "Rustcord keeps running in the
     notification area. Quit it from the tray icon."

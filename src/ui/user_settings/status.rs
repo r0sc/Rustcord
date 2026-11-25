@@ -241,6 +241,27 @@ fn emoji_grid(ui: &mut egui::Ui, pal: &Pal, query: &mut String, frequent: &[(Str
     picked
 }
 
+/// A submenu flyout beside `row`: opens on hover or click, closes once the pointer leaves the
+/// row and the flyout (the account popout's status and pause rows).
+fn flyout(ctx: &egui::Context, id: egui::Id, row: Rect, resp: &egui::Response, layer: egui::LayerId, add: impl FnOnce(&mut egui::Ui)) {
+    let open = egui::Popup::is_id_open(ctx, id);
+    let near = ctx.memory(|m| m.area_rect(id)).map_or(row, |r| row.union(r)).expand(6.0);
+    let away = open && ctx.pointer_hover_pos().is_some_and(|p| !near.contains(p));
+    let cmd = if resp.hovered() || resp.clicked() { Some(egui::SetOpenCommand::Bool(true)) } else { away.then_some(egui::SetOpenCommand::Bool(false)) };
+    egui::Popup::new(id, ctx.clone(), row, layer)
+        .kind(egui::PopupKind::Menu)
+        .style(egui::containers::menu::menu_style)
+        .open_memory(cmd)
+        .align(egui::RectAlign::RIGHT_START)
+        .align_alternatives(&[egui::RectAlign::LEFT_START])
+        .gap(16.0)
+        .show(|ui| {
+            ui.set_width(188.0);
+            ui.spacing_mut().item_spacing.y = 0.0;
+            add(ui);
+        });
+}
+
 /// Lower part of the account popout (my card above the user panel): one row with my status
 /// (icon, name, ▸) whose flyout on the right lists the statuses I can pick (mine checked; it
 /// opens on hover or click; a pick is saved with `SetPersistentStatus` and closes the popout),
@@ -259,8 +280,11 @@ pub(in crate::ui) fn account_popout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &
         None => (None, None),
     };
     let ctx = ui.ctx().clone();
-    let flyout = egui::Id::unique("rc_status_flyout");
+    let flyout_id = egui::Id::unique("rc_status_flyout");
     let mut picked = None;
+    // The pause flyout's pick: Some(Some(t)) pause until t, Some(None) resume.
+    let mut pause_pick: Option<Option<DateTime<chrono::Local>>> = None;
+    let now = chrono::Local::now();
     let (mut edit_status, mut clear_status, mut edit, mut copy_id) = (false, false, false, false);
     // A 32 px menu row (§9 menus, ui 14/500): hover fill concentric with its group, the label at
     // x 32; `open` keeps the fill (its flyout is open).
@@ -276,50 +300,68 @@ pub(in crate::ui) fn account_popout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &
     Frame::new().inner_margin(Margin { left: 12, right: 12, top: 0, bottom: 12 }).show(ui, |ui| {
         Frame::new().fill(pal.bg).corner_radius(pal.radius).inner_margin(4).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let open = egui::Popup::is_id_open(&ctx, flyout);
+            let open = egui::Popup::is_id_open(&ctx, flyout_id);
             let (row_rect, fill, resp) = row(ui, label, open, 24.0);
             paint_status(ui.painter(), pos2(row_rect.left() + 16.0, row_rect.center().y), 5.0, presence, &c, fill);
             let arrow = Rect::from_center_size(pos2(row_rect.right() - 14.0, row_rect.center().y), Vec2::splat(14.0));
             ui.painter().add(egui::containers::menu::SubMenuButton::arrow_shape(arrow, pal.muted));
             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Status: {label}")));
-            // Open on hover or click; close once the pointer leaves the row and the flyout.
-            let near = ctx.memory(|m| m.area_rect(flyout)).map_or(row_rect, |r| row_rect.union(r)).expand(6.0);
-            let away = open && ctx.pointer_hover_pos().is_some_and(|p| !near.contains(p));
-            let cmd = if resp.hovered() || resp.clicked() { Some(egui::SetOpenCommand::Bool(true)) } else { away.then_some(egui::SetOpenCommand::Bool(false)) };
-            egui::Popup::new(flyout, ctx.clone(), row_rect, ui.layer_id())
-                .kind(egui::PopupKind::Menu)
-                .style(egui::containers::menu::menu_style)
-                .open_memory(cmd)
-                .align(egui::RectAlign::RIGHT_START)
-                .align_alternatives(&[egui::RectAlign::LEFT_START])
-                .gap(16.0)
-                .show(|ui| {
-                    ui.set_width(188.0);
-                    ui.spacing_mut().item_spacing.y = 0.0;
-                    for s in [UserStatus::Online, UserStatus::Idle, UserStatus::Dnd, UserStatus::Invisible] {
-                        let (row, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
-                        let bg = ui.visuals().window_fill;
-                        let fill = if resp.hovered() || resp.has_focus() { ui.visuals().widgets.hovered.weak_bg_fill } else { bg };
-                        ui.painter().rect_filled(row, item_r, fill);
-                        paint_status(ui.painter(), pos2(row.left() + 14.0, row.center().y), 5.0, s.presence(), &c, fill);
-                        let label = status_label(s);
-                        // The app's menu colours: `pal` may be a themed card's (cosmetics::theme_pal).
-                        let text = ui.visuals().text_color();
-                        ui.painter().text(pos2(row.left() + 30.0, row.center().y), Align2::LEFT_CENTER, label, FontId::new(pal.ui(), crate::theme::medium_family()), text);
-                        if current_status == Some(s) {
-                            icons::paint(ui.painter(), Icon::Check, Rect::from_center_size(pos2(row.right() - 18.0, row.center().y), Vec2::splat(16.0)), text, fill);
-                        }
-                        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, current_status == Some(s), label));
-                        let resp = match s {
-                            UserStatus::Invisible => resp.on_hover_text("You will appear offline"),
-                            UserStatus::Dnd => resp.on_hover_text("You will not receive desktop notifications"),
-                            _ => resp,
-                        };
-                        if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                            picked = Some(s);
-                        }
+            flyout(&ctx, flyout_id, row_rect, &resp, ui.layer_id(), |ui| {
+                for s in [UserStatus::Online, UserStatus::Idle, UserStatus::Dnd, UserStatus::Invisible] {
+                    let (row, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
+                    let bg = ui.visuals().window_fill;
+                    let fill = if resp.hovered() || resp.has_focus() { ui.visuals().widgets.hovered.weak_bg_fill } else { bg };
+                    ui.painter().rect_filled(row, item_r, fill);
+                    paint_status(ui.painter(), pos2(row.left() + 14.0, row.center().y), 5.0, s.presence(), &c, fill);
+                    let label = status_label(s);
+                    // The app's menu colours: `pal` may be a themed card's (cosmetics::theme_pal).
+                    let text = ui.visuals().text_color();
+                    ui.painter().text(pos2(row.left() + 30.0, row.center().y), Align2::LEFT_CENTER, label, FontId::new(pal.ui(), crate::theme::medium_family()), text);
+                    if current_status == Some(s) {
+                        icons::paint(ui.painter(), Icon::Check, Rect::from_center_size(pos2(row.right() - 18.0, row.center().y), Vec2::splat(16.0)), text, fill);
                     }
-                });
+                    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, current_status == Some(s), label));
+                    let resp = match s {
+                        UserStatus::Invisible => resp.on_hover_text("You will appear offline"),
+                        UserStatus::Dnd => resp.on_hover_text("You will not receive desktop notifications"),
+                        _ => resp,
+                    };
+                    if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                        picked = Some(s);
+                    }
+                }
+            });
+
+            // Pause notifications: a flyout with the same choices as the tray.
+            let (pause_label, quiet, paused) = {
+                let q = &cx.settings.quiet_hours;
+                match q.until(now) {
+                    Some(t) if q.paused(now.timestamp()) => (format!("Paused until {}", crate::alerts::time_label(t, now)), true, true),
+                    Some(t) => (format!("Quiet hours until {}", crate::alerts::time_label(t, now)), true, false),
+                    None => ("Pause notifications".to_owned(), false, false),
+                }
+            };
+            let pause_id = egui::Id::unique("rc_pause_flyout");
+            let open = egui::Popup::is_id_open(&ctx, pause_id);
+            let (r, fill, resp) = row(ui, &pause_label, open, 24.0);
+            let bell = if quiet { Icon::BellOff } else { Icon::Bell };
+            icons::paint(ui.painter(), bell, Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), Vec2::splat(18.0)), pal.muted, fill);
+            let arrow = Rect::from_center_size(pos2(r.right() - 14.0, r.center().y), Vec2::splat(14.0));
+            ui.painter().add(egui::containers::menu::SubMenuButton::arrow_shape(arrow, pal.muted));
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, pause_label.clone()));
+            flyout(&ctx, pause_id, r, &resp, ui.layer_id(), |ui| {
+                let choices = [("For 1 hour", Some(now + chrono::TimeDelta::hours(1))), ("Until tomorrow", Some(crate::alerts::tomorrow_morning(now))), ("Resume notifications", None)];
+                for (label, until) in choices.into_iter().filter(|c| paused || c.1.is_some()) {
+                    let (row, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
+                    let fill = if resp.hovered() || resp.has_focus() { ui.visuals().widgets.hovered.weak_bg_fill } else { ui.visuals().window_fill };
+                    ui.painter().rect_filled(row, item_r, fill);
+                    ui.painter().text(pos2(row.left() + 12.0, row.center().y), Align2::LEFT_CENTER, label, FontId::new(pal.ui(), crate::theme::medium_family()), ui.visuals().text_color());
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::MenuItem, true, label));
+                    if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                        pause_pick = Some(until);
+                    }
+                }
+            });
 
             // My custom status (click edits it, × clears it), or Set custom status.
             let label = custom.as_deref().unwrap_or("Set custom status");
@@ -363,6 +405,14 @@ pub(in crate::ui) fn account_popout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &
         // against the FEATURES_NOTES §3.1 vectors (api/settings_proto.rs `vectors_*`).
         cx.cmd.send(Command::Chat(ChatCommand::SetStatus { status, afk: false }));
         cx.cmd.send(Command::Account(AccountCommand::SetPersistentStatus { status }));
+        cx.view.profile_card = None;
+    }
+    if let Some(until) = pause_pick {
+        let toast = crate::alerts::pause(&mut cx.settings.quiet_hours, until, now);
+        cx.view.toast(toast, false);
+        if let Err(e) = cx.settings.save() {
+            cx.view.toast(format!("Could not save settings: {e}"), true);
+        }
         cx.view.profile_card = None;
     }
     if clear_status {

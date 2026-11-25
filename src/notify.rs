@@ -4,7 +4,8 @@
 //! Windows (windows-sys only, no extra crates), on the thread "rustcord-tray", which owns a
 //! hidden window:
 //! - The icon (the flat mark, icon resource 2) shows while Rustcord runs. A left click, or a
-//!   click on a balloon, opens the window; the right-click menu has Open Rustcord, Mute, Deafen
+//!   click on a balloon, opens the window; the right-click menu has Open Rustcord, Mute, Deafen,
+//!   the notification pause (1 hour, until tomorrow, Resume)
 //!   and Quit Rustcord. Clicks reach the UI thread as `TrayAction`s plus a repaint
 //!   (`take_actions`, read in `App::logic`, which also runs while the window is hidden).
 //! - Balloons are rate limited: one at a time, the rest summed up (`Coalescer`).
@@ -19,7 +20,7 @@
 //! OWNERSHIP: desktop engineer.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -43,6 +44,9 @@ pub enum TrayAction {
     Notification,
     ToggleMute,
     ToggleDeafen,
+    PauseHour,
+    PauseTomorrow,
+    Resume,
     Quit,
 }
 
@@ -50,6 +54,8 @@ static ACTIONS: Mutex<Vec<TrayAction>> = Mutex::new(Vec::new());
 static WAKE: OnceLock<egui::Context> = OnceLock::new();
 /// The panel's voice toggles, for the menu's check marks: bit 0 muted, bit 1 deafened.
 static VOICE: AtomicU8 = AtomicU8::new(0);
+/// Notifications are paused by hand: the tray menu's Resume is enabled.
+static PAUSED: AtomicBool = AtomicBool::new(false);
 
 /// Puts the icon in the notification area / menu bar (once, at startup, on the main thread).
 /// Tray clicks wake `ctx`.
@@ -125,7 +131,18 @@ pub fn set_voice_state(muted: bool, deafened: bool) {
     let changed = VOICE.swap(bits, Ordering::Relaxed) != bits;
     #[cfg(unix)]
     if changed {
-        os::voice_changed();
+        os::menu_changed();
+    }
+    #[cfg(windows)]
+    let _ = changed;
+}
+
+/// Whether notifications are paused by hand, for the tray menu's Resume item.
+pub fn set_paused(on: bool) {
+    let changed = PAUSED.swap(on, Ordering::Relaxed) != on;
+    #[cfg(unix)]
+    if changed {
+        os::menu_changed();
     }
     #[cfg(windows)]
     let _ = changed;
@@ -272,7 +289,7 @@ mod imp {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         AllowSetForegroundWindow, AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW, FindWindowW,
-        GetMessageW, GetSystemMetrics, GetWindowThreadProcessId, HICON, IDI_APPLICATION, IMAGE_ICON, KillTimer, LR_SHARED, LoadIconW, LoadImageW, MF_CHECKED,
+        GetMessageW, GetSystemMetrics, GetWindowThreadProcessId, HICON, IDI_APPLICATION, IMAGE_ICON, KillTimer, LR_SHARED, LoadIconW, LoadImageW, MF_CHECKED, MF_GRAYED,
         MF_SEPARATOR, MF_STRING, MSG, PostMessageW, PostQuitMessage, RegisterClassExW, RegisterWindowMessageW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow,
         SetMenuDefaultItem, SetTimer, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenuEx, TranslateMessage, WM_APP, WM_CONTEXTMENU, WM_NULL, WM_TIMER, WM_USER,
         WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_POPUP,
@@ -293,6 +310,9 @@ mod imp {
     const ID_OPEN: usize = 1;
     const ID_MUTE: usize = 2;
     const ID_DEAFEN: usize = 3;
+    const ID_PAUSE_HOUR: usize = 5;
+    const ID_PAUSE_TOMORROW: usize = 6;
+    const ID_RESUME: usize = 7;
     const ID_QUIT: usize = 4;
 
     const NOT_STARTED: u8 = 0;
@@ -463,10 +483,15 @@ mod imp {
     fn menu(hwnd: HWND, x: i32, y: i32) {
         let voice = super::VOICE.load(SeqCst);
         let check = |on: bool| if on { MF_CHECKED } else { 0 };
+        let paused = super::PAUSED.load(SeqCst);
         let items = [
             (ID_OPEN, "Open Rustcord", MF_STRING),
             (ID_MUTE, "Mute", MF_STRING | check(voice & 1 != 0)),
             (ID_DEAFEN, "Deafen", MF_STRING | check(voice & 2 != 0)),
+            (0, "", MF_SEPARATOR),
+            (ID_PAUSE_HOUR, "Pause notifications for 1 hour", MF_STRING),
+            (ID_PAUSE_TOMORROW, "Pause notifications until tomorrow", MF_STRING),
+            (ID_RESUME, "Resume notifications", MF_STRING | if paused { 0 } else { MF_GRAYED }),
             (0, "", MF_SEPARATOR),
             (ID_QUIT, "Quit Rustcord", MF_STRING),
         ];
@@ -493,6 +518,9 @@ mod imp {
             ID_OPEN => push(TrayAction::Show),
             ID_MUTE => push(TrayAction::ToggleMute),
             ID_DEAFEN => push(TrayAction::ToggleDeafen),
+            ID_PAUSE_HOUR => push(TrayAction::PauseHour),
+            ID_PAUSE_TOMORROW => push(TrayAction::PauseTomorrow),
+            ID_RESUME => push(TrayAction::Resume),
             ID_QUIT => push(TrayAction::Quit),
             _ => {}
         }

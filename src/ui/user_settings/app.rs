@@ -292,6 +292,18 @@ pub(in crate::ui) fn logic(ctx: &egui::Context, view: &mut ViewState, cmd: &Comm
                 clicked = true;
             }
             TrayAction::ToggleMute | TrayAction::ToggleDeafen => toggle_voice(view, cmd, action == TrayAction::ToggleMute),
+            TrayAction::PauseHour | TrayAction::PauseTomorrow | TrayAction::Resume => {
+                let now = chrono::Local::now();
+                let until = match action {
+                    TrayAction::PauseHour => Some(now + chrono::TimeDelta::hours(1)),
+                    TrayAction::PauseTomorrow => Some(crate::alerts::tomorrow_morning(now)),
+                    _ => None,
+                };
+                view.toast(crate::alerts::pause(&mut settings.quiet_hours, until, now), false);
+                if let Err(e) = settings.save() {
+                    view.toast(format!("Could not save settings: {e}"), true);
+                }
+            }
             TrayAction::Quit => {
                 ctx.data_mut(|d| d.insert_temp(quitting, true));
                 ctx.send_viewport_cmd(ViewportCommand::Close);
@@ -316,6 +328,7 @@ pub(in crate::ui) fn logic(ctx: &egui::Context, view: &mut ViewState, cmd: &Comm
         }
     }
     crate::notify::set_voice_state(view.self_mute, view.self_deaf);
+    crate::notify::set_paused(settings.quiet_hours.paused(chrono::Utc::now().timestamp()));
     // Linux, macOS: push to talk from this window's keys (no global key state there).
     #[cfg(not(windows))]
     crate::voice::audio::set_ptt_held(view.window_focused && settings.push_to_talk && ctx.input(|i| super::voice::key_held(i, settings.push_to_talk_key)));

@@ -5,7 +5,7 @@
 //! which shows the window (winit has no reopen event).
 //! UNCONFIRMED: written against objc2's generated bindings, only `cargo check`ed (no Mac here).
 
-use super::{TrayAction, VOICE, push};
+use super::{PAUSED, TrayAction, VOICE, push};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::MainThreadMarker;
@@ -25,6 +25,7 @@ struct Tray {
     _icon: tray_icon::TrayIcon,
     mute: CheckMenuItem,
     deafen: CheckMenuItem,
+    resume: MenuItem,
     _observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
 }
 
@@ -44,12 +45,18 @@ fn build() -> Option<Tray> {
     let open = MenuItem::with_id("open", "Open Rustcord", true, None);
     let mute = CheckMenuItem::with_id("mute", "Mute", true, false, None);
     let deafen = CheckMenuItem::with_id("deafen", "Deafen", true, false, None);
+    let pause_hour = MenuItem::with_id("pause-hour", "Pause notifications for 1 hour", true, None);
+    let pause_tomorrow = MenuItem::with_id("pause-tomorrow", "Pause notifications until tomorrow", true, None);
+    let resume = MenuItem::with_id("resume", "Resume notifications", PAUSED.load(SeqCst), None);
     let quit = MenuItem::with_id("quit", "Quit Rustcord", true, None);
-    let menu = Menu::with_items(&[&open, &mute, &deafen, &PredefinedMenuItem::separator(), &quit]).ok()?;
+    let menu = Menu::with_items(&[&open, &mute, &deafen, &PredefinedMenuItem::separator(), &pause_hour, &pause_tomorrow, &resume, &PredefinedMenuItem::separator(), &quit]).ok()?;
     MenuEvent::set_event_handler(Some(|e: MenuEvent| match e.id.0.as_str() {
         "open" => push(TrayAction::Show),
         "mute" => push(TrayAction::ToggleMute),
         "deafen" => push(TrayAction::ToggleDeafen),
+        "pause-hour" => push(TrayAction::PauseHour),
+        "pause-tomorrow" => push(TrayAction::PauseTomorrow),
+        "resume" => push(TrayAction::Resume),
         "quit" => push(TrayAction::Quit),
         _ => {}
     }));
@@ -59,7 +66,7 @@ fn build() -> Option<Tray> {
     let icon = tray_icon::Icon::from_rgba(img.into_raw(), w, h).ok()?;
     let built = tray_icon::TrayIconBuilder::new().with_menu(Box::new(menu)).with_icon_templated(icon).with_tooltip(crate::config::APP_NAME).build();
     let icon = built.map_err(|e| eprintln!("rustcord: no menu bar icon: {e}")).ok()?;
-    Some(Tray { _icon: icon, mute, deafen, _observer: observe_activation() })
+    Some(Tray { _icon: icon, mute, deafen, resume, _observer: observe_activation() })
 }
 
 /// The app became active (Dock icon, notification, app switcher) while in the tray: show.
@@ -89,12 +96,13 @@ pub fn tray_failed() -> bool {
     STATE.load(SeqCst) == FAILED
 }
 
-pub fn voice_changed() {
+pub fn menu_changed() {
     let voice = VOICE.load(SeqCst);
     TRAY.with(|t| {
         if let Some(t) = t.borrow().as_ref() {
             t.mute.set_checked(voice & 1 != 0);
             t.deafen.set_checked(voice & 2 != 0);
+            t.resume.set_enabled(PAUSED.load(SeqCst));
         }
     });
 }

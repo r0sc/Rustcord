@@ -34,7 +34,7 @@ pub fn tray_failed() -> bool {
 }
 
 /// The menu re-reads the check marks from `VOICE`.
-pub fn voice_changed() {
+pub fn menu_changed() {
     if let Some(h) = HANDLE.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
         h.update(|_| ());
     }
@@ -113,6 +113,16 @@ impl ksni::Tray for RustcordTray {
             item("Open Rustcord", TrayAction::Show),
             check("Mute", voice & 1 != 0, TrayAction::ToggleMute),
             check("Deafen", voice & 2 != 0, TrayAction::ToggleDeafen),
+            ksni::MenuItem::Separator,
+            item("Pause notifications for 1 hour", TrayAction::PauseHour),
+            item("Pause notifications until tomorrow", TrayAction::PauseTomorrow),
+            StandardItem {
+                label: "Resume notifications".into(),
+                enabled: super::PAUSED.load(SeqCst),
+                activate: Box::new(|_: &mut Self| push(TrayAction::Resume)),
+                ..Default::default()
+            }
+            .into(),
             ksni::MenuItem::Separator,
             item("Quit Rustcord", TrayAction::Quit),
         ]
