@@ -1110,14 +1110,23 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
     let (channels_w, max_w) = channel_list_width(width, right, cx.view.channel_list_w);
     let edge = sidebar::line(&c);
     frame_stats::time("title", || title_bar(ui, cx, up));
-    // Full-screen layers.
+    // Full-screen layers: they fade in and settle 0.98 -> 1 over LARGE (§7); closing is instant.
+    let shown = motion::anim(ui.ctx(), egui::Id::unique("rc_settings_layer"), cx.view.chat_hidden(), motion::LARGE, 0.0);
     if cx.view.chat_hidden() {
         pickers::close_if_open(ui.ctx(), cx);
         cx.view.inbox_open = false;
         let page = egui::Frame::new().fill(fill.chat.to_color32());
+        // The wrapper stays at rest too: skipping it would change the widget ids under it.
+        let layer = |ui: &mut egui::Ui, add: &mut dyn FnMut(&mut egui::Ui)| {
+            let o = ui.max_rect().center();
+            ui.with_visual_transform(motion::about(o, egui::lerp(0.98..=1.0, shown)), |ui| {
+                ui.multiply_opacity(shown);
+                add(ui);
+            });
+        };
         match cx.view.server_settings.filter(|_| !cx.view.settings_open) {
-            Some((g, p)) => egui::CentralPanel::default().frame(page).show(ui, |ui| server_settings::show(ui, cx, g, p)),
-            None => egui::CentralPanel::default().frame(page).show(ui, |ui| user_settings::show(ui, cx)),
+            Some((g, p)) => egui::CentralPanel::default().frame(page).show(ui, |ui| layer(ui, &mut |ui| server_settings::show(ui, cx, g, p))),
+            None => egui::CentralPanel::default().frame(page).show(ui, |ui| layer(ui, &mut |ui| user_settings::show(ui, cx))),
         };
         return;
     }

@@ -14,6 +14,8 @@ use egui::{AreaState, Color32, Context, Id, LayerId, Order, Pos2, Ui};
 pub const FAST: f32 = 0.12;
 /// Modals, the lightbox, toasts.
 pub const BASE: f32 = 0.20;
+/// Settings layers, the title-bar update pill, the login error shake.
+pub const LARGE: f32 = 0.30;
 /// Exits take this share of the entry (principle 18).
 pub const OUT: f32 = 0.5;
 /// Floats and modals grow from this scale (principle 11).
@@ -61,6 +63,13 @@ pub fn opened(ctx: &Context, layer: LayerId, s: f32) -> f32 {
         ctx.request_repaint();
     }
     ease(lin.min(1.0))
+}
+
+/// 0 -> 1 while `on`, eased out over `open` s; back over `close` s along the same curve (an
+/// ease-in exit); turns around mid-way without a jump. The first call returns the end value:
+/// nothing animates on the first frame it is drawn.
+pub fn anim(ctx: &Context, id: Id, on: bool, open: f32, close: f32) -> f32 {
+    ease(ctx.animate_bool_with_time(id, on, secs(ctx, if on { open } else { close })))
 }
 
 #[derive(Clone, Default)]
@@ -201,6 +210,21 @@ mod tests {
     fn block(ui: &mut Ui) {
         let (r, _) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
         ui.painter().rect_filled(r, 0.0, Color32::WHITE);
+    }
+
+    #[test]
+    fn anim_starts_at_rest_runs_and_stops() {
+        let ctx = Context::default();
+        let id = Id::unique("anim");
+        let (first, _) = run(&ctx, 0.0, 0.0, |c| anim(c, id, true, LARGE, 0.0));
+        assert_eq!(first, 1.0, "the first call is the end value");
+        run(&ctx, 0.1, 0.0, |c| anim(c, id, false, LARGE, 0.0));
+        let (mid, busy) = run(&ctx, 0.2, 0.1, |c| anim(c, id, true, LARGE, 0.0));
+        assert!(mid > 0.0 && mid < 1.0 && busy);
+        let (end, busy) = run(&ctx, 0.4, 0.5, |c| anim(c, id, true, LARGE, 0.0));
+        assert!(end == 1.0 && !busy);
+        let (shut, _) = run(&ctx, 1.0, 0.0, |c| anim(c, id, false, LARGE, 0.0));
+        assert_eq!(shut, 0.0, "a zero close time is instant");
     }
 
     #[test]
