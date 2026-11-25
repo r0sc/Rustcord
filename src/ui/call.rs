@@ -41,12 +41,14 @@ const GAP: f32 = 8.0;
 const MIN_TILE_W: f32 = 176.0;
 /// The text chat beside the stage.
 const CHAT_W: f32 = super::THREAD_PANEL_W;
-/// The stage is dark in every theme, like a video player; tiles and buttons a shade lighter.
-const STAGE: Color32 = Color32::from_rgb(14, 12, 12);
-const TILE: Color32 = Color32::from_rgb(38, 34, 33);
-const BUTTON: Color32 = Color32::from_rgb(56, 51, 50);
-const FG: Color32 = Color32::from_gray(238);
-const FG_MUTED: Color32 = Color32::from_gray(170);
+/// The stage is violet-black in every theme, like a video player; tiles and buttons a shade
+/// lighter, the control bar's dock between them.
+const STAGE: Color32 = Color32::from_rgb(0x05, 0x04, 0x07);
+const TILE: Color32 = Color32::from_rgb(0x1C, 0x1A, 0x24);
+const BUTTON: Color32 = Color32::from_rgb(0x2A, 0x28, 0x33);
+const DOCK: Color32 = Color32::from_rgb(0x11, 0x10, 0x17);
+const FG: Color32 = Color32::from_rgb(0xF0, 0xEE, 0xF6);
+const FG_MUTED: Color32 = Color32::from_rgb(0xA8, 0xA5, 0xB6);
 
 /// Call view state (`ViewState::call_ui`).
 #[derive(Default)]
@@ -639,11 +641,12 @@ impl MediaButton<'_> {
         let resp = ui.interact(rect, ui.make_persistent_id(salt), if self.enabled { Sense::click() } else { Sense::hover() });
         let rect = super::motion::pressed(&resp, rect);
         let hot = self.enabled && (resp.hovered() || resp.has_focus());
-        let fill = if self.red { danger } else if self.on { fg } else { base };
+        // Muted: the danger icon on a faint danger wash.
+        let fill = if self.red { danger } else if self.on { fg } else if self.slashed { base.blend(danger.gamma_multiply(0.12)) } else { base };
         let bg = match (self.red || self.on, hot) {
             (_, false) => fill,
             (true, true) => fill.lerp_to_gamma(base, 0.15),
-            (false, true) => base.lerp_to_gamma(fg, 0.12),
+            (false, true) => fill.lerp_to_gamma(fg, 0.12),
         };
         let alpha = if self.enabled { 1.0 } else { 0.4 };
         let p = ui.painter();
@@ -716,6 +719,14 @@ fn controls(ui: &mut egui::Ui, cx: &mut UiCx<'_>, bar: Rect) {
     let total: f32 = widths.iter().sum::<f32>() + gaps.iter().sum::<f32>();
     let mut x = bar.center().x - total / 2.0;
     let colors = (BUTTON, FG, cx.theme.colors.danger.to_color32());
+    // The dock: a pill behind the row, 8 px wider on each side (a floating video-player bar).
+    let dock = Rect::from_center_size(bar.center(), vec2(total + 16.0 * s, 48.0 * s + 8.0));
+    let round = dock.height() / 2.0;
+    let p = ui.painter();
+    p.add(egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(153) }.as_shape(dock, round));
+    p.rect_filled(dock, round, DOCK);
+    p.rect_stroke(dock, round, Stroke::new(1.0, Color32::from_white_alpha(20)), StrokeKind::Inside);
+    p.hline(dock.left() + round..=dock.right() - round, dock.top() + 1.5, Stroke::new(1.0, Color32::from_white_alpha(15)));
     let mut clicked = None;
     for (i, b) in buttons.iter().enumerate() {
         let rect = Rect::from_min_size(pos2(x, bar.center().y - 24.0 * s), vec2(widths[i], 48.0 * s));

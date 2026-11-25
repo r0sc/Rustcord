@@ -22,10 +22,10 @@ use egui::{Align2, Color32, CursorIcon, Rect, Role, Sense, Stroke, Vec2, WidgetI
 use std::time::{Duration, Instant};
 
 /// The dark stage of the call view (call.rs), in every theme.
-const STAGE: Color32 = Color32::from_rgb(14, 12, 12);
-const BUTTON: Color32 = Color32::from_rgb(56, 51, 50);
-const FG: Color32 = Color32::from_gray(238);
-const FG_MUTED: Color32 = Color32::from_gray(170);
+const STAGE: Color32 = Color32::from_rgb(0x05, 0x04, 0x07);
+const BUTTON: Color32 = Color32::from_rgb(0x2A, 0x28, 0x33);
+const FG: Color32 = Color32::from_rgb(0xF0, 0xEE, 0xF6);
+const FG_MUTED: Color32 = Color32::from_rgb(0xA8, 0xA5, 0xB6);
 /// The call area while I'm not in the call: a row of avatars over the Join buttons.
 const BANNER_H: f32 = 176.0;
 const AVATAR: f32 = 64.0;
