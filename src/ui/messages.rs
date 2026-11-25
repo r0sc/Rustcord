@@ -631,7 +631,13 @@ pub(super) fn name_color(cx: &UiCx<'_>, guild_id: Option<Id>, member: Option<&Me
 /// chat): the chat or a row that mentions me, with `message_row`'s hover fill. Hover moves it
 /// toward the text colour, so a name readable here is readable at rest too.
 fn row_bg(cx: &UiCx<'_>, pal: &Pal, msg: &Message) -> Color32 {
-    if cx.state.mentions_me(msg) { pal.bg.blend(pal.mention.blend(pal.tk.hover)) } else { pal.bg.blend(pal.hover) }
+    if for_me(cx, msg) { pal.bg.blend(pal.mention.blend(pal.tk.hover)) } else { pal.bg.blend(pal.hover) }
+}
+
+/// Mentions me or matches a keyword alert (crate::alerts): the row takes the mention look.
+// shortcut: matched per drawn row and pass (one lowercase copy of the text); memoize per message id if RUSTCORD_FRAME_STATS shows +chat growing with many keywords.
+fn for_me(cx: &UiCx<'_>, msg: &Message) -> bool {
+    cx.state.mentions_me(msg) || crate::alerts::matched(&cx.settings.keyword_alerts, cx.state, msg).is_some()
 }
 
 /// Small filled label ("Bot", "This is you").
@@ -1702,8 +1708,8 @@ fn message_block(
     } else if crate::plugins::message_logger::is_deleted(msg.id) {
         // MessageLogger: a deleted message keeps a faint red tint.
         shapes.push(Shape::rect_filled(rect, 0.0, pal.danger.gamma_multiply(if hovered { 0.16 } else { 0.1 })));
-    } else if system.is_none() && cx.state.mentions_me(msg) {
-        // Mentions me: the `mention_highlight` row and a 2 px straw (`attention`) bar.
+    } else if system.is_none() && for_me(cx, msg) {
+        // Mentions me or a keyword alert: the `mention_highlight` row and a 2 px straw (`attention`) bar.
         let tint = if hovered { pal.mention.blend(pal.tk.hover) } else { pal.mention };
         shapes.push(Shape::rect_filled(rect, 0.0, tint));
         shapes.push(Shape::rect_filled(Rect::from_min_size(rect.min, vec2(2.0, rect.height())), 0.0, pal.tk.attention));

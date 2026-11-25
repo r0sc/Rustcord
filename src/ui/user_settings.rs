@@ -154,7 +154,7 @@ impl Page {
             Page::VoiceVideo => ("Voice & video", "voice", "microphone speaker camera push to talk input output"),
             Page::Clips => ("Clips", "clips", "clips recording record voice"),
             Page::Chat => ("Chat", "chat", "text images embeds links media emoji reactions spoilers"),
-            Page::Notifications => ("Notifications", "notifications", "desktop taskbar push mute servers sound sounds ping ring ringtone volume quiet hours schedule pause snooze"),
+            Page::Notifications => ("Notifications", "notifications", "desktop taskbar push mute servers sound sounds ping ring ringtone volume keyword alerts words quiet hours schedule pause snooze"),
             Page::Keybinds => ("Keybinds", "keybinds", "shortcuts hotkeys keyboard"),
             Page::Language => ("Language", "language", "locale"),
             // One id on every OS; title and rows say Windows, Linux or macOS.
@@ -191,6 +191,9 @@ impl Page {
                 "Desktop notifications",
                 "Flash the taskbar",
                 "Quiet hours",
+                "Keyword alerts",
+                "Whole word",
+                "All servers",
                 "Sounds",
                 "Play sounds",
                 "Volume",
@@ -259,6 +262,8 @@ pub struct UserSettingsUi {
     /// Profiles page; None until it is first shown (that sends the one `FetchProfile`).
     profile: Option<account::ProfileForm>,
     voice: voice::VoiceForm,
+    /// Notifications > Keyword alerts drafts.
+    alerts: alerts::Form,
     /// Profile Cosmetics tab / search; lives as long as the login (like the catalog in state).
     cosmetics: cosmetics::Form,
     /// The sidebar's search text (per opening).
@@ -835,6 +840,7 @@ mod tests {
         assert!(hits("spoiler").contains(&Page::Chat), "a synced option's label");
         assert!(hits("developer").contains(&Page::Advanced));
         assert_eq!(hits("quiet hours"), [Page::Notifications]);
+        assert_eq!(hits("keyword alerts"), [Page::Notifications]);
         assert_eq!(hits("upgrade"), [Page::Windows]);
         assert_eq!(hits("install updates"), [Page::Windows], "the Updates rows");
         assert_eq!(hits("authenticator"), [Page::MyAccount]);

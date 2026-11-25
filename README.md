@@ -89,6 +89,7 @@ What's in it so far:
 - REST rate limiting per bucket + global, honouring `retry_after`.
 - Server list with icons, channel list per server, DM list, member list.
 - Rustcord's own app sounds, made in code: message and mention pings, call rings, voice join/leave, mute, deafen, push to talk and streams; each one can be switched off, with one volume.
+- Keyword alerts (a notification and the mention look for your words, even in muted channels) and quiet hours with a pause from the tray or the account menu; both local to this device.
 - Message history with lazy loading while scrolling up; markdown (bold, italic, underline,
   strike, code, code blocks, links, spoilers, quotes, headings, lists, timestamps), mentions,
   custom and unicode emoji, image/GIF attachments, basic embeds, stickers, forwarded messages.
@@ -485,6 +486,18 @@ auto_update = true            # install updates automatically (the check runs ei
 # enabled = true
 # volume = 70                 # percent, 0-100
 # off = ["mention"]           # sounds switched off (message, mention, incoming_ring, join, ...)
+# [keyword_alerts]            # Notifications > Keyword alerts
+# everywhere = true           # false: only `places` (server or channel ids)
+# places = ["123"]
+# [[keyword_alerts.keywords]]
+# text = "release"
+# whole_word = true
+# [quiet_hours]               # Notifications > Quiet hours
+# enabled = false
+# days = 127                  # bit 0 Monday .. bit 6 Sunday
+# start = 1320                # minutes after midnight (22:00)
+# end = 420                   # 07:00
+# paused_until = 1800000000   # set by the tray / account menu pause (Unix seconds)
 # client_build_number = 0     # optional: sent in the client properties
 # system_locale = "en-US"
 ```

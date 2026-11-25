@@ -32,7 +32,7 @@ const DM_HOME: Id = Id(0);
 const MSG_RECIPIENT_REMOVE: u8 = 2;
 const MSG_POLL_RESULT: u8 = 46;
 /// Message flag SUPPRESS_NOTIFICATIONS (@silent).
-const FLAG_SUPPRESS_NOTIFICATIONS: u64 = 1 << 12;
+pub(crate) const FLAG_SUPPRESS_NOTIFICATIONS: u64 = 1 << 12;
 
 const NOTIFY_ALL: u8 = 0;
 const NOTIFY_NOTHING: u8 = 2;
@@ -946,6 +946,11 @@ impl AppState {
         self.guilds.iter().find(|g| g.id == guild_id)
     }
 
+    /// A blocked or ignored user: their messages neither notify nor count.
+    pub fn hides_author(&self, user_id: Id) -> bool {
+        self.hidden_authors.contains(&user_id)
+    }
+
     /// Does this message mention me (direct, reply-to-me, role I have, @everyone/@here
     /// unless suppressed)?
     pub fn mentions_me(&self, msg: &Message) -> bool {
@@ -1630,7 +1635,7 @@ fn apply_list_op(items: &mut Vec<MemberListItem>, op: MemberListOp) {
 }
 
 /// One-line notification text: user mentions resolved, placeholders for media-only messages.
-fn notification_body(msg: &Message) -> String {
+pub(crate) fn notification_body(msg: &Message) -> String {
     let mut text = msg.content.clone();
     for u in &msg.mentions {
         let name = format!("@{}", u.display_name());

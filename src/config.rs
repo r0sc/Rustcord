@@ -148,6 +148,8 @@ pub struct Settings {
     pub overlay: OverlaySettings,
     /// Notifications > Sounds (`src/sounds.rs`).
     pub sounds: SoundSettings,
+    /// Notifications > Keyword alerts (crate::alerts).
+    pub keyword_alerts: crate::alerts::KeywordAlerts,
     /// Notifications > Quiet hours and the pause from the tray / account menu (crate::alerts).
     pub quiet_hours: crate::alerts::QuietHours,
 }
@@ -289,6 +291,7 @@ impl Default for Settings {
             auto_update: true,
             overlay: OverlaySettings::default(),
             sounds: SoundSettings::default(),
+            keyword_alerts: Default::default(),
             quiet_hours: Default::default(),
         }
     }
@@ -296,7 +299,8 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load() -> Self {
-        let s: Self = read_toml(&paths().settings_file()).unwrap_or_default();
+        let mut s: Self = read_toml(&paths().settings_file()).unwrap_or_default();
+        s.keyword_alerts.normalize();
         s.publish();
         s
     }
@@ -401,6 +405,16 @@ mod tests {
         let q = crate::alerts::QuietHours { enabled: true, days: 0b0011111, start: 23 * 60 + 30, end: 6 * 60, paused_until: Some(1_800_000_000) };
         let back: Settings = toml::from_str(&toml::to_string_pretty(&Settings { quiet_hours: q.clone(), ..Default::default() }).unwrap()).unwrap();
         assert_eq!(back.quiet_hours, q);
+        // Keyword alerts: an old file has none and watches every server; a round trip keeps them.
+        assert!(old.keyword_alerts.keywords.is_empty() && old.keyword_alerts.everywhere);
+        let k = crate::alerts::KeywordAlerts {
+            keywords: vec![crate::alerts::Keyword { text: "release".into(), whole_word: false }],
+            everywhere: false,
+            places: vec![crate::model::Id(42)],
+        };
+        let text = toml::to_string_pretty(&Settings { keyword_alerts: k.clone(), ..Default::default() }).unwrap();
+        assert!(text.contains("places = [\"42\"]"), "{text}");
+        assert_eq!(toml::from_str::<Settings>(&text).unwrap().keyword_alerts, k);
     }
 
     #[test]

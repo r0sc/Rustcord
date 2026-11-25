@@ -504,8 +504,12 @@ impl RustcordApp {
                     }
                     // Plugins (MessageLogger, RelationshipNotifier) see it first; may swallow it.
                     let Some(ev) = crate::plugins::on_gateway(&mut self.state, &mut self.view, &self.settings, ev) else { continue };
+                    // Keyword alerts see the message before the state takes it (crate::alerts).
+                    let keyword = crate::alerts::on_gateway(&mut self.view.inbox_ui.keyword_hits, &self.settings.keyword_alerts, &self.state, &ev, focused_channel);
+                    let jump = keyword.as_ref().map(|(n, id)| (n.channel_id, *id));
                     // Do Not Disturb and quiet hours: unread state still updates, but no toast, sound or taskbar flash.
-                    if let Some(n) = self.state.apply_gateway(ev, focused_channel)
+                    // Discord's rules first; a keyword alert speaks where they stay silent (muted, mentions only).
+                    if let Some(n) = self.state.apply_gateway(ev, focused_channel).or(keyword.map(|k| k.0))
                         && self.state.chat.my_status != Some(crate::model::UserStatus::Dnd)
                         && !self.settings.quiet_hours.quiet_now()
                         // Plugins (OnePingPerDM): one per DM until it is read.
@@ -524,6 +528,7 @@ impl RustcordApp {
                             if !self.overlay.notify(&self.state, &self.settings, title, body, author) {
                                 crate::notify::show(title, body);
                                 self.view.quests_ui.notified_last = false;
+                                self.view.inbox_ui.notified = jump;
                             }
                         }
                         if !self.view.window_focused && self.settings.flash_taskbar {
@@ -949,6 +954,7 @@ impl eframe::App for RustcordApp {
                     && !self.overlay.notify(&self.state, &self.settings, "Quest complete", &body, None) {
                     crate::notify::show("Quest complete", &body);
                     self.view.quests_ui.notified_last = true;
+                    self.view.inbox_ui.notified = None;
                 }
             }
         }

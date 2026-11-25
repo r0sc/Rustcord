@@ -695,7 +695,7 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 - Body 15 with line height 21. 16 between groups. Compact mode unchanged.
 
 **Mentions of me:** `mention_highlight` row fill plus a 2 px `attention` bar on the left
-(not accent).
+(not accent). A message that matches one of my keyword alerts (Settings > Notifications, in scope, history included) takes the same look.
 
 **Unread divider:** 1 px `danger` line with the "New" tag on the right.
 
@@ -935,6 +935,7 @@ Playing                                     <- label role: "Playing" / "Listenin
 - Section heading in the heading role with 32 above. No rule under it (ui/mod.rs:1292 `section`).
 - Notifications page order: Desktop notifications, Flash the taskbar, Quiet hours, (Keyword alerts), Sounds, Discord's synced groups, Servers. "Quiet hours": a switch row; when on, "From" [time] "to" [time] (two 96 px combos in 30-minute steps), then seven day check rows (Mon to Sun). An error line in `danger`, meta size, under them: "Pick an end time different from the start." or "Pick at least one day."
 - Account popout: directly under the status row a pause row ("Pause notifications", "Paused until 14:30" or "Quiet hours until 07:00"), a bell (muted: bell off) at x+16 and the submenu arrow. Its flyout (same helper as the status flyout, 188 px, 32 px items): "For 1 hour", "Until tomorrow", and "Resume notifications" only while paused. A pick toasts the result and closes the popout.
+- Notifications > Keyword alerts: section "Keyword alerts" with a hint, then a 320 px field ("Add a word or phrase", Enter adds and keeps focus) and a secondary "Add" button; errors in `danger` meta under it. One setting row per keyword (the word as title, a "Whole word" check and a × on the right). Once there is a keyword: an "All servers" switch row; off, a row per server or channel (× on the right) and an add row (Server combo, Channel combo with "Whole server", "Add").
 - Notifications > Sounds: section "Sounds", the "Play sounds" switch row, a "Volume" label with a slider (a release plays the message sound), then a row per sound (title, optional meta) with a 28 px play button, 8 px, and a switch on the right. Play buttons are disabled while deafened (a hint says so); the rows are disabled while Play sounds is off.
 - Setting row:
   - left: title ui 14/500 and a meta `text_muted` description

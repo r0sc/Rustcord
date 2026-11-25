@@ -29,6 +29,11 @@ pub struct InboxUi {
     pub tab: Tab,
     /// Mentions: each card's last drawn height (off-screen cards only take their space).
     heights: HashMap<Id, f32>,
+    /// This session's keyword matches, newest first (`crate::alerts`; memory only).
+    pub(super) keyword_hits: std::collections::VecDeque<crate::alerts::Hit>,
+    /// (channel, message) of the keyword notification shown last: a click on it jumps there.
+    #[allow(dead_code, reason = "read by the notification click")]
+    pub(super) notified: Option<(Id, Id)>,
 }
 
 /// Mentions per page (the API allows 1-100).

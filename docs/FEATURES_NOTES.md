@@ -519,6 +519,31 @@ Alternative for active posts: THREAD_LIST_SYNC + `POST /channels/{forum}/post-da
 
 **Checklist:** [ ] 300 px popout (§4.8) from avatar/name anywhere [ ] cached profile GET [ ] mutual servers/friends tabs in the full modal [ ] note box PUT on blur [ ] "Message @user" box opens/creates the DM
 
+## 2.7 Keyword alerts and quiet hours (Rustcord only)
+
+Local only (`src/alerts.rs`, `[keyword_alerts]` and `[quiet_hours]` in settings.toml); it reads gateway events the client already gets and sends nothing. The only request it can cause is the existing "jump to message" around-fetch, and only on a click.
+
+**Keyword alerts**
+- A keyword is plain text, matched case-insensitively with a per-keyword "Whole word" option (on by default; word characters are letters, digits and `_`). One scope for all keywords: all servers, or chosen servers and channels (a channel covers its threads).
+- DMs and group DMs are never matched (Discord notifies for them), nor my own messages, nor blocked or ignored authors. Only `content` is matched, not embeds, attachments or forward snapshots. Only new messages alert; an edit changes the text listed in the inbox and never alerts.
+- A match shows as the mention look in the chat (every shown row in scope, history included), as a desktop notification where Discord's own rules stay silent (muted, "Only @mentions", "Nothing"), and in the inbox's Keywords tab (this session, newest first, at most 50, memory only, cleared on logout).
+- Notification: title `"release" in #general (Rust Workshop)`, body `Ann: we cut the release today`; Streamer mode still reduces it. A click jumps to the message (Windows, Linux; macOS only reports "show window").
+- Read states and mention counts are never touched (they are server-side and sync to other devices).
+
+**Quiet hours**
+- One daily window (30-minute steps, overnight works; a day means the day the window starts) plus weekday checkboxes, and a manual pause `paused_until` (tray, account popout: 1 hour, until tomorrow 08:00 or 08:00 today before 05:00, Resume).
+- Silenced: desktop notifications, the overlay toast, taskbar flashing (messages, calls, quests) and the alerting sounds (message, mention, keyword, incoming ring). Never changed: my status, op 3, the settings proto (P7.5 `quiet_mode` and P7.6 `focus_mode_expires_at_ms` are never written), read states and counts, the Keywords tab, the in-app incoming-call popup. Feedback sounds for my own actions in a call still play.
+
+**Decision order for a message notification:** Do Not Disturb, quiet hours, the desktop-notifications switch or Streamer mode, Discord's own rules (`should_notify`), then the keyword fill-in where those said nothing.
+
+**Protocol facts** (PROTOCOL_NOTES Part 2 §1, §6, §9, A4, B12)
+- User sessions are auto-subscribed to guilds under 75k members and get MESSAGE_CREATE/UPDATE/DELETE for them. Unsubscribed large guilds get no MESSAGE_* events, only CHANNEL_UNREAD_UPDATE or PASSIVE_UPDATE (messages that mention me, my roles or @everyone are force-dispatched). Rustcord subscribes (op 37) only to the guild being viewed, so alerts in guilds over 75k work only while that guild is open (the page says so). Source: discord.py-self `GuildSubscriptions`; the docs PR is unmerged, so UNCONFIRMED live.
+- Message flag `1<<12` SUPPRESS_NOTIFICATIONS ("will not trigger push and desktop notifications"): a match with it is listed but does not notify. https://docs.discord.food/resources/message#message-flags
+- Mute and level semantics, which keyword alerts override on purpose: https://docs.discord.food/resources/user-settings#user-guild-settings-object
+- Read states: https://docs.discord.food/topics/read-state
+
+**Skipped:** regex (needs the `regex` crate), a scope per keyword, a window per weekday, an unread dot for new matches, the pause state on the settings page, click-to-jump for ordinary message notifications, "Clear all" for the Keywords tab, keyword history across restarts.
+
 ---
 
 # Part 3. Account and server
