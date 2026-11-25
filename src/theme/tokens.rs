@@ -79,8 +79,6 @@ pub struct Tokens {
     pub chip: Color32,
     /// Selected text.
     pub selection: Color32,
-    /// Rail pill colours: a flat accent until the rail commit removes it.
-    pub heat: [Color32; 3],
     /// Behind modals.
     pub scrim: Color32,
     /// Media surrounds, the same in every theme (§10.3 media): the lightbox backdrop, text and
@@ -143,7 +141,6 @@ impl Tokens {
             danger_label: pick(0xffffff, 0xffffff, 0x000000),
             chip: at(c.accent, chip_a),
             selection: at(c.accent, k(0.40, 0.24, 0.40)),
-            heat: [accent; 3],
             scrim: Color32::from_black_alpha((255.0 * k(0.64, 0.4, 0.8)).round() as u8),
             media_scrim: Color32::from_black_alpha(if hc { 242 } else { 224 }),
             on_media: Color32::from_white_alpha(235),

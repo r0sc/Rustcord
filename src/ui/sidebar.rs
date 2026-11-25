@@ -152,7 +152,7 @@ fn finish_drag(ui: &mut egui::Ui, cx: &mut UiCx<'_>, target: Option<Target>) {
             super::motion::own(&ctx, ui.layer_id());
             let (r, _) = ui.allocate_exact_size(Vec2::splat(ICON), Sense::hover());
             ui.multiply_opacity(0.8);
-            paint_guild_icon(ui, cx, index, r, ICON_R, 1.0, false);
+            paint_guild_icon(ui, cx, index, r, tile_corners(1.0), 1.0, false);
         });
     }
     if !ctx.input(|i| i.pointer.any_released()) {
@@ -195,7 +195,7 @@ fn folder(ui: &mut egui::Ui, cx: &mut UiCx<'_>, f: &GuildFolder, index: usize, b
     let fid = f.id.unwrap_or_default();
     let open_key = folder_open_id(fid);
     let open = ui.data(|d| d.get_temp::<bool>(open_key)).unwrap_or(false);
-    // No colour picked: neutral (ember is the brand's, never a tile's).
+    // No colour picked: neutral (purple is the brand's, never a tile's).
     let color = f.color.map(rgb).unwrap_or(c.text_muted.to_color32());
     let name = f.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| {
         let names = f.guild_ids.iter().filter_map(|g| cx.state.guild(*g)).map(|g| g.name.as_str());
@@ -205,14 +205,15 @@ fn folder(ui: &mut egui::Ui, cx: &mut UiCx<'_>, f: &GuildFolder, index: usize, b
     let selected = cx.state.selected_guild.is_some_and(|g| f.guild_ids.contains(&g));
     let open = crate::plugins::sidebar::force_open(open, selected);
     let bg = ui.painter().add(Shape::Noop);
-    let (row, icon, resp, morph) = icon_slot(ui, ("rc_folder", fid), false);
+    let (row, icon, resp, morph, h) = icon_slot(ui, ("rc_folder", fid), (selected && !open, unread && !open));
+    let corners = tile_corners(pill_t(h));
     if open {
         // The folder glyph on a plain tile; the background spans it and its servers.
         let tab = Rect::from_min_size(icon.center() + vec2(-11.0, -9.0), vec2(9.0, 5.0));
         ui.painter().rect_filled(tab, 2, color);
         ui.painter().rect_filled(Rect::from_center_size(icon.center() + vec2(0.0, 2.0), vec2(22.0, 15.0)), 3, color);
     } else {
-        ui.painter().rect_filled(icon, ICON_R, color.gamma_multiply(0.25 + 0.15 * morph));
+        ui.painter().rect_filled(icon, corners, color.gamma_multiply(0.25 + 0.15 * morph));
         for (k, g) in f.guild_ids.iter().take(4).enumerate() {
             let at = icon.min + vec2(3.0 + 18.0 * (k % 2) as f32, 3.0 + 18.0 * (k / 2) as f32);
             if let Some(i) = cx.state.guilds.iter().position(|x| x.id == *g) {
@@ -220,7 +221,7 @@ fn folder(ui: &mut egui::Ui, cx: &mut UiCx<'_>, f: &GuildFolder, index: usize, b
             }
         }
     }
-    decorate(ui, &c, row, icon, &resp, (selected && !open, unread && !open), if open { 0 } else { mentions });
+    decorate(ui, &c, (row, icon, &resp), (h, corners), if open { 0 } else { mentions });
     resp.widget_info(|| WidgetInfo::selected(Role::Button, true, open, format!("Folder {name}")));
     let dragging = dragged(ui.ctx()).is_some();
     if !dragging {
@@ -311,20 +312,15 @@ fn nav_flags() -> &'static str {
 }
 
 /// One 40x40 icon slot centred in a full-width row. Returns (row, icon rect, click response,
-/// morph): morph eases 0 -> 1 (colours only) while the icon is hovered or `selected`.
-fn icon_slot(ui: &mut egui::Ui, salt: impl egui::AsIdSalt, selected: bool) -> (Rect, Rect, egui::Response, f32) {
+/// morph, pill height): morph eases 0 -> 1 (colours only) while the icon is hovered or
+/// `selected`; the pill height eases to 8 unread / 20 hover / 40 selected.
+fn icon_slot(ui: &mut egui::Ui, salt: impl egui::AsIdSalt, (selected, unread): (bool, bool)) -> (Rect, Rect, egui::Response, f32, f32) {
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), ICON), Sense::hover());
     let icon = Rect::from_center_size(row.center(), Vec2::splat(ICON));
     let resp = ui.interact(icon, ui.make_persistent_id(salt), Sense::click());
     let target = if selected || resp.hovered() { 1.0 } else { 0.0 };
     let morph = super::motion::value(ui.ctx(), resp.id.with("morph"), target, super::motion::FAST);
-    (row, super::motion::pressed(&resp, icon), resp, morph)
-}
-
-/// Left-edge pill (height eases to 8 unread / 20 hover / 40 selected; it heats up on the way to
-/// 40, `heat_bar`), the mention badge with a cut-out ring in the bar color, and the focus ring.
-fn decorate(ui: &egui::Ui, c: &ThemeColors, row: Rect, icon: Rect, resp: &egui::Response, (selected, unread): (bool, bool), mentions: u32) {
-    let target = if selected {
+    let pill = if selected {
         40.0
     } else if resp.hovered() {
         20.0
@@ -333,42 +329,43 @@ fn decorate(ui: &egui::Ui, c: &ThemeColors, row: Rect, icon: Rect, resp: &egui::
     } else {
         0.0
     };
-    let h = super::motion::value(ui.ctx(), resp.id.with("pill"), target, super::motion::FAST);
+    let h = super::motion::value(ui.ctx(), resp.id.with("pill"), pill, super::motion::FAST);
+    (row, super::motion::pressed(&resp, icon), resp, morph, h)
+}
+
+/// The left-edge pill of height `h`, the mention badge with a cut-out ring in the bar color, and
+/// the focus ring (it follows the tile's `corners`).
+fn decorate(ui: &egui::Ui, c: &ThemeColors, (row, icon, resp): (Rect, Rect, &egui::Response), (h, corners): (f32, CornerRadius), mentions: u32) {
     let tk = crate::theme::applied_tokens(ui.ctx());
     if h >= 1.0 {
         let pill = Rect::from_min_size(pos2(row.left(), row.center().y - h / 2.0), vec2(4.0, h));
-        heat_bar(ui.painter(), pill, c.text.to_color32(), tk.heat);
+        rail_pill(ui.painter(), pill, c.text.to_color32(), tk.accent_ink);
     }
     if mentions > 0 {
         badge(ui, c, pos2(icon.right() + 4.0, icon.bottom() - 4.0), mentions, Some(c.guild_bar.to_color32()));
     }
     if resp.has_focus() {
-        ui.painter().rect_stroke(icon.expand(2.0), ICON_R + 2.0, Stroke::new(2.0, tk.focus), egui::StrokeKind::Outside);
+        let grow = |r: u8| r.saturating_add(2);
+        let ring = CornerRadius { nw: grow(corners.nw), ne: grow(corners.ne), se: grow(corners.se), sw: grow(corners.sw) };
+        ui.painter().rect_stroke(icon.expand(2.0), ring, Stroke::new(2.0, tk.focus), egui::StrokeKind::Outside);
     }
 }
 
-/// Rustcord's signature (docs/DESIGN.md §10.1): the rail pill is `text` up to 20 px tall and
-/// heats toward `heat` (cold ends, ember body, white-hot core; one flat accent on light and high
-/// contrast themes) as it grows to the selected 40 px. No glow.
-fn heat_bar(p: &egui::Painter, pill: Rect, text: Color32, heat: [Color32; 3]) {
-    let t = ((pill.height() - 20.0) / 20.0).clamp(0.0, 1.0);
-    let [cold, body, core] = heat.map(|h| text.lerp_to_gamma(h, t));
-    p.rect_filled(pill, CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 }, cold);
-    let inner = pill.shrink2(vec2(0.0, 3.0));
-    if t <= 0.0 || inner.height() <= 0.0 {
-        return;
-    }
-    let mut mesh = egui::Mesh::default();
-    for (f, col) in [(0.0, cold), (0.3, body), (0.5, core), (0.7, body), (1.0, cold)] {
-        let y = egui::lerp(inner.top()..=inner.bottom(), f);
-        mesh.colored_vertex(pos2(inner.left(), y), col);
-        mesh.colored_vertex(pos2(inner.right(), y), col);
-    }
-    for k in (0..8).step_by(2) {
-        mesh.add_triangle(k, k + 1, k + 2);
-        mesh.add_triangle(k + 1, k + 3, k + 2);
-    }
-    p.add(mesh);
+/// The rail pill (docs/DESIGN.md §10.1): `text` up to 20 px tall, then toward `accent` on the way
+/// to the selected 40 px. One flat rect in every theme.
+fn rail_pill(p: &egui::Painter, pill: Rect, text: Color32, accent: Color32) {
+    p.rect_filled(pill, CornerRadius { ne: 4, se: 4, ..Default::default() }, text.lerp_to_gamma(accent, pill_t(pill.height())));
+}
+
+fn pill_t(h: f32) -> f32 {
+    ((h - 20.0) / 20.0).clamp(0.0, 1.0)
+}
+
+/// A rail tile's corners: `ICON_R` everywhere, the bottom-left tightening to 2 as the pill turns
+/// selected (the speech corner, §10).
+fn tile_corners(t: f32) -> CornerRadius {
+    let r = ICON_R as u8;
+    CornerRadius { nw: r, ne: r, se: r, sw: egui::lerp(ICON_R..=2.0, t).round() as u8 }
 }
 
 /// Server-bar tooltip: the name in bold, right of the icon; a server's `mark` (verified,
@@ -389,13 +386,15 @@ fn side_tooltip(resp: &egui::Response, text: &str, mark: Option<Icon>) {
 
 fn home_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     let c = cx.theme.colors.clone();
+    let tk = cx.theme.tokens();
     let selected = cx.state.selected_guild.is_none();
-    let (row, icon, resp, morph) = icon_slot(ui, "home", selected);
-    // The ember mark on a neutral tile, always; hover and selection only lift the tile.
-    let fill = tile_fill(ui, &c, morph);
-    ui.painter().rect_filled(icon, ICON_R, fill);
-    logo_mark(ui.painter(), icon.center(), 30.0, c.accent.to_color32(), fill);
-    decorate(ui, &c, row, icon, &resp, (selected, false), cx.state.dm_unread_count());
+    let (row, icon, resp, morph, h) = icon_slot(ui, "home", (selected, false));
+    let corners = tile_corners(pill_t(h));
+    // The logo itself: a neutral tile with the purple R; hover and selection turn the tile purple
+    // (the one place hover is purple).
+    let tile = c.surface.to_color32().lerp_to_gamma(tk.accent, morph);
+    logo_mark(ui.painter(), icon, corners, tile, tk.accent_ink.lerp_to_gamma(tk.on_accent, morph));
+    decorate(ui, &c, (row, icon, &resp), (h, corners), cx.state.dm_unread_count());
 
     resp.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, "Direct messages"));
     side_tooltip(&resp, "Direct messages", None);
@@ -419,7 +418,8 @@ fn guild_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, badges: &HashMap<I
     let (unread, mentions) = badges.get(&id).copied().unwrap_or_default();
     let mark = icons::guild_mark(&g.features, g.premium_tier);
 
-    let (row, icon, resp, morph) = icon_slot(ui, ("guild", id), selected);
+    let (row, icon, resp, morph, h) = icon_slot(ui, ("guild", id), (selected, unread));
+    let corners = tile_corners(pill_t(h));
     let drag = dragged(ui.ctx());
     let resp = if cx.state.account.settings.loaded { resp.interact(Sense::drag()) } else { resp };
     if resp.drag_started() {
@@ -427,12 +427,12 @@ fn guild_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, badges: &HashMap<I
     }
     // Animated icons play on hover (or always).
     let animate = resp.hovered() || cx.settings.animate_others == AnimateMode::Always;
-    paint_guild_icon(ui, cx, index, icon, ICON_R, morph, animate);
+    paint_guild_icon(ui, cx, index, icon, corners, morph, animate);
     if drag == Some(id) {
         // Its place while it is dragged: faded.
-        ui.painter().rect_filled(icon, ICON_R, c.guild_bar.to_color32().gamma_multiply(0.7));
+        ui.painter().rect_filled(icon, corners, c.guild_bar.to_color32().gamma_multiply(0.7));
     }
-    decorate(ui, &c, row, icon, &resp, (selected, unread), mentions);
+    decorate(ui, &c, (row, icon, &resp), (h, corners), mentions);
 
     // "Rust Workshop, boost level 2".
     let label = mark.map_or_else(|| name.clone(), |(_, what)| format!("{name}, {}", what.to_lowercase()));
@@ -456,7 +456,7 @@ fn guild_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, badges: &HashMap<I
 /// "Add a server" (+) under the servers: opens the join / create dialog (server_menu.rs).
 fn add_server_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     let c = cx.theme.colors.clone();
-    let (_, icon, resp, morph) = icon_slot(ui, "add_server", false);
+    let (_, icon, resp, morph, _) = icon_slot(ui, "add_server", (false, false));
     let fill = tile_fill(ui, &c, morph);
     ui.painter().rect_filled(icon, ICON_R, fill);
     let fg = c.text_muted.to_color32().lerp_to_gamma(crate::theme::applied_tokens(ui.ctx()).positive, morph);
@@ -542,7 +542,7 @@ fn tile_fill(ui: &egui::Ui, c: &ThemeColors, morph: f32) -> Color32 {
 /// Server icon `index` in `rect`; without one, its initials in semibold `text` on a neutral tile
 /// that lifts as `morph` goes to 1 (unavailable servers muted). An animated icon plays while
 /// `animate`, showing the static frame while the animation loads.
-pub(super) fn paint_guild_icon(ui: &mut egui::Ui, cx: &mut UiCx<'_>, index: usize, rect: Rect, radius: f32, morph: f32, animate: bool) {
+pub(super) fn paint_guild_icon(ui: &mut egui::Ui, cx: &mut UiCx<'_>, index: usize, rect: Rect, radius: impl Into<CornerRadius> + Copy, morph: f32, animate: bool) {
     let g = &cx.state.guilds[index];
     let unavailable = g.unavailable;
     let text = initials(&g.name);
@@ -598,7 +598,7 @@ pub fn title_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         (None, Some(ch)) => {
             dm_avatar_at(ui, cx, ch, icon);
         }
-        (None, None) => logo_mark(ui.painter(), icon.center(), 16.0, c.accent.to_color32(), c.guild_bar.to_color32()),
+        (None, None) => logo_mark(ui.painter(), icon, SMALL_MARK, c.accent.to_color32(), c.accent_text.to_color32()),
     }
     ui.painter().galley(pos2(icon.right() + 8.0, rect.center().y - g.size().y / 2.0), g, muted);
 }
@@ -615,38 +615,27 @@ pub fn paint_card(p: &egui::Painter, rect: Rect, c: &ThemeColors) {
     p.add(Shape::line(pts, line(c)));
 }
 
-/// Rustcord's logo mark (the R of `assets/logo-small.svg` without its tile, its counter a chat
-/// bubble with the tail at the stem) in `color`, `size` = about the tile's width (the glyph is
-/// ~0.73 `size` tall); the counter is cut out in `bg`.
-pub(super) fn logo_mark(p: &egui::Painter, center: egui::Pos2, size: f32, color: Color32, bg: Color32) {
-    use egui::epaint::{BandPoint, BandShape};
-    // Coordinates in the SVG's 512-unit space, a little larger than on the tile since there is
-    // none here. Left out (under a pixel at in-app sizes): the tail tip's round-off and the
-    // fillet where the bowl meets the stem.
-    let k = size / 440.0;
-    let at = |x: f32, y: f32| center + vec2(x - 256.0, y - 256.0) * k;
-    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| Rect::from_min_max(at(x0, y0), at(x1, y1));
-    let (outer, inner) = ((79.0 * k).round() as u8, (25.6 * k).round() as u8);
-    p.rect_filled(rect(101.5, 90.9, 380.6, 283.9), CornerRadius { nw: outer, ne: outer, se: outer, sw: 0 }, color);
-    p.rect_filled(rect(101.5, 200.0, 199.2, 411.8), CornerRadius { sw: inner, se: inner, ..Default::default() }, color);
-    // The tail, sampled along y (densely near the baseline, where the inner edge turns flat):
-    // the outer edge is an arc about (630.5, 257.7) from the bowl's corner, the inner one an arc
-    // about (385.2, 283.9) tangent to the baseline.
-    let (top, base) = (257.7, 411.8);
-    let tail = (0..=16)
-        .map(|i| {
-            let y = base - (base - top) * (1.0 - i as f32 / 16.0).powi(2);
-            let x_out = 630.5 - (270.3f32.powi(2) - (y - top).powi(2)).sqrt();
-            let x_in = if y < 283.9 { 257.3 } else { 385.2 - (127.9f32.powi(2) - (y - 283.9).powi(2)).max(0.0).sqrt() };
-            let (a, b) = (at(x_in, y), at(x_out, y));
-            BandPoint::new(a.y, -b.x..=-a.x)
-        })
-        .collect();
-    // A quarter turn: band x = screen y, band y = -screen x.
-    p.add(BandShape { angle: FRAC_PI_2, ..BandShape::filled(tail, color) });
-    p.rect_filled(rect(199.2, 153.7, 296.8, 221.1), inner, bg);
-    // The bubble's tail: down the stem's edge, squaring the counter's lower-left corner.
-    p.add(Shape::convex_polygon(vec![at(199.2, 195.0), at(234.2, 221.1), at(199.2, 252.0)], bg, Stroke::NONE));
+/// The tile corners of the 16 px mark (title bars): 4, and the speech corner 1.
+pub(super) const SMALL_MARK: CornerRadius = CornerRadius { nw: 4, ne: 4, se: 4, sw: 1 };
+
+/// Rustcord's mark (assets/logo.svg, §11): `tile` with `corners`, the R in `glyph`, its counter
+/// cut in `tile`. Below 32 px the bolder small R (logo-small.svg).
+pub(super) fn logo_mark(p: &egui::Painter, rect: Rect, corners: CornerRadius, tile: Color32, glyph: Color32) {
+    let k = rect.width() / 512.0;
+    let at = |x: f32, y: f32| rect.min + vec2(x, y) * k;
+    let area = |(x0, y0, x1, y1): (f32, f32, f32, f32)| Rect::from_min_max(at(x0, y0), at(x1, y1));
+    let r = |v: f32| (v * k).round() as u8;
+    // Per size: bowl, stem and counter rects, the bowl's and the counter's round-off, the leg.
+    let (bowl, stem, counter, (outer, hole), leg) = if rect.width() < 32.0 {
+        ((124.0, 104.0, 372.0, 296.0), (124.0, 104.0, 204.0, 408.0), (204.0, 184.0, 292.0, 216.0), (96.0, 16.0), [(187.71, 260.0), (283.71, 260.0), (400.0, 408.0), (304.0, 408.0)])
+    } else {
+        ((136.0, 112.0, 368.0, 292.0), (136.0, 112.0, 204.0, 400.0), (204.0, 180.0, 300.0, 224.0), (90.0, 22.0), [(200.67, 256.0), (284.67, 256.0), (394.0, 400.0), (310.0, 400.0)])
+    };
+    p.rect_filled(rect, corners, tile);
+    p.rect_filled(area(bowl), CornerRadius { nw: r(48.0), ne: r(outer), se: r(outer), sw: 0 }, glyph);
+    p.rect_filled(area(stem), CornerRadius { nw: r(48.0), ..Default::default() }, glyph);
+    p.add(Shape::convex_polygon(leg.iter().map(|&(x, y)| at(x, y)).collect(), glyph, Stroke::NONE));
+    p.rect_filled(area(counter), CornerRadius { ne: r(hole), se: r(hole), ..Default::default() }, tile);
 }
 
 /// Up to three initials for an icon placeholder ("Rust Workshop" -> "RW").
@@ -1773,11 +1762,9 @@ pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32) {
             ui.painter().hline(rect.x_range(), split - 0.5, line(&c));
         }
         account_row(ui, cx, rect.with_min_y(rect.top() + quest_h + voice_h), rect.left_top());
-        // Last: the outline stays over the nameplate's edge. Light and high contrast only: there
-        // `surface` sits close to the panes under it; on dark themes the fill step is the edge.
-        if cx.theme.tokens().mode != crate::theme::Mode::Dark {
-            ui.painter().rect_stroke(rect, panel_r(cx.theme), line(&c), egui::StrokeKind::Inside);
-        }
+        // Last: the outline and the lit top edge stay over the nameplate.
+        ui.painter().rect_stroke(rect, panel_r(cx.theme), line(&c), egui::StrokeKind::Inside);
+        super::messages::sheen(ui.painter(), rect, f32::from(panel_r(cx.theme)), &cx.theme.tokens());
     });
 }
 
@@ -1789,9 +1776,9 @@ fn voice_panel(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect) {
     let c = cx.theme.colors.clone();
     let row = Rect::from_min_size(rect.min + Vec2::splat(12.0), vec2(rect.width() - 24.0, 32.0));
     let sharing = cx.state.voice.video.screen_share.is_some();
-    // Connected in green text, connecting in straw (both readable on light panels too).
+    // Connected in green text, connecting in amber (both readable on light panels too).
     let tk = cx.theme.tokens();
-    let (word, color) = if cx.state.voice.connected { ("Voice connected", tk.positive_text) } else { ("Connecting…", tk.attention) };
+    let (word, color) = if cx.state.voice.connected { ("Voice connected", tk.positive_text) } else { ("Connecting…", crate::theme::readable_on(tk.attention, user_panel_fill(&c))) };
     let word = &crate::plugins::sidebar::call_timer(ui.ctx(), cx.state, word);
     let guild = cx.state.channels.get(&ch).and_then(|x| x.guild_id).and_then(|g| cx.state.guild(g)).map(|g| g.name.clone());
     let place = match guild {

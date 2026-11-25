@@ -112,7 +112,7 @@ pub fn app_label(ui: &egui::Ui, theme: &Theme) {
     let muted = theme.colors.text_muted.to_color32();
     let g = ui.painter().layout_no_wrap(crate::config::APP_NAME.to_owned(), super::bold(theme.font.size - 0.5), muted);
     let icon = Rect::from_min_size(pos2(rect.center().x - (24.0 + g.size().x) / 2.0, rect.center().y - 8.0), Vec2::splat(16.0));
-    super::sidebar::logo_mark(ui.painter(), icon.center(), 16.0, theme.colors.accent.to_color32(), theme.colors.guild_bar.to_color32());
+    super::sidebar::logo_mark(ui.painter(), icon, super::sidebar::SMALL_MARK, theme.colors.accent.to_color32(), theme.colors.accent_text.to_color32());
     ui.painter().galley(pos2(icon.right() + 8.0, rect.center().y - g.size().y / 2.0), g, muted);
 }
 

@@ -121,8 +121,8 @@ pub fn read_all_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     let (row, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
     let pill = Rect::from_center_size(row.center(), vec2(48.0, 22.0));
     let hot = resp.hovered();
-    let fill = if hot { c.accent.to_color32() } else { c.surface.to_color32() };
-    let text = if hot { c.accent_text.to_color32() } else { c.text_muted.to_color32() };
+    // Hover is never purple: the row's `selected` fill and the full text colour.
+    let (fill, text) = if hot { (cx.theme.tokens().selected, c.text.to_color32()) } else { (c.surface.to_color32(), c.text_muted.to_color32()) };
     ui.painter().rect_filled(pill, 11, fill);
     ui.painter().text(pill.center(), Align2::CENTER_CENTER, "Read All", FontId::new(10.5, crate::theme::bold_family()), text);
     let resp = resp.on_hover_text("Mark all servers read").on_hover_cursor(egui::CursorIcon::PointingHand);
