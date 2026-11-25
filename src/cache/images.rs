@@ -7,7 +7,7 @@
 //! - Decoding happens in `spawn_blocking`, downscaled so the longest side <= max_side.
 //!   GIF / APNG / animated WebP decode to multiple frames, capped by a memory budget
 //!   (fallback: first frame only); avatar decorations keep every frame and give up resolution
-//!   (down to half) instead.
+//!   (down to half) instead; profile-effect APNGs stream instead (`stream_apng`).
 //! - The same disk cache, client and host list serve the media player (`media::net`): the
 //!   "media cache" of small videos and gifv loops.
 //!
@@ -87,8 +87,10 @@ impl Inner {
     async fn load(&self, url: &str, max_side: u32) -> Result<DecodedImage, String> {
         // Local profile overrides: only files inside the overrides folder, never the network.
         let keep = keeps_frames(url);
+        let stream = streams(url);
+        let dec = move |b: &[u8]| if stream && apng_frames(b).is_some_and(|n| n > 1) { stream_apng(b, max_side) } else { decode(b, max_side, keep) };
         if let Some(path) = crate::overrides::local_path(url) {
-            return blocking(move || std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| decode(&b, max_side, keep))).await?;
+            return blocking(move || std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| dec(&b))).await?;
         }
         let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid image URL: {e}"))?;
         if !host_allowed(&parsed) {
@@ -99,7 +101,7 @@ impl Inner {
 
         let p = path.clone();
         // A cached file that no longer decodes is treated as a miss and overwritten.
-        let cached = blocking(move || std::fs::read(&p).ok().and_then(|b| decode(&b, max_side, keep).ok())).await?;
+        let cached = blocking(move || std::fs::read(&p).ok().and_then(|b| dec(&b).ok())).await?;
         if let Some(img) = cached {
             return Ok(img);
         }
@@ -110,7 +112,7 @@ impl Inner {
 
         let bytes = self.download(parsed).await?;
         blocking(move || {
-            let img = decode(&bytes, max_side, keep)?;
+            let img = dec(&bytes)?;
             // Only cache what decodes, so error pages never end up on disk.
             if let Err(e) = crate::config::write_atomic(&path, &bytes) {
                 eprintln!("rustcord: image cache write failed: {e}");
@@ -227,6 +229,49 @@ fn keeps_frames(url: &str) -> bool {
     url.strip_prefix(crate::api::cdn::CDN).is_some_and(|p| p.starts_with("/avatar-decoration-presets/"))
 }
 
+/// Profile-effect layers (COSMETICS_NOTES §5): long APNGs far over MAX_ANIM_BYTES at the drawn size; they stream.
+// shortcut: matched by path; an effect served from elsewhere drops frames like any animation.
+fn streams(url: &str) -> bool {
+    url.strip_prefix(crate::api::cdn::CDN).is_some_and(|p| p.starts_with("/assets/profile_effects/"))
+}
+
+/// Frames a stream decodes ahead of the shown one.
+const STREAM_AHEAD: usize = 2;
+
+/// An APNG decoded frame by frame on its own thread (`DecodedImage::stream`), each frame `shrink`-ed, at most
+/// STREAM_AHEAD waiting (a card that isn't drawn pulls nothing, so the thread waits); starts over at the end,
+/// ends when the receiver is dropped. Returns with the first frame.
+// shortcut: the compressed file stays in RAM (2-7 MB a layer); read it from the disk-cache file if layers turn out bigger.
+fn stream_apng(bytes: &[u8], max_side: u32) -> Result<DecodedImage, String> {
+    let bytes: Arc<[u8]> = bytes.into();
+    let (tx, rx) = std::sync::mpsc::sync_channel(STREAM_AHEAD);
+    std::thread::Builder::new()
+        .name("rustcord-apng".into())
+        .spawn(move || {
+            loop {
+                let Ok(frames) = PngDecoder::with_limits(Cursor::new(bytes.clone()), anim_limits()).and_then(|d| d.apng()).map(|a| a.into_frames())
+                else {
+                    return;
+                };
+                let mut sent = false;
+                // A frame that fails ends the pass, like a truncated file.
+                for frame in frames.map_while(Result::ok) {
+                    let delay_ms = frame_delay_ms(frame.delay());
+                    if tx.send(ImageFrame { image: shrink(frame.into_buffer(), max_side), delay_ms }).is_err() {
+                        return; // card closed
+                    }
+                    sent = true;
+                }
+                if !sent {
+                    return;
+                }
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    let first = rx.recv().map_err(|_| "APNG has no frames".to_owned())?;
+    Ok(DecodedImage { frames: vec![first], stream: Some(rx) })
+}
+
 /// Decode bytes (also used for local override images) into frames, longest side <= max_side.
 /// `keep_frames`: an APNG keeps all its frames, the side drops instead (`fit_side`).
 pub fn decode(bytes: &[u8], max_side: u32, keep_frames: bool) -> Result<DecodedImage, String> {
@@ -259,7 +304,7 @@ pub fn decode(bytes: &[u8], max_side: u32, keep_frames: bool) -> Result<DecodedI
         Some(frames) => animation_frames(frames, max_side, count)?,
         None => vec![ImageFrame { image: color_image(reader.decode().map_err(err)?.into_rgba8(), max_side), delay_ms: 0 }],
     };
-    Ok(DecodedImage { frames })
+    Ok(DecodedImage { frames, stream: None })
 }
 
 /// The animation decoders default to no limits; a tiny file can declare a huge canvas.
@@ -362,8 +407,7 @@ fn frame_delay_ms(delay: image::Delay) -> u32 {
     if ms <= 10 { 100 } else { ms }
 }
 
-/// Premultiply (imageops::resize assumes it; avoids dark fringes), downscale, convert.
-fn color_image(mut img: RgbaImage, max_side: u32) -> egui::ColorImage {
+fn premultiply(img: &mut RgbaImage) {
     for px in img.as_chunks_mut::<4>().0 {
         let a = px[3] as u16;
         if a != 255 {
@@ -372,6 +416,24 @@ fn color_image(mut img: RgbaImage, max_side: u32) -> egui::ColorImage {
             }
         }
     }
+}
+
+/// Premultiplied, scaled down by the whole factor that keeps the longest side >= max_side (box filter: cheap
+/// enough for every frame; the GPU scales the rest). 450x880 and 900x1760 layers both end up 450x880 at max_side 768.
+fn shrink(mut img: RgbaImage, max_side: u32) -> egui::ColorImage {
+    premultiply(&mut img);
+    let (w, h) = img.dimensions();
+    let f = (w.max(h) / max_side.max(1)).clamp(1, w.min(h).max(1));
+    if f > 1 {
+        img = image::imageops::thumbnail(&img, w / f, h / f);
+    }
+    let (w, h) = img.dimensions();
+    egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], img.as_raw())
+}
+
+/// Premultiply (imageops::resize assumes it; avoids dark fringes), downscale, convert.
+fn color_image(mut img: RgbaImage, max_side: u32) -> egui::ColorImage {
+    premultiply(&mut img);
     let (w, h) = img.dimensions();
     let longest = w.max(h);
     if longest > max_side {
@@ -559,5 +621,71 @@ mod tests {
         assert!(!dir.join("old").exists() && !dir.join("mid").exists());
         assert!(dir.join("new").exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An APNG of `w`×`h` frames, one per colour, `ms` each.
+    fn apng(w: u32, h: u32, colors: &[[u8; 4]], ms: u16) -> Vec<u8> {
+        use std::io::Write;
+        fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+            out.extend((data.len() as u32).to_be_bytes());
+            out.extend(kind);
+            out.extend(data);
+            let mut crc = flate2::Crc::new();
+            crc.update(kind);
+            crc.update(data);
+            out.extend(crc.sum().to_be_bytes());
+        }
+        let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+        let mut head = [w.to_be_bytes(), h.to_be_bytes()].concat();
+        head.extend([8, 6, 0, 0, 0]);
+        chunk(&mut out, b"IHDR", &head);
+        chunk(&mut out, b"acTL", &[(colors.len() as u32).to_be_bytes(), 0u32.to_be_bytes()].concat());
+        let mut seq = 0u32;
+        for (i, c) in colors.iter().enumerate() {
+            let mut fctl = seq.to_be_bytes().to_vec();
+            seq += 1;
+            fctl.extend([w.to_be_bytes(), h.to_be_bytes(), [0; 4], [0; 4]].concat());
+            fctl.extend(ms.to_be_bytes());
+            fctl.extend(1000u16.to_be_bytes());
+            fctl.extend([0, 0]);
+            chunk(&mut out, b"fcTL", &fctl);
+            let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+            for _ in 0..h {
+                z.write_all(&[0]).unwrap();
+                z.write_all(&c.repeat(w as usize)).unwrap();
+            }
+            let z = z.finish().unwrap();
+            if i == 0 {
+                chunk(&mut out, b"IDAT", &z);
+            } else {
+                chunk(&mut out, b"fdAT", &[seq.to_be_bytes().to_vec(), z].concat());
+                seq += 1;
+            }
+        }
+        chunk(&mut out, b"IEND", &[]);
+        out
+    }
+
+    #[test]
+    fn effect_apng_streams_frame_by_frame() {
+        assert!(streams("https://cdn.discordapp.com/assets/profile_effects/x/intro.png"));
+        assert!(!streams("https://cdn.discordapp.com/avatar-decoration-presets/a_x.png"));
+        let (r, g, b) = ([255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]);
+        let img = stream_apng(&apng(8, 4, &[r, g, b], 40), 4).unwrap();
+        assert_eq!(img.frames.len(), 1);
+        assert_eq!((img.frames[0].image.size, img.frames[0].delay_ms), ([4, 2], 40));
+        let rx = img.stream.unwrap();
+        let first = |f: ImageFrame| f.image.pixels[0];
+        let c = |c: [u8; 4]| egui::Color32::from_rgba_premultiplied(c[0], c[1], c[2], c[3]);
+        let got: Vec<_> = (0..4).map(|_| first(rx.recv().unwrap())).collect();
+        assert_eq!(got, [c(g), c(b), c(r), c(g)], "in order, then looping");
+    }
+
+    #[test]
+    fn shrink_box_factor() {
+        let img = shrink(RgbaImage::from_pixel(90, 176, Rgba([200, 100, 50, 128])), 77);
+        assert_eq!(img.size, [45, 88]);
+        assert_eq!(img.pixels[0], egui::Color32::from_rgba_premultiplied(100, 50, 25, 128));
+        assert_eq!(shrink(RgbaImage::new(45, 88), 77).size, [45, 88]);
     }
 }

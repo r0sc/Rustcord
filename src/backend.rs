@@ -1048,6 +1048,9 @@ pub enum BackendEvent {
 #[derive(Debug)]
 pub struct DecodedImage {
     pub frames: Vec<ImageFrame>,
+    /// A streamed animation (profile effects, `cache::images::stream_apng`): `frames` holds the first frame, the rest
+    /// arrive here in order, looping, decoded just ahead; dropping it stops the decoder.
+    pub stream: Option<std::sync::mpsc::Receiver<ImageFrame>>,
 }
 
 #[derive(Debug)]

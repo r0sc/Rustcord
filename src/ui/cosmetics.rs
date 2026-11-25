@@ -628,18 +628,15 @@ fn urls_id() -> egui::Id {
     egui::Id::unique("rc_cosmetic_profile_urls")
 }
 
-/// A large effect / frame image for `rect`, remembered for `release`.
-fn big_image(ui: &egui::Ui, images: &mut ImageCache, url: &str, rect: Rect, animate: bool, scale: f32) -> Option<SizedTexture> {
+/// A large effect / frame image for `rect` at its drawn size (≤ 768 px; effect layers stream at their own rate), remembered for `release`.
+fn big_image(ui: &egui::Ui, images: &mut ImageCache, url: &str, rect: Rect, animate: bool) -> Option<SizedTexture> {
     ui.ctx().data_mut(|d| {
         let list = d.get_temp_mut_or_default::<Vec<String>>(urls_id());
         if !list.iter().any(|u| u == url) {
             list.push(url.to_owned());
         }
     });
-    // shortcut: effects at half size (`scale` 0.5, ≤ 384 px; a full-size effect APNG is ~1.5 MB a
-    // frame), soft overlays survive the upscale; frame layers are crisp line art, full size (≤ 768 px).
-    // Stream-decode large animations to lift this.
-    let side = (rect.width().max(rect.height()) * ui.ctx().pixels_per_point() * scale).min(768.0 * scale);
+    let side = (rect.width().max(rect.height()) * ui.ctx().pixels_per_point()).min(768.0);
     images.get(ui.ctx(), url, side.max(16.0) as u32, animate)
 }
 
@@ -713,7 +710,7 @@ pub fn paint_effect(ui: &egui::Ui, images: &mut ImageCache, card: Rect, radius: 
         let still = item.reduced_motion_src.as_deref().or(item.static_frame_src.as_deref()).and_then(cdn::collectible_asset_url);
         let first = item.effects.first();
         let r = rect_of(0.0, 0.0, first.and_then(|l| l.width), first.and_then(|l| l.height));
-        if let Some(tex) = still.and_then(|u| big_image(ui, images, &u, r, false, 0.5)) {
+        if let Some(tex) = still.and_then(|u| big_image(ui, images, &u, r, false)) {
             p.add(rounded_tex(tex, r, card, radius));
         }
         return;
@@ -728,7 +725,7 @@ pub fn paint_effect(ui: &egui::Ui, images: &mut ImageCache, card: Rect, radius: 
             wake = Some(wake.map_or(n, |w| w.min(n)));
         }
         let r = rect_of(l.position.x, l.position.y, l.width, l.height);
-        if let Some(tex) = cdn::collectible_asset_url(&l.src).filter(|_| shown).and_then(|u| big_image(ui, images, &u, r, true, 0.5)) {
+        if let Some(tex) = cdn::collectible_asset_url(&l.src).filter(|_| shown).and_then(|u| big_image(ui, images, &u, r, true)) {
             p.add(rounded_tex(tex, r, card, radius));
         }
     }
@@ -750,7 +747,7 @@ pub fn frame_shapes(ui: &egui::Ui, images: &mut ImageCache, card: Rect, item: &C
         let Some(url) = cdn::frame_layer_url(item.sku_id, &l.id) else { continue };
         // A layer taller than wide needs its height in pixels, known once loaded (`get` then reloads sharper).
         let tall = images.loaded_size(&url).map_or(w, |s| w * s.y / s.x.max(1.0));
-        let Some(tex) = big_image(ui, images, &url, Rect::from_min_size(card.min, vec2(w, tall)), false, 1.0) else { continue };
+        let Some(tex) = big_image(ui, images, &url, Rect::from_min_size(card.min, vec2(w, tall)), false) else { continue };
         let h = w * tex.size.y / tex.size.x.max(1.0);
         let at = |top: f32, height: f32| Rect::from_min_size(pos2(left, top), vec2(w, height));
         match l.kind {

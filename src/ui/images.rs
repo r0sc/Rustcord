@@ -3,7 +3,7 @@
 //! and avatar/image widgets.
 //! OWNERSHIP: cache implementer (together with cache/images.rs).
 
-use crate::backend::{Command, CommandSender, DecodedImage};
+use crate::backend::{Command, CommandSender, DecodedImage, ImageFrame};
 use crate::model::{Id, Member, User};
 use egui::load::SizedTexture;
 use egui::{Sense, TextureHandle, Vec2};
@@ -24,8 +24,38 @@ const TRIM_DELAY_SECS: f64 = 3.0;
 
 enum State {
     Loading,
-    Ready { frames: Vec<(TextureHandle, u32)>, total_ms: u32, bytes: usize, size: Vec2 },
+    Ready { frames: Vec<(TextureHandle, u32)>, total_ms: u32, bytes: usize, size: Vec2, stream: Option<Stream> },
     Failed { at: f64 },
+}
+
+/// A streamed animation (`DecodedImage::stream`): its one texture shows the next frame once the shown one is due;
+/// frames are pulled only while drawn with `animate`, so a hidden card's decoder waits.
+struct Stream {
+    rx: std::sync::mpsc::Receiver<ImageFrame>,
+    due: Option<f64>,
+    delay: f64,
+}
+
+impl Stream {
+    /// Advances `tex` when due; when to look again (None: the decoder is gone, the frame stays).
+    fn pull(&mut self, tex: &mut TextureHandle, now: f64) -> Option<f64> {
+        let due = *self.due.get_or_insert(now + self.delay);
+        if now < due {
+            return Some(due);
+        }
+        let next = match self.rx.try_recv() {
+            Ok(f) => {
+                tex.set(f.image, egui::TextureOptions::LINEAR);
+                self.delay = f64::from(f.delay_ms) / 1000.0;
+                // More than a frame late (the card was hidden): the clock restarts now.
+                (if now - due > self.delay { now } else { due }) + self.delay
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => now + self.delay, // decoder behind: look again one frame later
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => return None,
+        };
+        self.due = Some(next);
+        Some(next)
+    }
 }
 
 struct Entry {
@@ -93,22 +123,28 @@ impl ImageCache {
             return None;
         };
         entry.last_used = now;
-        match &entry.state {
+        match &mut entry.state {
             State::Loading => None,
             State::Failed { at } => {
-                if now - at > RETRY_FAILED_SECS {
+                if now - *at > RETRY_FAILED_SECS {
                     request(&self.cmd);
                     entry.state = State::Loading;
                     entry.side = max_side;
                 }
                 None
             }
-            State::Ready { frames, total_ms, size, .. } => {
+            State::Ready { frames, total_ms, size, stream, .. } => {
                 // Drawn bigger than the load allowed (another surface asked first, or the scale
                 // changed): load once more at this size; this texture shows meanwhile.
                 if max_side > entry.side && size.max_elem() as u32 >= entry.side {
                     request(&self.cmd);
                     entry.side = max_side;
+                }
+                if let Some(s) = stream.as_mut().filter(|_| animate) {
+                    if let Some(due) = s.pull(&mut frames[0].0, now) {
+                        self.next_frame_at = Some(self.next_frame_at.map_or(due, |t| t.min(due)));
+                    }
+                    return Some(SizedTexture::from_handle(&frames[0].0));
                 }
                 if !animate || frames.len() < 2 || *total_ms == 0 {
                     return Some(SizedTexture::from_handle(&frames[0].0));
@@ -218,7 +254,7 @@ pub fn mem_hooks(ctx: &egui::Context, state: &mut crate::state::AppState, images
             let (mb, side) = (mb.parse::<usize>().unwrap_or(0), side.parse::<usize>().unwrap_or(256).max(1));
             for i in 0..(mb << 20) / (side * side * 4) {
                 let image = egui::ColorImage::new([side, side], vec![egui::Color32::from_gray(i as u8); side * side]);
-                let img = DecodedImage { frames: vec![crate::backend::ImageFrame { image, delay_ms: 0 }] };
+                let img = DecodedImage { frames: vec![crate::backend::ImageFrame { image, delay_ms: 0 }], stream: None };
                 let state = upload(ctx, "memtest", img);
                 if let State::Ready { bytes, .. } = state {
                     images.bytes += bytes;
@@ -368,9 +404,10 @@ fn process_counters() -> String {
 fn upload(ctx: &egui::Context, name: &str, img: DecodedImage) -> State {
     let first = &img.frames[0].image;
     let size = egui::vec2(first.size[0] as f32, first.size[1] as f32);
-    let animated = img.frames.len() > 1;
+    let animated = img.frames.len() > 1 || img.stream.is_some();
     let mut bytes = 0;
     let mut total_ms = 0;
+    let stream = img.stream;
     let frames = img
         .frames
         .into_iter()
@@ -382,7 +419,8 @@ fn upload(ctx: &egui::Context, name: &str, img: DecodedImage) -> State {
             (ctx.load_texture(format!("{name}#{i}"), f.image, egui::TextureOptions::LINEAR), delay)
         })
         .collect();
-    State::Ready { frames, total_ms, bytes, size }
+    let stream = stream.map(|rx| Stream { rx, due: None, delay: f64::from(total_ms) / 1000.0 });
+    State::Ready { frames, total_ms, bytes, size, stream }
 }
 
 /// Frame shown at `time` (seconds) in a looping animation, and ms until the next frame.
@@ -563,7 +601,7 @@ mod tests {
         for url in ["shown", "scrolled-away"] {
             assert!(cache.get(&ctx, url, 16, false).is_none(), "requested on a miss");
             let image = egui::ColorImage::new([4, 4], vec![egui::Color32::WHITE; 16]);
-            let img = DecodedImage { frames: vec![crate::backend::ImageFrame { image, delay_ms: 0 }] };
+            let img = DecodedImage { frames: vec![crate::backend::ImageFrame { image, delay_ms: 0 }], stream: None };
             cache.on_loaded(&ctx, url.into(), Ok(img));
         }
         cache.end_frame(&ctx);
@@ -597,7 +635,7 @@ mod tests {
         let ctx = egui::Context::default();
         let img = |side: usize| {
             let image = egui::ColorImage::new([side, side], vec![egui::Color32::WHITE; side * side]);
-            Ok(DecodedImage { frames: vec![crate::backend::ImageFrame { image, delay_ms: 0 }] })
+            Ok(DecodedImage { frames: vec![crate::backend::ImageFrame { image, delay_ms: 0 }], stream: None })
         };
         let size = |c: &ImageCache| c.loaded_size("u").unwrap().x as u32;
         let mut t = 0.0;
@@ -622,5 +660,40 @@ mod tests {
         assert_eq!(size(&cache), 60);
         let sides: Vec<u32> = std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|c| if let Command::LoadImage { max_side, .. } = c { Some(max_side) } else { None }).collect();
         assert_eq!(sides, [48, 60, 120]);
+    }
+
+    #[test]
+    fn streamed_animation_pulls_when_due() {
+        let (tx_cmd, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut cache = ImageCache::new(CommandSender(tx_cmd));
+        let ctx = egui::Context::default();
+        let frame = |ms| ImageFrame { image: egui::ColorImage::new([2, 2], vec![egui::Color32::WHITE; 4]), delay_ms: ms };
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        // Runs one pass at `t` and returns the repaint delay it asked for.
+        let pass = |cache: &mut ImageCache, t: f64, animate: bool| {
+            ctx.begin_pass(egui::RawInput { time: Some(t), ..Default::default() });
+            cache.get(&ctx, "fx", 2, animate);
+            cache.end_frame(&ctx);
+            let mut out = ctx.end_pass();
+            out.textures_delta.clear();
+            out.viewport_output[&egui::ViewportId::ROOT].repaint_delay.as_secs_f64()
+        };
+        pass(&mut cache, 0.0, true);
+        ctx.begin_pass(egui::RawInput { time: Some(0.5), ..Default::default() });
+        cache.on_loaded(&ctx, "fx".into(), Ok(DecodedImage { frames: vec![frame(100)], stream: Some(rx) }));
+        ctx.end_pass().textures_delta.clear();
+        tx.send(frame(50)).unwrap();
+        pass(&mut cache, 1.0, true);
+        assert!(matches!(tx.try_send(frame(50)), Err(std::sync::mpsc::TrySendError::Full(_))), "not due yet: nothing pulled");
+        let wake = pass(&mut cache, 1.1, true);
+        assert!(tx.try_send(frame(50)).is_ok(), "due: the waiting frame was pulled");
+        assert!((wake - 0.05).abs() < 1e-6, "next frame in 50 ms, got {wake}");
+        pass(&mut cache, 5.0, false);
+        assert!(matches!(tx.try_send(frame(50)), Err(std::sync::mpsc::TrySendError::Full(_))), "not animating: nothing pulled");
+        let wake = pass(&mut cache, 10.0, true);
+        assert!(tx.try_send(frame(50)).is_ok(), "pulled again");
+        assert!((wake - 0.05).abs() < 1e-6, "late: the clock restarts now, got {wake}");
+        drop(cache);
+        assert!(tx.send(frame(50)).is_err(), "dropping the cache stops the decoder");
     }
 }
