@@ -22,11 +22,16 @@
 <link rel="stylesheet" href="styles.css">
 <script>
 (function () {
-  var d = document.documentElement, s = /[?&]static=1(&|$)/.test(location.search);
-  var m = matchMedia('(prefers-reduced-motion: no-preference)');
-  d.classList.add('js');
+  var d = document.documentElement, q = location.search;
+  var m = matchMedia('(prefers-reduced-motion: no-preference)'), s = /[?&]static=1(&|$)/.test(q);
   function sync() { d.classList.toggle('motion', m.matches && !s); }
   sync(); m.addEventListener('change', sync);
+  if (!/[?&]fx=0(&|$)/.test(q)) d.classList.add('fx');
+  if (/[?&]fx=debug(&|$)/.test(q)) d.style.setProperty('--fx-scale', '10');
+  // The hero window lands once its picture is in, or after 1.5 s at the latest.
+  function go(e) { var f = e.target.closest && e.target.closest('.hero-shot'); if (f) f.classList.add('go'); }
+  document.addEventListener('load', go, true); document.addEventListener('error', go, true);
+  setTimeout(function () { d.classList.add('go'); }, 1500);
 })();
 </script>
 <script type="module" src="main.js"></script>
@@ -63,12 +68,10 @@
 <main id="main">
 <section class="hero">
   <div class="wrap hero-grid">
-    <h1 class="wordmark">Rustcord</h1>
     <div class="hero-text">
+      <h1 class="wordmark">Rustcord</h1>
       <p class="lede">A lightweight desktop client for Discord, written from scratch in Rust. No Electron.</p>
-      <p class="hero-proof">First frame in 199 ms and 96 MB of memory in use, on a release build running offline with cached data. <a href="#speed">How it was measured</a></p>
-    </div>
-    <div class="cta" data-dl>
+      <div class="cta" data-dl>
       <div data-dl-mobile hidden>
         <p>Rustcord is a desktop app for Windows, Linux and macOS. Open <strong>r0sc.github.io/Rustcord</strong> on your computer to download it.</p>
         <button class="btn btn-secondary" type="button" data-copy-link><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span aria-live="polite">Copy link</span></button>
@@ -80,7 +83,24 @@
       <a class="link-plain" data-dl-alt href="#download" hidden></a>
       <p class="meta" data-dl-meta>Opens the latest release on GitHub, where you pick the file for your system.</p>
       <p class="hero-note"><i aria-hidden="true"></i><span>Beta and unofficial. Using a third-party client can get your Discord account banned. <a href="#notes">What to know first</a></span></p>
+      </div>
     </div>
+    <figure class="hero-shot">
+      <img src="shots/main.webp" srcset="shots/main-960.webp 960w, shots/main.webp 1600w" sizes="(min-width: 960px) 740px, calc(100vw - 32px)" width="1600" height="1000" fetchpriority="high" alt="Rustcord’s main window in the Nightshade theme: the server bar with Rust Workshop selected, its channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc’s custom status “Rewriting it in Rust”, a game and Spotify">
+    </figure>
+  </div>
+</section>
+
+<section class="stats-band band" id="speed" aria-labelledby="speed-title">
+  <div class="wrap">
+    <h2 class="sr-only" id="speed-title">How light it is</h2>
+    <dl class="stats">
+      <div><dt>First frame</dt><dd class="stat">199 ms</dd><dd>from start, with your cached servers</dd></div>
+      <div><dt>Memory in use</dt><dd class="stat">96 MB</dd><dd>working set, 87 MB of it private</dd></div>
+      <div><dt>CPU while idle</dt><dd class="stat">0 %</dd><dd>16 ms of CPU in 20 s</dd></div>
+      <div><dt>Plugins built in</dt><dd class="stat">48</dd><dd>all off until you turn them on</dd></div>
+    </dl>
+    <p class="meta measured">Measured on a release build with a Ryzen 7 5825U and Windows 11, median of 5 runs, offline with cached data for 3 servers and DMs and no network images loaded. With a live connection, avatars and attachments add to the memory use.</p>
   </div>
 </section>
 
@@ -89,17 +109,12 @@
     <h2 id="tour-title">A look inside</h2>
     <div class="viewer layer" data-viewer>
       <div class="viewer-tabs" role="tablist" aria-label="Screens" hidden>
-        <button type="button" class="viewer-tab" role="tab" id="tab-chats" aria-controls="view-chats" data-view="chats"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>Chats</button>
         <button type="button" class="viewer-tab" role="tab" id="tab-voice" aria-controls="view-voice" data-view="voice"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice</button>
         <button type="button" class="viewer-tab" role="tab" id="tab-profile" aria-controls="view-profile" data-view="profile"><svg class="icon" aria-hidden="true"><use href="#i-person"/></svg>Profiles</button>
         <button type="button" class="viewer-tab" role="tab" id="tab-plugins" aria-controls="view-plugins" data-view="plugins"><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg>Plugins</button>
         <button type="button" class="viewer-tab" role="tab" id="tab-lilac" aria-controls="view-lilac" data-view="lilac"><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Lilac</button>
       </div>
       <div class="viewer-panels">
-        <figure class="shot-panel" id="view-chats">
-          <div class="shot-frame"><img loading="lazy" decoding="async" src="shots/main.webp" srcset="shots/main-960.webp 960w, shots/main.webp 1600w" sizes="(min-width: 960px) 880px, calc(100vw - 64px)" width="1600" height="1000" alt="Rustcord’s main window in the Nightshade theme: the server bar with Rust Workshop selected, its channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc’s custom status “Rewriting it in Rust”, a game and Spotify"></div>
-          <figcaption><h3>Your servers and chats</h3><p>Servers, channels, DMs and the member list sit where you expect them.</p></figcaption>
-        </figure>
         <figure class="shot-panel" id="view-voice">
           <div class="shot-frame"><img src="shots/stream.webp" srcset="shots/stream-960.webp 960w, shots/stream.webp 1600w" sizes="(min-width: 960px) 880px, calc(100vw - 64px)" width="1600" height="1000" loading="lazy" decoding="async" alt="A voice channel in Rustcord: Cara’s live stream of Red Eclipse gameplay fills the stage, with Alice, Bob, Cara, dan_ops and rosc in the tiles below, and the call island in the title bar showing rosc connected to Lounge"></div>
           <figcaption><h3>Voice, video and streams</h3><p>Join voice channels with end-to-end encryption and watch streams.</p></figcaption>
@@ -121,17 +136,6 @@
   </div>
 </section>
 
-<section class="sec band" id="speed" aria-labelledby="speed-title">
-  <div class="wrap">
-    <h2 id="speed-title">How light it is</h2>
-    <p class="lede">Rustcord draws its own interface with egui and runs its network code on tokio. There’s no Electron and no bundled browser.</p>
-    <dl class="stats">
-      <div><dt>Memory in use</dt><dd class="stat">96 MB</dd><dd>working set, 87 MB of it private</dd></div>
-      <div><dt>CPU while idle</dt><dd class="stat">0 %</dd><dd>16 ms of CPU in 20 s</dd></div>
-    </dl>
-    <p class="meta measured">Measured on a release build with a Ryzen 7 5825U and Windows 11, median of 5 runs, offline with cached data for 3 servers and DMs and no network images loaded. With a live connection, avatars and attachments add to the memory use.</p>
-  </div>
-</section>
 
 <section class="sec band" id="why" aria-labelledby="why-title">
   <div class="wrap why-grid">
