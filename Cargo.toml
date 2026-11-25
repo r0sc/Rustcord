@@ -1,6 +1,6 @@
 [package]
 name = "rustcord"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 # src/bin/rustcord-setup is the installer (scripts/build-installer.ps1 packs the app into it).
 default-run = "rustcord"
