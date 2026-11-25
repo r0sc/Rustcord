@@ -859,6 +859,7 @@ a hairline:
 - Keep: one bar, 32 tall, on frame.
 - The location is centred: a 16 px icon (channel icon or server tile) and the name in ui 14/600.
 - `Inbox` icon button on the right, then the window controls (chrome.rs, unchanged).
+  Its popout has the tabs Mentions, Unreads and Keywords (this session's keyword-alert matches as the same cards, the matched word marked; empty states "Get notified when words you care about come up." with a secondary "Set up keyword alerts" button, and "No keyword alerts yet. They stay here until you quit Rustcord.").
 - Update button (ui/update.rs, docs/UPDATER_DESIGN.md §15.2), only while a new version is
   available or ready: a pill 24 tall, 8 left of `Inbox` (8 from the end where there is no
   inbox: login, settings), radius control, padding 8. `Download` 16 in `positive`, 6 gap, label

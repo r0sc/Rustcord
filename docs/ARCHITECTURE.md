@@ -140,6 +140,7 @@ cargo check
 | ui-messages | `src/ui/messages.rs`, `composer.rs`, `polls.rs`, `forward.rs` |
 | sounds | `src/sounds.rs` (gates, cues, player threads), `src/sounds/synth.rs` (recipes), `src/ui/user_settings/sounds.rs`; hooks in `ui/mod.rs` (`sound_cues`, the ping in `drain_events`) |
 | navigation | `src/ui/switcher.rs` (quick switcher, navigation keys; called from `user_settings/app.rs` `global_keys`), helpers in `sidebar.rs` / `server_menu.rs` |
+| alerts | `src/alerts.rs`, `src/ui/user_settings/alerts.rs`, the Keywords tab in `ui/inbox.rs`; hooks: `ui/mod.rs` `drain_events`, `messages.rs` `for_me`, tray items in `notify.rs` |
 | markdown | `src/ui/markdown.rs`, `src/ui/markdown/parse.rs` |
 | phase2-profile | `src/overrides.rs` (local banner/avatar and local cosmetics: client-only, never uploaded) |
 | social / server / settings UI | `src/ui/{sidebar,friends,inbox,profile,profile_modal,threads,forum,server_menu,server_settings,user_settings}.rs`, `src/ui/user_settings/*`: split in `docs/SOCIAL_UI_DESIGN.md` |
@@ -318,7 +319,7 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
 - App sounds: runs with `RUSTCORD_SCREENSHOT` set never play anything. Without it the hooks are audible: `RUSTCORD_OPEN=ring:<dm id>` (incoming ring loops until Decline), `outgoing:<dm id>`, `voice:<channel id>` (join), `muted` / `deafened`, and the preview buttons in `settings:notifications`. `cargo test export_wavs -- --ignored` writes every sound as a WAV (`RUSTCORD_SOUND_OUT=<dir>`) for listening.
 - `RUSTCORD_NAV_DEMO=<comma list>` (ui/sidebar.rs `nav_demo`): navigation / social states
   offline mode can't reach, none sends a request: `folders` / `folder-open` (server bar
-  folders), `mentions` (inbox mentions from cached messages), `profile` (loaded profiles; with
+  folders), `mentions` (inbox mentions from cached messages), `keywords` (keyword alerts for words from cached server messages, their matches in the inbox Keywords tab, quiet hours on with a one-hour pause; in memory, never saved), `profile` (loaded profiles; with
   `badge:<i>` the i-th shown badge's info popover opens once; with
   `tag-card:<member|join|apply|applied|invite|private|loading|error>` and
   `RUSTCORD_OPEN=card:<user id>` that user wears a server tag whose card opens once in that

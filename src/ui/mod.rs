@@ -793,6 +793,9 @@ impl RustcordApp {
             // DM calls (dm_call.rs `demo`): `call:<dm id>` (a call going on there), `ring:<dm id>` (it rings me).
             // `switcher[:<query>]` (the quick switcher with that text typed in; no comma in it).
             // None of them sends a request.
+            if sidebar::nav_demo("keywords") {
+                inbox::demo(&self.state, &mut self.view, &mut self.settings);
+            }
             let open = std::env::var("RUSTCORD_OPEN").unwrap_or_default();
             for open in open.split(',') {
                 match open.trim() {
@@ -936,6 +939,7 @@ impl eframe::App for RustcordApp {
         if self.view.screen == Screen::Main {
             if clicked {
                 quests::notification_clicked(&mut self.state, &mut self.view);
+                inbox::notification_clicked(&mut self.view);
             }
             self.selection_effects(ctx);
             // Plugins (CustomIdle): auto-idle, also while minimized.

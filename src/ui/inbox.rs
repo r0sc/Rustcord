@@ -1,7 +1,8 @@
 //! Inbox popout (FEATURES_NOTES §2.5, layout §4.9; Ctrl+I): Mentions (REST pages of
-//! `MentionsView`, newest first; Jump and × per card, the next page when the list end shows)
-//! and Unreads (local `unread_channels`; a click opens the channel, ✔ marks one read, the
-//! header's ✔ marks all read via `mark_all_read` + `MarkAllRead`). Opened by the inbox button
+//! `MentionsView`, newest first; Jump and × per card, the next page when the list end shows),
+//! Unreads (local `unread_channels`; a click opens the channel, ✔ marks one read, the
+//! header's ✔ marks all read via `mark_all_read` + `MarkAllRead`) and Keywords (this session's
+//! keyword-alert matches, `crate::alerts`; a keyword notification click jumps to its message). Opened by the inbox button
 //! (`button`, on the right of the title bar) under it; `ViewState::inbox_open` is its open
 //! state. The mentions list is dropped when it closes.
 //! OWNERSHIP: friends/DMs/inbox/profile engineer (docs/SOCIAL_UI_DESIGN.md).
@@ -21,6 +22,7 @@ pub enum Tab {
     #[default]
     Mentions,
     Unreads,
+    Keywords,
 }
 
 /// Inbox state (in `ViewState::inbox_ui`).
@@ -32,8 +34,9 @@ pub struct InboxUi {
     /// This session's keyword matches, newest first (`crate::alerts`; memory only).
     pub(super) keyword_hits: std::collections::VecDeque<crate::alerts::Hit>,
     /// (channel, message) of the keyword notification shown last: a click on it jumps there.
-    #[allow(dead_code, reason = "read by the notification click")]
     pub(super) notified: Option<(Id, Id)>,
+    /// A keyword notification was clicked: jump there once the title bar is drawn (`button`).
+    jump: Option<(Id, Id)>,
 }
 
 /// Mentions per page (the API allows 1-100).
@@ -45,6 +48,10 @@ fn popup_id() -> egui::Id {
 
 /// The title bar's 28 px inbox button and its popout below it (right-aligned). Ctrl+I toggles it.
 pub(super) fn button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
+    if let Some((ch, mid)) = cx.view.inbox_ui.jump.take() {
+        cx.view.inbox_open = false;
+        jump_to(ui.ctx(), cx, ch, mid);
+    }
     let bind = super::user_settings::shortcut(cx.settings, super::user_settings::Bind::Inbox);
     let key = bind.is_some_and(|k| ui.input_mut(|i| i.consume_shortcut(&k)));
     // The tooltip names the bound shortcut (Settings > Keybinds), not the default.
@@ -84,7 +91,7 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
             ui.spacing_mut().item_spacing.x = 4.0;
             ui.add(Label::new(RichText::new("Inbox").font(bold(pal.size + 2.0)).color(pal.text)).selectable(false));
             ui.add_space(8.0);
-            for (tab, label) in [(Tab::Mentions, "Mentions"), (Tab::Unreads, "Unreads")] {
+            for (tab, label) in [(Tab::Mentions, "Mentions"), (Tab::Unreads, "Unreads"), (Tab::Keywords, "Keywords")] {
                 if tab_pill(ui, pal, label, cx.view.inbox_ui.tab == tab).clicked() {
                     cx.view.inbox_ui.tab = tab;
                 }
@@ -101,15 +108,16 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
     let r = ui.min_rect();
     ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, pal.tk.rule));
     ScrollArea::vertical()
-        .id_salt(("rc_inbox_list", cx.view.inbox_ui.tab == Tab::Unreads))
+        .id_salt(("rc_inbox_list", cx.view.inbox_ui.tab as u8))
         .max_height((screen.height() * 0.7 - 56.0).max(160.0))
         .auto_shrink([false, true])
         .show(ui, |ui| {
             Frame::new().inner_margin(Margin::same(12)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                match unread {
-                    Some(ids) => unreads(ui, cx, pal, &ids),
-                    None => mentions(ui, cx, pal),
+                match (cx.view.inbox_ui.tab, unread) {
+                    (Tab::Keywords, _) => keywords(ui, cx, pal),
+                    (_, Some(ids)) => unreads(ui, cx, pal, &ids),
+                    _ => mentions(ui, cx, pal),
                 }
             });
         });
@@ -163,21 +171,7 @@ fn mentions(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
         }
         // Where it was said, once per run of cards from one channel: "#channel in Server".
         if head {
-            let (icon, place) = match guild_id.and_then(|g| cx.state.guild(g)) {
-                Some(g) => {
-                    let (icon, name) = place_name(cx, msg.channel_id);
-                    (icon, format!("{name} in {}", g.name))
-                }
-                None => (None, cx.state.channel_name(msg.channel_id)),
-            };
-            let (head, _) = ui.allocate_exact_size(vec2(ui.available_width(), 16.0), Sense::hover());
-            let mut x = head.left() + 4.0;
-            if let Some(icon) = icon {
-                icons::paint(ui.painter(), icon, Rect::from_min_size(pos2(x, head.center().y - 7.0), Vec2::splat(14.0)), pal.muted, pal.surface);
-                x += 18.0;
-            }
-            let g = one_line(ui, place.as_str(), bold(pal.meta()), pal.muted, head.right() - x);
-            ui.painter().galley(pos2(x, head.center().y - g.size().y / 2.0), g, pal.muted);
+            place_line(ui, cx, pal, guild_id, msg.channel_id);
         }
         let card = message_card(ui, cx, pal, guild_id, msg, &[]);
         cx.view.inbox_ui.heights.insert(msg.id, card.rect.height());
@@ -231,6 +225,25 @@ fn mentions(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
     }
 }
 
+/// The 16 px line above a run of cards: "#channel in Server" (a thread's icon in front).
+fn place_line(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, guild_id: Option<Id>, channel: Id) {
+    let (icon, place) = match guild_id.and_then(|g| cx.state.guild(g)) {
+        Some(g) => {
+            let (icon, name) = place_name(cx, channel);
+            (icon, format!("{name} in {}", g.name))
+        }
+        None => (None, cx.state.channel_name(channel)),
+    };
+    let (head, _) = ui.allocate_exact_size(vec2(ui.available_width(), 16.0), Sense::hover());
+    let mut x = head.left() + 4.0;
+    if let Some(icon) = icon {
+        icons::paint(ui.painter(), icon, Rect::from_min_size(pos2(x, head.center().y - 7.0), Vec2::splat(14.0)), pal.muted, pal.surface);
+        x += 18.0;
+    }
+    let g = one_line(ui, place.as_str(), bold(pal.meta()), pal.muted, head.right() - x);
+    ui.painter().galley(pos2(x, head.center().y - g.size().y / 2.0), g, pal.muted);
+}
+
 fn channel_kind(cx: &UiCx<'_>, ch: Id) -> u8 {
     cx.state.channels.get(&ch).map_or(channel_type::GUILD_TEXT, |c| c.kind)
 }
@@ -256,6 +269,112 @@ fn start(cx: &mut UiCx<'_>) {
     }
     cx.state.social.mentions = Some(MentionsView::new(filter));
     cx.cmd.send(Command::Social(SocialCommand::FetchMentions { filter, before: None, limit: PAGE }));
+}
+
+// ---------------------------------------------------------------------------
+// Keywords
+// ---------------------------------------------------------------------------
+
+/// This session's keyword matches (`crate::alerts`): the same cards as Mentions, the matched
+/// word marked. A click or Jump opens the message; × drops the card (local only).
+fn keywords(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
+    if cx.settings.keyword_alerts.keywords.is_empty() {
+        empty_state(ui, cx, 48.0, "Get notified when words you care about come up.");
+        ui.add_space(12.0);
+        ui.vertical_centered(|ui| {
+            if super::messages::button(ui, pal, super::messages::Btn::Secondary, "Set up keyword alerts", true).clicked() {
+                cx.view.inbox_open = false;
+                (cx.view.settings_open, cx.view.settings_page) = (true, super::user_settings::Page::Notifications);
+            }
+        });
+        return;
+    }
+    if cx.view.inbox_ui.keyword_hits.is_empty() {
+        empty_state(ui, cx, 48.0, "No keyword alerts yet. They stay here until you quit Rustcord.");
+        return;
+    }
+    ui.spacing_mut().item_spacing.y = 8.0;
+    let (mut jump, mut prev, mut removed) = (None, None, None);
+    let hits = std::mem::take(&mut cx.view.inbox_ui.keyword_hits);
+    for hit in &hits {
+        let msg = &hit.msg;
+        let guild_id = cx.state.channels.get(&msg.channel_id).and_then(|c| c.guild_id).or(msg.guild_id);
+        let head = prev != Some(msg.channel_id);
+        prev = Some(msg.channel_id);
+        let h = cx.view.inbox_ui.heights.get(&msg.id).copied().unwrap_or(96.0) + if head { 16.0 + ui.spacing().item_spacing.y } else { 0.0 };
+        let est = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), h));
+        if !ui.is_rect_visible(est) {
+            ui.allocate_space(est.size());
+            continue;
+        }
+        if head {
+            place_line(ui, cx, pal, guild_id, msg.channel_id);
+        }
+        let card = message_card(ui, cx, pal, guild_id, msg, std::slice::from_ref(&hit.keyword));
+        cx.view.inbox_ui.heights.insert(msg.id, card.rect.height());
+        if card.clicked() {
+            jump = Some((msg.channel_id, msg.id));
+        }
+        if ui.rect_contains_pointer(card.rect) {
+            let bar = Rect::from_min_max(card.rect.left_top() + vec2(0.0, 8.0), card.rect.right_top() + vec2(-8.0, 32.0));
+            let mut bar = ui.new_child(UiBuilder::new().max_rect(bar).layout(Layout::right_to_left(Align::Min)));
+            bar.spacing_mut().item_spacing.x = 4.0;
+            if icon_button(&mut bar, pal, "×", "Remove", 24.0, false, pal.danger).clicked() {
+                removed = Some(msg.id);
+            }
+            if small_button(&mut bar, pal, "Jump", pal.text).clicked() {
+                jump = Some((msg.channel_id, msg.id));
+            }
+        }
+    }
+    cx.view.inbox_ui.keyword_hits = hits;
+    if let Some(id) = removed {
+        cx.view.inbox_ui.keyword_hits.retain(|h| h.msg.id != id);
+    }
+    if let Some((ch, mid)) = jump {
+        cx.view.inbox_open = false;
+        jump_to(ui.ctx(), cx, ch, mid);
+    }
+}
+
+/// A click on a keyword notification: jump to its message once the title bar is drawn again.
+pub(super) fn notification_clicked(view: &mut super::ViewState) {
+    if let Some(j) = view.inbox_ui.notified.take() {
+        view.inbox_ui.jump = Some(j);
+        view.settings_open = false;
+        view.server_settings = None;
+    }
+}
+
+/// `RUSTCORD_NAV_DEMO=keywords`: keywords and matches from the cached messages, quiet hours on
+/// with a pause. In memory only (never saved), sends nothing.
+pub(super) fn demo(state: &crate::state::AppState, view: &mut super::ViewState, settings: &mut crate::config::Settings) {
+    let me = state.me.as_ref().map(|u| u.id);
+    let a = &mut settings.keyword_alerts;
+    let hits = &mut view.inbox_ui.keyword_hits;
+    for ch in state.recent_channels.iter().filter(|c| state.channels.get(c).is_some_and(|c| c.guild_id.is_some())) {
+        let Some(cm) = state.messages.get(ch) else { continue };
+        for msg in cm.msgs.iter().rev().filter(|m| Some(m.author.id) != me).take(3) {
+            let word = msg.content.split(|c: char| !c.is_alphabetic()).find(|w| w.chars().count() >= 4);
+            if let Some(w) = word.map(str::to_lowercase)
+                && hits.len() < 5
+            {
+                let _ = a.add(&w);
+                // Markdown marks (`__word__`) can keep a whole-word match from happening.
+                if let Some(k) = a.find(&msg.content) {
+                    hits.push_back(crate::alerts::Hit { msg: msg.clone(), keyword: k.text.clone() });
+                }
+            }
+        }
+    }
+    if a.keywords.is_empty() {
+        for w in ["rust", "release"] {
+            let _ = a.add(w);
+        }
+    }
+    let now = chrono::Utc::now().timestamp();
+    settings.quiet_hours = crate::alerts::QuietHours { enabled: true, days: 0b0011111, start: 22 * 60, end: 7 * 60, paused_until: Some(now + 3600) };
+    view.inbox_ui.tab = Tab::Keywords;
 }
 
 // ---------------------------------------------------------------------------

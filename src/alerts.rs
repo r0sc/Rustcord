@@ -46,7 +46,6 @@ impl Default for KeywordAlerts {
 #[derive(Debug, Clone)]
 pub struct Hit {
     pub msg: Message,
-    #[allow(dead_code, reason = "read by the Keywords tab")]
     pub keyword: String,
 }
 

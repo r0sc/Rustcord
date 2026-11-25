@@ -508,7 +508,9 @@ Alternative for active posts: THREAD_LIST_SYNC + `POST /channels/{forum}/post-da
 - **Unreads:** computed locally from read states (channels with `last_message_id > ack`, minus muted, newest first). Mark all read: `POST /read-states/ack-bulk {"read_states":[{"channel_id","message_id":<last_message_id>,"read_state_type":0}…]}` → 204; chunk ≤100 (cap UNCONFIRMED); never move markers backwards.
 - **For You** (optional; desktop presence UNCONFIRMED): `GET /users/@me/notification-center/items?limit=1..100&with_mentions=false&roles_filter=true&everyone_filter=true&after=<id>` → `{items[], cursor, has_more, limit}`; item `{id, type ("friend_request_accepted", "friend_request_pending", "recent_mention", "reply_mention", "go_live_push", "reaction_sent", …), body, acked, deeplink, other_user?, message?, guild_id?, message_channel_id?, completed}`. Ack `POST …/items/{id}/ack`; bulk `POST …/items/bulk-ack?item_ids=…`; delete `DELETE …/items/{id} {"item_type":"mention"|"regular"}`; badge = read state type 2, ack `POST /users/@me/2/{newest_item_id}/ack {}`. Events NOTIFICATION_CENTER_ITEM_CREATE / _ITEM_DELETE `{id,user_id}` / _ITEMS_ACK `{id}` / _ITEM_COMPLETED.
 
-**Checklist:** [ ] Inbox popout (Ctrl+I) with Mentions (REST + ×) [ ] Unreads (local + ack-bulk) [ ] (later) For You
+- **Keywords** (Rustcord only, §2.7): this session's keyword-alert matches, newest first, at most 50, in memory; Jump or a click opens the message (`messages::jump_to`), × drops the card locally.
+
+**Checklist:** [ ] Inbox popout (Ctrl+I) with Mentions (REST + ×) [ ] Unreads (local + ack-bulk) [ ] Keywords (local) [ ] (later) For You
 
 ## 2.6 User profiles and notes
 
