@@ -77,6 +77,12 @@ pub fn slide(ctx: &Context, id: Id, on: bool, s: f32) -> f32 {
     easing::cubic_in_out(ctx.animate_bool_with_time(id, on, secs(ctx, s)))
 }
 
+/// `rect` drawn 1 px smaller per side while the pointer holds `resp` down: pressing answers at
+/// once (principle 16), instant both ways, no frames. Hit-testing keeps the full rect.
+pub fn pressed(resp: &egui::Response, rect: egui::Rect) -> egui::Rect {
+    if resp.is_pointer_button_down_on() { rect.shrink(1.0) } else { rect }
+}
+
 #[derive(Clone, Copy)]
 struct Tween {
     from: f32,
@@ -328,5 +334,29 @@ mod tests {
             0.0
         });
         assert!(!busy, "dropped after BASE x OUT");
+    }
+
+    #[test]
+    fn a_held_button_draws_one_pixel_smaller() {
+        use egui::{Event, PointerButton, RawInput};
+        let ctx = Context::default();
+        let at = egui::pos2(10.0, 10.0);
+        let mut sizes = Vec::new();
+        for (t, events) in [
+            (0.0, vec![Event::PointerMoved(at)]),
+            (0.1, vec![Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Default::default() }]),
+            (0.2, vec![Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Default::default() }]),
+        ] {
+            // The widget needs a frame to be known before a press can hit it: run each twice.
+            for _ in 0..2 {
+                let mut out = ctx.run_ui(RawInput { time: Some(t), events: events.clone(), ..Default::default() }, |ui| {
+                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    sizes.push(pressed(&resp, rect).width());
+                });
+                out.textures_delta.clear();
+            }
+        }
+        assert_eq!((sizes[1], sizes[5]), (20.0, 20.0), "idle and released: full size");
+        assert!(sizes.contains(&18.0), "held: 1 px smaller per side");
     }
 }

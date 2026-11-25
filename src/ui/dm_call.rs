@@ -308,6 +308,7 @@ pub(super) fn incoming(ctx: &egui::Context, cx: &mut UiCx<'_>, accept: bool) {
 /// A round button filled with `fill`, the icon in white; the tooltip is the accessible name.
 fn round_button(ui: &mut egui::Ui, rect: Rect, fill: Color32, tip: &str, icon: Icon) -> egui::Response {
     let resp = ui.interact(rect, ui.make_persistent_id(("dm_call_button", tip)), Sense::click());
+    let rect = super::motion::pressed(&resp, rect);
     let hot = resp.hovered() || resp.has_focus();
     let fill = if hot { fill.lerp_to_gamma(Color32::WHITE, 0.15) } else { fill };
     ui.painter().circle_filled(rect.center(), rect.width() / 2.0, fill);

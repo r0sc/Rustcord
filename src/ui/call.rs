@@ -631,6 +631,7 @@ impl MediaButton<'_> {
     /// `colors` = (base, fg, danger); the icon is half the button's height, at least 20 px.
     pub(super) fn show(&self, ui: &mut egui::Ui, rect: Rect, radius: f32, salt: &str, (base, fg, danger): (Color32, Color32, Color32)) -> egui::Response {
         let resp = ui.interact(rect, ui.make_persistent_id(salt), if self.enabled { Sense::click() } else { Sense::hover() });
+        let rect = super::motion::pressed(&resp, rect);
         let hot = self.enabled && (resp.hovered() || resp.has_focus());
         let fill = if self.red { danger } else if self.on { fg } else { base };
         let bg = match (self.red || self.on, hot) {

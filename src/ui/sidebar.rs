@@ -317,7 +317,7 @@ fn icon_slot(ui: &mut egui::Ui, salt: impl egui::AsIdSalt, selected: bool) -> (R
     let resp = ui.interact(icon, ui.make_persistent_id(salt), Sense::click());
     let target = if selected || resp.hovered() { 1.0 } else { 0.0 };
     let morph = super::motion::value(ui.ctx(), resp.id.with("morph"), target, super::motion::FAST);
-    (row, icon, resp, morph)
+    (row, super::motion::pressed(&resp, icon), resp, morph)
 }
 
 /// Left-edge pill (height eases to 8 unread / 20 hover / 40 selected; it heats up on the way to
@@ -1930,6 +1930,7 @@ fn panel_icon_rest(c: &ThemeColors) -> Color32 {
 fn panel_button(ui: &mut egui::Ui, theme: &Theme, rect: Rect, icon: Icon, tip: &str, slashed: bool, on: bool) -> egui::Response {
     let c = &theme.colors;
     let resp = ui.interact(rect, ui.make_persistent_id(("panel_button", icon as u8)), Sense::click());
+    let rect = super::motion::pressed(&resp, rect);
     let hot = on || resp.hovered() || resp.has_focus();
     if hot {
         // As bright as a hovered half of the microphone / headphones pill.

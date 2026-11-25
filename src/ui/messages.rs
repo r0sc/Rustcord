@@ -201,8 +201,9 @@ fn button_with(ui: &mut egui::Ui, pal: &Pal, icon: Result<Icon, &str>, tip: &str
     let (rect, resp) = ui.allocate_exact_size(vec2(side, side), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), on, tip));
     if ui.is_rect_visible(rect) {
+        let rect = super::motion::pressed(&resp, rect);
         let hovered = resp.hovered();
-        let fill = if on { pal.tk.selected } else if hovered { pal.tk.hover } else { Color32::TRANSPARENT };
+        let fill = if on || resp.is_pointer_button_down_on() { pal.tk.selected } else if hovered { pal.tk.hover } else { Color32::TRANSPARENT };
         ui.painter().rect_filled(rect, pal.radius, fill);
         let color = if on { pal.text } else if hovered || resp.has_focus() { hot } else { pal.muted };
         match icon {
