@@ -10,6 +10,7 @@ directly as a **user** client. Not a port of the official client.
   Where it goes (AMD iGPU, release, offline): ~80 MB private is the GL driver as soon as the
   context exists; each MB of texture costs ~2.7 MB private (hence the 12 MB texture budget and
   idle eviction in `ui/images.rs`); all of `AppState` is < 10 MB even for a large account.
+- App sounds (`src/sounds.rs`) open a speaker stream only while a sound plays: one short thread per one-shot, one loop thread per ring, none when idle.
 - egui repaints only on input/events (reactive). Never call `request_repaint()` every frame;
   animations use `request_repaint_after(next_frame_delay)`. A plain `request_repaint()` costs
   egui two passes, so wakes from other threads use `request_repaint_after(1 ms)`: a backend
@@ -137,6 +138,7 @@ cargo check
 | ui-shell | `src/ui/mod.rs`, `login.rs`, `members.rs`, `chrome.rs` (frameless window: title bar buttons, drag, edge resize), `motion.rs` (DESIGN §7 tokens and helpers) |
 | cosmetics | `src/ui/cosmetics.rs` (shared renderers), `src/api/{cosmetics,collectibles}.rs`, `src/ui/user_settings/{cosmetics,connections}.rs`, `src/theme/gradient.rs`: see `docs/COSMETICS_NOTES.md` |
 | ui-messages | `src/ui/messages.rs`, `composer.rs`, `polls.rs`, `forward.rs` |
+| sounds | `src/sounds.rs` (gates, cues, player threads), `src/sounds/synth.rs` (recipes), `src/ui/user_settings/sounds.rs`; hooks in `ui/mod.rs` (`sound_cues`, the ping in `drain_events`) |
 | navigation | `src/ui/switcher.rs` (quick switcher, navigation keys; called from `user_settings/app.rs` `global_keys`), helpers in `sidebar.rs` / `server_menu.rs` |
 | markdown | `src/ui/markdown.rs`, `src/ui/markdown/parse.rs` |
 | phase2-profile | `src/overrides.rs` (local banner/avatar and local cosmetics: client-only, never uploaded) |
@@ -313,6 +315,7 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   foreground detection; stderr says `overlay: voice shown|hidden`); try it with Registered
   games = `charmap.exe`. `RUSTCORD_OPEN=voice:<channel id>` fills the call.
   `RUSTCORD_OPEN=switcher[:<query>]` opens the quick switcher with that text typed in (no comma in it).
+- App sounds: runs with `RUSTCORD_SCREENSHOT` set never play anything. Without it the hooks are audible: `RUSTCORD_OPEN=ring:<dm id>` (incoming ring loops until Decline), `outgoing:<dm id>`, `voice:<channel id>` (join), `muted` / `deafened`, and the preview buttons in `settings:notifications`. `cargo test export_wavs -- --ignored` writes every sound as a WAV (`RUSTCORD_SOUND_OUT=<dir>`) for listening.
 - `RUSTCORD_NAV_DEMO=<comma list>` (ui/sidebar.rs `nav_demo`): navigation / social states
   offline mode can't reach, none sends a request: `folders` / `folder-open` (server bar
   folders), `mentions` (inbox mentions from cached messages), `profile` (loaded profiles; with

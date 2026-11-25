@@ -171,7 +171,7 @@ Verified Rustcord hooks that already exist (by symbol; line numbers drift):
 | NoReplyMention | Replies don't ping by default | Composer | A | S26 |
 | NoServerEmojis | No server emoji in autocomplete | Composer | A | |
 | NoSystemBadge | No taskbar badge | Notifications | A | |
-| NotificationVolume | App sound volume | Notifications | A | S44 |
+| NotificationVolume | App sound volume | Notifications | A | S44; built in: Notifications > Sounds > Volume |
 | NoTrack | No analytics/Sentry (`_core`) | Privacy | A | Already true: never call `/science` |
 | NoTypingAnimation | Static typing dots | Appearance | A | |
 | NoUnblockToJump | Jump to blocked users' messages | Chat | A | |

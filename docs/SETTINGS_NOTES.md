@@ -63,8 +63,8 @@ pub fn with_sub(current: &str, top: u32, sub: u32, put: impl FnOnce(&mut Vec<u8>
 | Pages (`ui/user_settings.rs` `Page`) | My Account, Profiles, Profile Cosmetics, Connections, Data & Privacy, Local Profile (USER); Appearance, Notifications, Voice & Video (APP) |
 | Data & Privacy | Only the local "Send read receipts" |
 | Appearance | Theme, member list, gradients |
-| Notifications | Desktop notifications, plus per-server levels |
-| `config::Settings` | `theme`, `desktop_notifications`, `send_read_acks`, `show_member_list`, `animate_others`, voice in/out/threshold/`voice_input_volume`/PTT/key, `camera`, `frequent_emoji`, `favorite_gifs` |
+| Notifications | Desktop notifications, Sounds (master, volume, a switch and preview per sound), plus per-server levels |
+| `config::Settings` | `theme`, `desktop_notifications`, `send_read_acks`, `show_member_list`, `animate_others`, voice in/out/threshold/`voice_input_volume`/PTT/key, `camera`, `frequent_emoji`, `favorite_gifs`, `sounds` |
 
 **Target sidebar** (2026 names):
 
@@ -282,7 +282,7 @@ All ✔ except spell check. They are cheap render gates in the message view.
 | In-app notifications | on | `P7.1` | ✔ |
 | Game activity notifications: 1 off / 2 on / 3 only games played | UNSET | `P7.8` plain enum; `P7.10 Bool` excludes Steam | ✔ |
 | TTS notifications: all / current channel / never | never | L | ✔ with TTS |
-| Sounds | on | L | ✔ (for the sounds Rustcord plays) |
+| Sounds | on | L | ✔ exists: Rustcord's own (`src/sounds.rs`): message, mention, incoming and outgoing ring, voice join/leave, disconnect, mute/unmute, deafen/undeafen, push to talk on/off, stream start/end, one volume; skipped: viewer join/leave, activity, user moved, stage |
 | Receive friends' Go Live | on | `P5.7` | ✔ |
 | Notify friends / server members when I go live | off / ? | `P7.2` / `P7.26` | ✔ |
 | Notify friends when I come online / update my profile | on | `P7.25` / `P7.24` | ✔ |
@@ -329,7 +329,7 @@ All ✔ and cheap:
 - auto-enable when OBS, XSplit or Streamlabs runs (process scan);
 - hide personal info: email, phone, connections, notes, DM previews;
 - hide invite links;
-- disable sounds;
+- disable sounds (exists: `streamer.disable_sounds`, on by default);
 - disable notifications;
 - hide the window from capture: `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)`.
 

@@ -275,6 +275,23 @@ loops on its own (spinners while loading excepted) and asks for frames only whil
   also on while the system's "Animation effects" are off (`motion::os_reduced`, read once).
 - `RUSTCORD_MOTION_SCALE=<f>` multiplies every duration (10: screenshots mid-animation).
 
+### 7.1 Sound
+
+Rustcord's own sounds are synthesized in code (`src/sounds/synth.rs`), never files. They follow
+the same ux-motion principles as the motion above.
+
+- Families: bell for chat, rings and streams; anvil (bell plus a soft hammer tick) for voice
+  presence; click for switches. Pitches are D major pentatonic (D4 to F#6).
+- Switch sounds are audible for 150 ms or less (8, snappy); presence sounds 0.3-0.8 s; only rings
+  last longer. Every out/off sound is shorter than its in/on pair (18). Push to talk is the
+  shortest and quietest and the message ping short and soft (20). Only the incoming ring is loud
+  (15). Disconnect resolves down to D4 (19). Attack is eased, decay exponential, linear only in
+  the 10 ms end fade (5). A ring stops within one pass of Accept or Decline, with a 20 ms fade
+  (17). The sound starts within about 100 ms (16).
+- A sound never stands alone (7): each backs up something visible (call popup, notification,
+  mute icons, speaking ring, LIVE tag).
+- Reduced motion does not apply; Settings > Notifications > Sounds does.
+
 ---|---|
 | heat bar and pill | 150 ms (existing `ANIM`) |
 | switch knob, segmented selection, category chevron (0 ↔ −90°) | 120 ms |
@@ -916,6 +933,7 @@ Playing                                     <- label role: "Playing" / "Listenin
 - Selected nav row: `selected` fill only.
 - Page title in the title role.
 - Section heading in the heading role with 32 above. No rule under it (ui/mod.rs:1292 `section`).
+- Notifications > Sounds: section "Sounds", the "Play sounds" switch row, a "Volume" label with a slider (a release plays the message sound), then a row per sound (title, optional meta) with a 28 px play button, 8 px, and a switch on the right. Play buttons are disabled while deafened (a hint says so); the rows are disabled while Play sounds is off.
 - Setting row:
   - left: title ui 14/500 and a meta `text_muted` description
   - right: the control

@@ -88,6 +88,7 @@ What's in it so far:
 - Gateway with heartbeat, zombie detection, resume, reconnect backoff, zlib-stream compression.
 - REST rate limiting per bucket + global, honouring `retry_after`.
 - Server list with icons, channel list per server, DM list, member list.
+- Rustcord's own app sounds, made in code: message and mention pings, call rings, voice join/leave, mute, deafen, push to talk and streams; each one can be switched off, with one volume.
 - Message history with lazy loading while scrolling up; markdown (bold, italic, underline,
   strike, code, code blocks, links, spoilers, quotes, headings, lists, timestamps), mentions,
   custom and unicode emoji, image/GIF attachments, basic embeds, stickers, forwarded messages.
@@ -480,6 +481,10 @@ show_member_list = true
 animate_others = "hover"      # "always" | "hover" – animated avatars/emoji of others
 minimize_to_tray = true       # × hides the window to the notification area (Quit is in the tray menu)
 auto_update = true            # install updates automatically (the check runs either way)
+# [sounds]                    # Notifications > Sounds
+# enabled = true
+# volume = 70                 # percent, 0-100
+# off = ["mention"]           # sounds switched off (message, mention, incoming_ring, join, ...)
 # client_build_number = 0     # optional: sent in the client properties
 # system_locale = "en-US"
 ```

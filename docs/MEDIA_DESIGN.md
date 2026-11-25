@@ -37,7 +37,7 @@ Measured release delta with the probe: +372 KB.
 | `mod.rs` | `Player` handle, worker thread (one per player, `rustcord-media`), `State`, `Status`, `Opts`, frame slots |
 | `net.rs` | `init(Handle)`, `open(url)`, `RangeSource`, `fetch_all`, `save`, `file_name` |
 | `mp4.rs` | pure helpers: `avcc_params`, `to_annexb`, `lc_asc`, `keyframe_for`, `audio_index_for`, `check_boxes`, `pick_tracks` |
-| `audio.rs` | `AudioOut`: speaker (Voice & Video output, else default), F32, ring drained with `try_lock`, linear resample, volume in the callback, played-frames counter. Shared with `plugins/voice_messages.rs`. |
+| `audio.rs` | `AudioOut`: speaker (Voice & Video output, else default), F32, ring drained with `try_lock`, linear resample, volume in the callback, played-frames counter. Shared with `plugins/voice_messages.rs` and the app sounds (`src/sounds.rs`). |
 
 ```
 UI (viewer.rs) ──Player::{play,pause,seek,set_volume,set_target,drawn}──► mpsc ──► worker thread
