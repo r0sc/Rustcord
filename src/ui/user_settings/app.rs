@@ -96,7 +96,7 @@ pub(super) fn accessibility(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
 }
 
 /// A slider was let go, or changed without a drag (keys): the moment to save.
-fn released(r: &egui::Response) -> bool {
+pub(super) fn released(r: &egui::Response) -> bool {
     r.drag_stopped() || (r.changed() && !r.dragged())
 }
 
@@ -198,7 +198,7 @@ fn updates(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     toggled
 }
 
-/// Streamer Mode (no "Disable sounds": Rustcord plays none; no OBS auto-enable: no process scan).
+/// Streamer Mode (no OBS auto-enable: no process scan).
 pub(super) fn streamer(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     let s = &mut cx.settings.streamer;
     let mut changed = switch_row(ui, cx.theme, "Streamer mode", Some("Hides what you pick below while you stream. Also on a keybind (Keybinds)."), &mut s.enabled);
@@ -208,6 +208,7 @@ pub(super) fn streamer(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         changed |= switch_row(ui, theme, "Hide personal information", Some("Your username, connections and who messaged you."), &mut s.hide_personal_info);
         changed |= switch_row(ui, theme, "Hide invite links", Some("Copy still works."), &mut s.hide_invite_links);
         changed |= switch_row(ui, theme, "Disable notifications", None, &mut s.disable_notifications);
+        changed |= switch_row(ui, theme, "Disable sounds", None, &mut s.disable_sounds);
         if cfg!(windows) {
             changed |= switch_row(ui, theme, "Hide window from screen capture", Some("Others see a blank area where Rustcord is."), &mut s.hide_from_capture);
         }

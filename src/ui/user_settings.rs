@@ -32,6 +32,7 @@ pub mod local_profile;
 #[cfg(windows)]
 mod overlay;
 mod plugins;
+mod sounds;
 mod status;
 mod synced;
 pub mod theme_editor;
@@ -152,7 +153,7 @@ impl Page {
             Page::VoiceVideo => ("Voice & video", "voice", "microphone speaker camera push to talk input output"),
             Page::Clips => ("Clips", "clips", "clips recording record voice"),
             Page::Chat => ("Chat", "chat", "text images embeds links media emoji reactions spoilers"),
-            Page::Notifications => ("Notifications", "notifications", "desktop taskbar push mute servers"),
+            Page::Notifications => ("Notifications", "notifications", "desktop taskbar push mute servers sound sounds ping ring ringtone volume"),
             Page::Keybinds => ("Keybinds", "keybinds", "shortcuts hotkeys keyboard"),
             Page::Language => ("Language", "language", "locale"),
             // One id on every OS; title and rows say Windows, Linux or macOS.
@@ -183,9 +184,30 @@ impl Page {
                 "Play animated avatars, emoji and GIFs",
             ],
             Page::Windows => &app::DESKTOP_LABELS,
-            Page::StreamerMode => &["Streamer mode", "Hide personal information", "Hide invite links", "Disable notifications", "Hide window from screen capture"],
+            Page::StreamerMode => &["Streamer mode", "Hide personal information", "Hide invite links", "Disable notifications", "Disable sounds", "Hide window from screen capture"],
             Page::Privacy => &["Send read receipts"],
-            Page::Notifications => &["Desktop notifications", "Flash the taskbar"],
+            Page::Notifications => &[
+                "Desktop notifications",
+                "Flash the taskbar",
+                "Sounds",
+                "Play sounds",
+                "Volume",
+                "Message",
+                "Mention",
+                "Incoming call",
+                "Outgoing call",
+                "Voice join",
+                "Voice leave",
+                "Disconnect",
+                "Mute",
+                "Unmute",
+                "Deafen",
+                "Undeafen",
+                "Push to talk on",
+                "Push to talk off",
+                "Stream start",
+                "Stream end",
+            ],
             Page::VoiceVideo => &["Input volume", "Input mode", "Voice activity", "Push to talk", "Input sensitivity", "Microphone and sound", "Mute", "Deafen", "Video", "Camera"],
             Page::Advanced => &["Hardware acceleration"],
             Page::GameOverlay => &["Enable in-game overlay", "Position", "Avatar size", "Show names", "Show users"],
@@ -468,7 +490,10 @@ fn page(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
             );
         }
         Page::Accessibility => changed |= app::accessibility(ui, cx),
-        Page::Notifications => changed |= notification_switches(ui, cx),
+        Page::Notifications => {
+            changed |= notification_switches(ui, cx);
+            changed |= sounds::show(ui, cx);
+        }
         Page::Keybinds => changed |= keybinds::show(ui, cx),
         Page::Windows => changed |= app::windows(ui, cx),
         Page::StreamerMode => changed |= app::streamer(ui, cx),
