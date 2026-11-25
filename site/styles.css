@@ -217,13 +217,40 @@ details[open] > summary .chev { rotate: 0deg; }
 .foot-links { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; padding: 0; }
 .foot-text p { max-width: 70ch; }
 
-/* tour: stacked screenshots (the viewer replaces this) */
-.tour { padding: calc(var(--sec-pad) * .6) 0 var(--sec-pad); }
-.tour-title { padding: 0 var(--gutter); max-width: calc(var(--max) + 2 * var(--gutter)); margin: 0 auto 48px; }
-.tour-list { list-style: none; margin: 0 auto; padding: 0 var(--gutter); max-width: calc(var(--max) + 2 * var(--gutter)); display: grid; gap: clamp(48px, 8vw, 96px); }
-.tour figure { margin: 0; }
-.tour figcaption { margin-top: 20px; max-width: 60ch; }
-.tour figcaption h3 { margin-bottom: 6px; }
-.tour figcaption p { color: var(--muted); font-size: 1rem; margin: 0; }
-.tour-shot { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--r-card); background: var(--well); border: 1px solid var(--frame-edge); box-shadow: var(--e3); }
-.tour-shot img { display: block; width: 100%; height: auto; }
+/* viewer: like the app's settings panel (nav left, page right) */
+.sec#tour { padding-top: calc(var(--sec-pad) * .6); }
+.viewer { --v-nav: var(--band); --v-page: var(--page); --v-text: var(--text); --v-muted: var(--muted); --v-ink: var(--ink);
+  --v-selected: var(--selected); --v-rule: var(--rule); --v-hover: var(--hover);
+  border-color: var(--v-rule); color: var(--v-text); overflow: hidden; }
+.viewer[data-current="lilac"] { --v-nav: #F0EEF5; --v-page: #FBFAFD; --v-text: #17151D; --v-muted: #5B5869; --v-ink: #8B15D0;
+  --v-selected: rgb(23 21 29 / .08); --v-rule: rgb(23 21 29 / .12); --v-hover: rgb(23 21 29 / .06); --sheen: transparent; }
+.viewer-panels { display: grid; gap: 48px; padding: 24px; background: var(--v-page); }
+.shot-panel { margin: 0; }
+.shot-frame { aspect-ratio: 16 / 10; overflow: hidden; border-radius: var(--r-card); border: 1px solid var(--v-rule); background: var(--well); }
+.shot-frame img { display: block; width: 100%; height: auto; }
+.shot-panel figcaption { margin-top: 20px; }
+.shot-panel h3 { margin-bottom: 6px; color: var(--v-text); }
+.shot-panel p { margin: 0; font-size: 1rem; color: var(--v-muted); max-width: 60ch; }
+.viewer-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px; background: var(--v-nav); border-bottom: 1px solid var(--v-rule); }
+@media (min-width: 600px) { .viewer-tabs { grid-template-columns: repeat(5, 1fr); } }
+.viewer-tab { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--r-control);
+  background: none; color: var(--v-muted); font: 500 1rem/1 var(--font); text-align: left; cursor: pointer; transition: background-color var(--t-fast), color var(--t-fast); }
+.viewer-tab .icon { width: 20px; height: 20px; }
+.viewer-tab:hover { background: var(--v-hover); color: var(--v-text); }
+.viewer-tab[aria-selected="true"] { background: var(--v-selected); color: var(--v-text); }
+.viewer-tab[aria-selected="true"] .icon { color: var(--v-ink); }
+.viewer-tab:focus-visible { outline-offset: -2px; }
+.viewer[data-current="lilac"] :focus-visible { outline-color: var(--v-ink); }
+@media (forced-colors: active) { .viewer-tab[aria-selected="true"] { border-color: Highlight; } }
+.is-tabs .viewer-panels { padding: 16px; gap: 0; }
+.is-tabs .shot-panel { grid-area: 1 / 1; visibility: hidden; }
+.is-tabs .is-current, .is-tabs .is-prev { visibility: visible; }
+.is-current { z-index: 2; } .is-prev { z-index: 1; } .is-prev figcaption { visibility: hidden; }
+@media (min-width: 960px) {
+  .viewer.is-tabs { display: grid; grid-template-columns: 248px 1fr; }
+  .is-tabs .viewer-tabs { display: flex; flex-direction: column; gap: 2px; padding: 16px 12px; border-bottom: 0; border-right: 1px solid var(--v-rule); }
+  .is-tabs .viewer-panels { padding: 24px; }
+}
+@keyframes layer-in { from { opacity: 0; transform: scale(.98); } }
+.motion .viewer.touched .is-current .shot-frame { animation: layer-in var(--t-base) var(--ease-out); transform-origin: 50% 0; }
+@media (min-width: 960px) { .motion .viewer.touched .is-current .shot-frame { transform-origin: 0 50%; } }
