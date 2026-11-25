@@ -487,6 +487,12 @@ impl RustcordApp {
                         // Plugins (OnePingPerDM): one per DM until it is read.
                         && crate::plugins::notifier::one_ping(&self.state, n.channel_id)
                     {
+                        // A ringing call (no author) rings from `sound_cues` instead; my own messages never get here.
+                        if n.author_id.is_some() {
+                            let deaf = crate::sounds::deafened(&self.state, self.view.self_deaf);
+                            let sound = if n.mentioned { crate::sounds::Sound::Mention } else { crate::sounds::Sound::Message };
+                            crate::sounds::play(sound, &self.settings, deaf, false);
+                        }
                         // Off, or Streamer Mode: none, or without sender and text.
                         if let Some((title, body)) = self.settings.notification(&n.title, &n.body) {
                             // A game is in front: the overlay shows it instead of the desktop notification.

@@ -89,6 +89,8 @@ pub struct Notification {
     pub body: String,
     /// The sender, for the avatar on the overlay toast (None: a ringing call).
     pub author_id: Option<Id>,
+    /// The message mentions me (the Mention sound instead of the Message one).
+    pub mentioned: bool,
 }
 
 #[derive(Debug)]
@@ -1259,7 +1261,7 @@ impl AppState {
         let hidden = !mine && self.hidden_authors.contains(&msg.author.id);
         let mentioned = !mine && !hidden && self.mentions_me(&msg);
         let notification =
-            (!mine && !hidden && !focused && self.should_notify(&msg, mentioned)).then(|| self.build_notification(&msg));
+            (!mine && !hidden && !focused && self.should_notify(&msg, mentioned)).then(|| self.build_notification(&msg, mentioned));
         let muted = self.is_channel_muted(cid);
 
         let ch = self.channels.get_mut(&cid).expect("channel inserted above");
@@ -1348,7 +1350,7 @@ impl AppState {
         }
     }
 
-    fn build_notification(&self, msg: &Message) -> Notification {
+    fn build_notification(&self, msg: &Message, mentioned: bool) -> Notification {
         let ch = self.channels.get(&msg.channel_id);
         let guild_id = ch.and_then(|c| c.guild_id);
         let author = self.member_display_name(guild_id, &msg.author, msg.member.as_ref());
@@ -1360,7 +1362,7 @@ impl AppState {
             Some(c) if c.kind == channel_type::GROUP_DM => format!("{author} ({})", self.channel_name(c.id)),
             _ => author,
         };
-        Notification { channel_id: msg.channel_id, title, body: notification_body(msg), author_id: Some(msg.author.id) }
+        Notification { channel_id: msg.channel_id, title, body: notification_body(msg), author_id: Some(msg.author.id), mentioned }
     }
 
     fn on_message_update(&mut self, u: MessageUpdate) {
@@ -2068,6 +2070,10 @@ mod tests {
         assert!(!notify(&mut s, msg(603, DM, OTHER), None));
         s.guild_settings.insert(None, GuildSettings { channel_overrides: vec![override_(DM, 3, true, Some(PAST))], ..settings(None, 3) });
         assert!(notify(&mut s, msg(604, DM, OTHER), None));
+
+        // The Mention sound needs to know a message mentions me.
+        assert_eq!(create(&mut s, msg(605, DM, OTHER), None).map(|n| n.mentioned), Some(false));
+        assert_eq!(create(&mut s, mention(msg(606, DM, OTHER)), None).map(|n| n.mentioned), Some(true));
 
         // No settings entry: the guild default decides.
         assert!(notify(&mut s, msg(2000, TEXT, OTHER), None));
