@@ -33,6 +33,7 @@ pub mod local_profile;
 #[cfg(windows)]
 mod overlay;
 mod plugins;
+mod presence;
 mod sounds;
 mod status;
 mod synced;
@@ -161,7 +162,7 @@ impl Page {
             Page::Windows => (app::DESKTOP.title, "windows", "startup login autostart minimize tray menu bar close update updates version upgrade"),
             Page::StreamerMode => ("Streamer mode", "streamer", "streaming obs hide"),
             Page::Advanced => ("Advanced", "advanced", "developer mode copy id hardware acceleration"),
-            Page::ActivityPrivacy => ("Activity privacy", "activity", "activity status game join"),
+            Page::ActivityPrivacy => ("Activity privacy", "activity", "activity status game join rustcord presence rich"),
             Page::RegisteredGames => ("Registered games", "games", "games detection"),
             Page::GameOverlay => ("Game overlay", "overlay", "overlay in-game voice widget notifications corner position avatar names"),
             Page::Plugins => ("Plugins", "plugins", "vencord"),
@@ -580,7 +581,8 @@ fn page(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         Page::Windows => changed |= app::windows(ui, cx),
         Page::StreamerMode => changed |= app::streamer(ui, cx),
         Page::Advanced => app::advanced(ui, cx),
-        Page::ContentSocial | Page::FriendRequests | Page::Chat | Page::Language | Page::ActivityPrivacy => {}
+        Page::ActivityPrivacy => changed |= presence::show(ui, cx),
+        Page::ContentSocial | Page::FriendRequests | Page::Chat | Page::Language => {}
     }
     // Profiles > Server Profiles is about one server only.
     if !(p == Page::Profiles && cx.view.user_settings_ui.server_tab.is_some()) {

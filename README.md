@@ -140,7 +140,9 @@ What's in it so far:
   album art and a progress bar, streaming, watching; detected games show the game's icon, or
   a controller when there is none. Member list, DMs, friends and profile cards show them.
 - Your activity shows Rustcord by default (with your version and how long it has been open); a
-  game you play shows first. Settings → Activity privacy.
+  game you play shows first. Settings → Activity privacy has the switch, a preview and an
+  optional Application ID (an app you make in the Discord Developer Portal; its icon becomes
+  the picture).
 - Game detection: every 15 s Rustcord looks at the running programs (on Linux also Wine and
   Proton games, on macOS app bundles) and matches them against Discord's list of detectable
   games and the games you added in Settings → Registered games ("Add it!" picks an open

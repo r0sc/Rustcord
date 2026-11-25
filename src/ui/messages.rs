@@ -314,7 +314,7 @@ pub(super) fn button(ui: &mut egui::Ui, pal: &Pal, kind: Btn, text: &str, enable
 
 /// Callout kinds (§6.9): a note in the page's flow. Never purple: purple is "you", not "info".
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[allow(dead_code, reason = "shared callout; the settings pages adopt it")]
+#[allow(dead_code, reason = "Warn and Danger: the other settings pages adopt them")]
 pub(super) enum Callout {
     Info,
     Warn,
@@ -323,7 +323,6 @@ pub(super) enum Callout {
 
 /// A callout: full width, card radius, a 16 px icon and wrapped ui text on the kind's colour at
 /// 8 % with a 1 px border (70 % on dark, 1.5 px on high contrast).
-#[allow(dead_code, reason = "shared callout; the settings pages adopt it")]
 pub(super) fn callout(ui: &mut egui::Ui, pal: &Pal, kind: Callout, text: &str) {
     let (color, info) = match kind {
         Callout::Info => (pal.link, true),
