@@ -37,6 +37,8 @@ const THREAD_PAGE: u32 = 25;
 const MAX_SEARCH_OFFSET: u32 = 9_975;
 /// Products / games kept for the cosmetics display.
 const MAX_COSMETIC_CACHE: usize = 256;
+/// Previews one `FetchRequestPreviews` asks for (the API takes 1-25).
+const PREVIEW_PAGE: usize = 25;
 
 #[derive(Debug, Default)]
 pub struct SocialState {
@@ -66,6 +68,21 @@ pub struct SocialState {
     pub games: HashMap<Id, Option<Game>>,
     /// Settings → Connections: my connections; None until the page first loads them.
     pub connections: Option<Result<Vec<ConnectedAccount>, String>>,
+    /// The message requests page's previews; Some while the page is open (`ui/requests.rs`).
+    pub request_previews: Option<RequestPreviews>,
+    /// Requests being accepted or ignored (a command is on its way).
+    pub request_busy: HashSet<Id>,
+}
+
+/// Trigger messages of the requests page. Asked a page at a time, only on a click.
+#[derive(Debug, Default)]
+pub struct RequestPreviews {
+    /// By request channel.
+    pub messages: HashMap<Id, Message>,
+    /// Channels a `FetchRequestPreviews` was sent for (answered or on its way).
+    pub asked: HashSet<Id>,
+    pub loading: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Debug)]
@@ -280,6 +297,52 @@ impl AppState {
                 }
             }
             E::ConnectionsLoaded(result) => self.social.connections = Some(result),
+            E::RequestPreviewsLoaded { channel_ids, result } => {
+                let v = self.social.request_previews.as_mut()?;
+                v.loading = false;
+                match result {
+                    Ok(page) => {
+                        v.error = None;
+                        v.messages.extend(page.into_iter().filter(|m| channel_ids.contains(&m.channel_id)).map(|m| (m.channel_id, m)));
+                    }
+                    Err(e) => {
+                        // Retry asks again.
+                        for id in &channel_ids {
+                            v.asked.remove(id);
+                        }
+                        v.error = Some(e);
+                    }
+                }
+            }
+            E::MessageRequestsDone { channel_ids, accepted, result } => {
+                for id in &channel_ids {
+                    self.social.request_busy.remove(id);
+                }
+                match result {
+                    Err(e) => {
+                        let what = match (accepted, channel_ids.len() > 1) {
+                            (true, _) => "accept the message request",
+                            (false, false) => "ignore the message request",
+                            (false, true) => "ignore the message requests",
+                        };
+                        return Some(format!("Could not {what}: {e}"));
+                    }
+                    Ok(()) if accepted => {
+                        for id in &channel_ids {
+                            if let Some(ch) = self.channels.get_mut(id) {
+                                (ch.is_message_request, ch.is_spam) = (false, false);
+                            }
+                        }
+                        self.dirty = true;
+                    }
+                    Ok(()) => {
+                        // shortcut: a CHANNEL_UPDATE arriving after this local removal re-adds the channel until its CHANNEL_DELETE; add a rejected-id guard if that shows live.
+                        for id in channel_ids {
+                            self.apply_gateway(GatewayEvent::ChannelDelete { id, guild_id: None }, None);
+                        }
+                    }
+                }
+            }
         }
         None
     }
@@ -404,7 +467,7 @@ impl AppState {
     pub fn unread_channels(&self) -> Vec<Id> {
         let mut v: Vec<&Channel> = (self.read_states.keys())
             .filter_map(|id| self.channels.get(id))
-            .filter(|c| c.is_text_chat() && !inactive_thread(c))
+            .filter(|c| c.is_text_chat() && !inactive_thread(c) && !c.is_message_request && !c.is_spam)
             .filter(|c| self.is_unread(c.id) && self.can_view(c.id))
             .filter(|c| self.mention_count(c.id) > 0 || !c.guild_id.is_some_and(|g| self.is_guild_muted(g)))
             .collect();
@@ -429,10 +492,52 @@ impl AppState {
 
     /// DMs of the Message Requests entry (`spam` false) or the Spam entry, newest first. The DM
     /// list skips both (`is_message_request`).
-    #[allow(dead_code, reason = "for the Message Requests page, which is not built yet")]
     pub fn message_requests(&self, spam: bool) -> Vec<Id> {
         let listed = |c: &Channel| if spam { c.is_spam } else { c.is_message_request && !c.is_spam };
         self.dm_order.iter().copied().filter(|id| self.channels.get(id).is_some_and(listed)).collect()
+    }
+
+    /// `(requests, spam)` counts of the Message Requests entry.
+    pub fn request_counts(&self) -> (usize, usize) {
+        let spam = self.message_requests(true).len();
+        (self.message_requests(false).len(), spam)
+    }
+
+    /// The next page of previews to ask for (`FetchRequestPreviews`): the first 25 listed
+    /// requests not asked yet; marks them asked and the view loading. None when the page is
+    /// closed, a page is on its way, or everything was asked.
+    pub fn begin_request_previews(&mut self, spam: bool) -> Option<Vec<Id>> {
+        let ids = self.message_requests(spam);
+        let v = self.social.request_previews.as_mut().filter(|v| !v.loading)?;
+        let page: Vec<Id> = ids.into_iter().filter(|id| !v.asked.contains(id)).take(PREVIEW_PAGE).collect();
+        if page.is_empty() {
+            return None;
+        }
+        v.asked.extend(page.iter().copied());
+        (v.loading, v.error) = (true, None);
+        Some(page)
+    }
+
+    /// Some listed request has no preview asked for yet ("Load more previews").
+    pub fn more_request_previews(&self, spam: bool) -> bool {
+        let Some(v) = self.social.request_previews.as_ref().filter(|v| !v.loading) else { return false };
+        self.message_requests(spam).iter().any(|id| !v.asked.contains(id))
+    }
+
+    /// Claims `ids` for an accept / ignore: false when none or one is already on its way.
+    pub fn begin_request_action(&mut self, ids: &[Id]) -> bool {
+        let busy = &mut self.social.request_busy;
+        if ids.is_empty() || ids.iter().any(|id| busy.contains(id)) {
+            return false;
+        }
+        busy.extend(ids.iter().copied());
+        true
+    }
+
+    /// A request's preview text (one line) and its ISO timestamp.
+    pub fn request_preview(&self, channel_id: Id) -> Option<(String, &str)> {
+        let m = self.social.request_previews.as_ref()?.messages.get(&channel_id)?;
+        Some((super::notification_body(m).split_whitespace().collect::<Vec<_>>().join(" "), &m.timestamp))
     }
 
     // ----- hooks (called from `apply_gateway` & co.) ------------------------------------
@@ -901,9 +1006,78 @@ mod tests {
         assert_eq!((s.message_requests(false), s.message_requests(true)), (vec![Id(201)], vec![Id(202)]));
         assert!(s.is_message_request(Id(201)) && s.is_message_request(Id(202)) && !s.is_message_request(DM));
         assert_eq!(s.dm_unread_count(), 1, "requests are not on the Home badge");
+        assert_eq!(s.request_counts(), (1, 1));
+        assert!(!s.unread_channels().contains(&Id(201)));
         let from = |id, channel, author| Message { id: Id(id), channel_id: channel, author: user(author, "x"), ..Default::default() };
         assert!(s.apply_gateway(GatewayEvent::MessageCreate(Box::new(from(90, Id(201), THIRD))), None).is_none());
         assert!(s.apply_gateway(GatewayEvent::MessageCreate(Box::new(from(91, DM, OTHER))), None).is_some());
+    }
+
+    fn requests_state() -> AppState {
+        let mut s = state();
+        for (id, spam) in [(201, false), (202, true)] {
+            let ch = Channel { id: Id(id), kind: channel_type::DM, recipient_ids: vec![THIRD], is_message_request: true, is_spam: spam, ..Default::default() };
+            gw(&mut s, GatewayEvent::ChannelCreate(Box::new(ch)));
+        }
+        s
+    }
+
+    fn done(ids: &[u64], accepted: bool, result: Result<(), String>) -> SocialEvent {
+        SocialEvent::MessageRequestsDone { channel_ids: ids.iter().map(|&i| Id(i)).collect(), accepted, result }
+    }
+
+    #[test]
+    fn message_request_answers() {
+        let mut s = requests_state();
+        assert!(s.begin_request_action(&[Id(201)]) && !s.begin_request_action(&[Id(201)]) && !s.begin_request_action(&[]));
+        assert!(s.apply_social(done(&[201], true, Ok(()))).is_none());
+        let c = &s.channels[&Id(201)];
+        assert!(!c.is_message_request && !c.is_spam && s.social.request_busy.is_empty());
+        assert!(!s.is_message_request(Id(201)));
+        s.select_channel(Id(202));
+        assert!(s.begin_request_action(&[Id(202)]));
+        assert!(s.apply_social(done(&[202], false, Ok(()))).is_none());
+        assert!(!s.channels.contains_key(&Id(202)) && !s.dm_order.contains(&Id(202)) && s.selected_channel.is_none());
+        assert!(s.social.request_busy.is_empty());
+        let mut s = requests_state();
+        assert!(s.begin_request_action(&[Id(201)]));
+        assert_eq!(s.apply_social(done(&[201], true, Err("x".into()))).as_deref(), Some("Could not accept the message request: x"));
+        assert!(s.channels[&Id(201)].is_message_request && s.social.request_busy.is_empty());
+        assert_eq!(s.apply_social(done(&[201], false, Err("x".into()))).as_deref(), Some("Could not ignore the message request: x"));
+        assert_eq!(s.apply_social(done(&[201, 202], false, Err("x".into()))).as_deref(), Some("Could not ignore the message requests: x"));
+    }
+
+    #[test]
+    fn message_request_previews() {
+        let mut s = state();
+        assert!(s.begin_request_previews(false).is_none(), "no view");
+        for i in 0..30 {
+            let ch = Channel { id: Id(500 + i), kind: channel_type::DM, recipient_ids: vec![THIRD], is_message_request: true, last_message_id: Some(Id(1000 + i)), ..Default::default() };
+            gw(&mut s, GatewayEvent::ChannelCreate(Box::new(ch)));
+        }
+        s.social.request_previews = Some(Default::default());
+        let first = s.begin_request_previews(false).unwrap();
+        assert_eq!(first.len(), 25);
+        assert_eq!(first[0], Id(529), "newest first");
+        assert!(s.begin_request_previews(false).is_none(), "loading");
+        let msg = |c: u64, content: &str| Message { id: Id(1), channel_id: Id(c), content: content.into(), timestamp: "2026-11-01T00:00:00+00:00".into(), ..Default::default() };
+        let loaded = |ids: Vec<Id>, result| SocialEvent::RequestPreviewsLoaded { channel_ids: ids, result };
+        // 999 was not asked about.
+        s.apply_social(loaded(first.clone(), Ok(vec![msg(529, "a\n\nb"), msg(999, "x")])));
+        assert_eq!(s.request_preview(Id(529)), Some(("a b".to_owned(), "2026-11-01T00:00:00+00:00")));
+        assert!(!s.social.request_previews.as_ref().unwrap().messages.contains_key(&Id(999)));
+        assert!(s.more_request_previews(false));
+        assert_eq!(s.begin_request_previews(false).unwrap().len(), 5);
+        assert!(!s.more_request_previews(false), "loading");
+        s.apply_social(loaded(vec![Id(500)], Err("boom".into())));
+        let v = s.social.request_previews.as_ref().unwrap();
+        assert_eq!(v.error.as_deref(), Some("boom"));
+        assert!(!v.asked.contains(&Id(500)) && !v.loading);
+        assert_eq!(s.begin_request_previews(false), Some(vec![Id(500)]), "retry asks again");
+        assert!(s.begin_request_previews(false).is_none());
+        s.social.request_previews = None;
+        assert!(s.apply_social(loaded(vec![Id(500)], Err("late".into()))).is_none());
+        assert!(s.social.request_previews.is_none());
     }
 
     #[test]

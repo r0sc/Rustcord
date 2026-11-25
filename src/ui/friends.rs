@@ -134,7 +134,7 @@ fn header(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
 /// A header tab: a segment of the list tabs (32 tall, ui 14/500; selected on the `selected`
 /// fill, `raised` on light themes); `primary` (the accent) makes it the filled Add friend button,
 /// a plain selected segment while its page is open. `badge` = a count pill after the label.
-fn tab_button(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, text: &str, selected: bool, badge: usize, primary: Option<Color32>) -> egui::Response {
+pub(super) fn tab_button(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, text: &str, selected: bool, badge: usize, primary: Option<Color32>) -> egui::Response {
     let font = FontId::new(pal.ui(), crate::theme::medium_family());
     let g = ui.painter().layout_no_wrap(text.to_owned(), font.clone(), pal.text);
     let badge_w = if badge > 0 { 24.0 } else { 0.0 };
@@ -395,7 +395,7 @@ fn active_card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, id: Id) {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Action {
+pub(super) enum Action {
     Message,
     More,
     Accept,
@@ -416,7 +416,7 @@ fn run(cx: &mut UiCx<'_>, action: Action, user: Id) {
 
 /// 36 px round action button on the row (`row_hot`: the row is hovered, so the circle shows
 /// the hover colour). Accept turns green, Ignore / Cancel red on hover.
-fn round_button(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, (user, rect): (Id, Rect), action: Action, tip: &str, row_hot: bool) -> egui::Response {
+pub(super) fn round_button(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, (user, rect): (Id, Rect), action: Action, tip: &str, row_hot: bool) -> egui::Response {
     let resp = ui.interact(rect, ui.make_persistent_id(("rc_friend_action", user, action as u8)), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     let hot = resp.hovered() || resp.has_focus();

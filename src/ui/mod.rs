@@ -32,6 +32,7 @@ pub mod polls;
 pub mod profile;
 pub mod profile_modal;
 pub mod quests;
+pub mod requests;
 pub mod screen_share;
 pub mod search;
 pub mod server_menu;
@@ -201,6 +202,7 @@ pub struct ViewState {
     pub user_settings_ui: user_settings::UserSettingsUi,
     pub call_ui: call::CallUi,
     pub quests_ui: quests::QuestsUi,
+    pub requests_ui: requests::RequestsUi,
     pub media_ui: viewer::MediaUi,
 }
 
@@ -313,6 +315,7 @@ impl Default for ViewState {
             user_settings_ui: Default::default(),
             call_ui: Default::default(),
             quests_ui: Default::default(),
+            requests_ui: Default::default(),
             media_ui: Default::default(),
         }
     }
@@ -840,6 +843,8 @@ impl RustcordApp {
                     s if dm_call::demo(&mut self.state, s) => {}
                     // quests.rs `demo`: quests[:blocked|empty|error|loading|watch|watch-play|bg|complete|claim].
                     s if quests::demo(&mut self.state, &mut self.view, s) => {}
+                    // requests.rs `demo`: requests[:spam|ticked|confirm|open|spam-open].
+                    s if requests::demo(&mut self.state, &mut self.view, s) => {}
                     _ => {}
                 }
             }
@@ -1113,6 +1118,7 @@ fn title_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status) {
 /// The channel list (303 px, resizable) narrows first so the page keeps ~450 px; narrow windows
 /// drop the member list and show the thread panel in the chat's place (minimum window 720 px).
 fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status) {
+    requests::sync(cx.state, cx.view);
     threads::track(cx, ui.ctx().pixels_per_point());
     call::demo(cx);
     let c = cx.theme.colors.clone();
@@ -1172,9 +1178,17 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
     let _t = frame_stats::scope("page");
     if friends::is_open(cx.state) {
         pickers::close_if_open(ui.ctx(), cx);
-        // The DM home: Friends, or Quests (the row under Friends).
-        let quests = cx.view.quests_ui.open;
-        egui::CentralPanel::default().frame(page).show(ui, |ui| if quests { quests::show(ui, cx) } else { friends::show(ui, cx) });
+        // The DM home: Friends, or Quests / Message requests (the rows under Friends).
+        let (quests, requests) = (cx.view.quests_ui.open, cx.view.requests_ui.open);
+        egui::CentralPanel::default().frame(page).show(ui, |ui| {
+            if quests {
+                quests::show(ui, cx)
+            } else if requests {
+                requests::show(ui, cx)
+            } else {
+                friends::show(ui, cx)
+            }
+        });
     } else if call::is_open(cx.state) && !dm_call::in_chat(cx.state) {
         // The open channel is my call: the stage (call.rs), with its chat column (`right`). A DM
         // call stays above the DM's chat (dm_call.rs).

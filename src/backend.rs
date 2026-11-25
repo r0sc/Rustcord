@@ -295,6 +295,9 @@ pub enum ChatEvent {
 /// whose success shows up through the gateway (RELATIONSHIP_*, THREAD_*, CHANNEL_RECIPIENT_*,
 /// CHANNEL_DELETE, USER_NOTE_UPDATE, RECENT_MENTION_DELETE) only report failures, as
 /// `ActionFailed`.
+/// Most message requests one batch ignore takes (`batch-reject`).
+pub const MAX_REJECT_BATCH: usize = 50;
+
 #[derive(Debug)]
 #[allow(dead_code, reason = "sent by the social UI, which is not built yet")]
 pub enum SocialCommand {
@@ -378,6 +381,16 @@ pub enum SocialCommand {
     /// `GET /games?game_ids=…` (≤ 25) for an open profile's widgets -> `GamesLoaded`
     /// (`AppState::request_games`).
     FetchGames { ids: Vec<Id> },
+    // ----- message requests (§2.4; api/social/people.rs). Only on a click on the requests page.
+    /// `GET /users/@me/message-requests/supplemental-data?channel_ids=…` (1-25) ->
+    /// `RequestPreviewsLoaded`.
+    FetchRequestPreviews { channel_ids: Vec<Id> },
+    /// `PUT /channels/{c}/recipients/@me {"consent_status":2}` -> `MessageRequestsDone { accepted: true }`.
+    AcceptMessageRequest { channel_id: Id },
+    /// Ignore: one id `DELETE /channels/{c}/recipients/@me`, 2..=50 `PUT
+    /// /channels/recipients/@me/batch-reject` (confirm batches first) ->
+    /// `MessageRequestsDone { accepted: false }`.
+    RejectMessageRequests { channel_ids: Vec<Id> },
     /// `GET /users/@me/connections` -> `ConnectionsLoaded` (Settings → Connections opened).
     FetchConnections,
     /// `PATCH /users/@me/connections/{type}/{id}` with the set toggles, then the list again ->
@@ -519,6 +532,10 @@ pub enum SocialEvent {
     GamesLoaded { ids: Vec<Id>, result: Result<Vec<crate::model::Game>, String> },
     /// My connections (also after an update / removal).
     ConnectionsLoaded(Result<Vec<crate::model::ConnectedAccount>, String>),
+    /// The trigger messages of the asked requests (those that have one).
+    RequestPreviewsLoaded { channel_ids: Vec<Id>, result: Result<Vec<Message>, String> },
+    /// Accept / ignore answered; Err is the bare error (the state adds the toast prefix).
+    MessageRequestsDone { channel_ids: Vec<Id>, accepted: bool, result: Result<(), String> },
 }
 
 /// Account, settings and server-administration requests (FEATURES_NOTES Part 3). Each is one
@@ -1677,6 +1694,24 @@ fn handle_social(cmd: SocialCommand, session: &mut Option<Session>, sink: &Event
         C::FetchGames { ids } => {
             let asked = ids.clone();
             rest(session, sink, move |api| async move { api.games(&asked).await }, move |result| Some(BackendEvent::Social(SocialEvent::GamesLoaded { ids, result })));
+        }
+        C::FetchRequestPreviews { channel_ids } => {
+            let asked = channel_ids.clone();
+            rest(session, sink, move |api| async move { api.message_request_previews(&asked).await }, move |result| {
+                Some(ev(SocialEvent::RequestPreviewsLoaded { channel_ids, result }))
+            });
+        }
+        C::AcceptMessageRequest { channel_id } => rest(
+            session,
+            sink,
+            move |api| async move { api.accept_message_request(channel_id).await },
+            move |result| Some(ev(SocialEvent::MessageRequestsDone { channel_ids: vec![channel_id], accepted: true, result })),
+        ),
+        C::RejectMessageRequests { channel_ids } => {
+            let asked = channel_ids.clone();
+            rest(session, sink, move |api| async move { api.reject_message_requests(&asked).await }, move |result| {
+                Some(ev(SocialEvent::MessageRequestsDone { channel_ids, accepted: false, result }))
+            });
         }
         C::FetchConnections => rest(
             session,

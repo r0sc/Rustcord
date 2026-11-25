@@ -1330,55 +1330,90 @@ fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) {
         .dm_order
         .iter()
         .copied()
-        .filter(|&id| dm_listed(cx.state, &cx.view.hidden_dms, id))
+        .filter(|&id| dm_listed(cx.state, &cx.view.hidden_dms, id) && !cx.state.is_message_request(id))
         .filter(|&id| query.is_empty() || cx.state.channel_name(id).to_lowercase().contains(&query))
         .collect();
     // Plugins (PinDMs): pinned DMs on top, under their own "Pinned" header.
     let pins = crate::plugins::sidebar::pins_first(&mut ids);
+    let (requests, spam) = cx.state.request_counts();
+    // The "Message requests" row, while there are any or its page is open.
+    let req = usize::from(requests + spam > 0 || cx.view.requests_ui.open);
     if ids.is_empty() {
-        friends_row(ui, cx, false);
-        friends_row(ui, cx, true);
+        friends_row(ui, cx, Home::Friends);
+        friends_row(ui, cx, Home::Quests);
+        if req == 1 {
+            friends_row(ui, cx, Home::Requests);
+        }
         dm_header(ui, cx, false);
         empty_state(ui, cx, 24.0, if query.is_empty() { "No direct messages yet. Start one from your friends list." } else { "No conversations match that name." });
         return;
     }
-    // Rows are uniform (Friends, Quests, ["Pinned", the pinned DMs], "Direct messages", the
-    // rest): only the visible ones are laid out.
+    // Rows are uniform (Friends, Quests, [Message requests], ["Pinned", the pinned DMs],
+    // "Direct messages", the rest): only the visible ones are laid out.
     let head = usize::from(pins > 0);
-    area.show_rows(ui, DM_ROW_H, ids.len() + 3 + head, |ui, range| {
+    let top = 2 + req;
+    area.show_rows(ui, DM_ROW_H, ids.len() + 3 + req + head, |ui, range| {
         for i in range {
             match i {
-                0 => friends_row(ui, cx, false),
-                1 => friends_row(ui, cx, true),
-                2 if head == 1 => dm_header(ui, cx, true),
-                i if i == 2 + head + pins => dm_header(ui, cx, false),
-                i if i <= 1 + head + pins => dm_row(ui, cx, ids[i - 2 - head]),
-                i => dm_row(ui, cx, ids[i - 3 - head]),
+                0 => friends_row(ui, cx, Home::Friends),
+                1 => friends_row(ui, cx, Home::Quests),
+                2 if req == 1 => friends_row(ui, cx, Home::Requests),
+                i if i == top && head == 1 => dm_header(ui, cx, true),
+                i if i == top + head + pins => dm_header(ui, cx, false),
+                i if i < top + head + pins => dm_row(ui, cx, ids[i - top - head]),
+                i => dm_row(ui, cx, ids[i - top - 1 - head]),
             }
         }
     });
 }
 
+/// The DM list's entries above the conversations.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Home {
+    Friends,
+    Quests,
+    Requests,
+}
+
 /// "Friends" on top of the DM list: opens the Friends page (friends.rs); pending requests as a
-/// badge. `quests`: the "Quests" row under it (quests.rs), rewards to claim as the badge.
-fn friends_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, quests: bool) {
+/// badge. "Quests" (quests.rs, rewards to claim as the badge) and "Message requests"
+/// (requests.rs, pending requests as the badge) sit under it.
+fn friends_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, home: Home) {
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), DM_ROW_H), Sense::hover());
     let bg_slot = ui.painter().add(Shape::Noop);
-    let resp = ui.interact(row, ui.make_persistent_id(if quests { "quests_row" } else { "friends_row" }), Sense::click());
-    let selected = super::friends::is_open(cx.state) && cx.view.quests_ui.open == quests;
+    let id = match home {
+        Home::Friends => "friends_row",
+        Home::Quests => "quests_row",
+        Home::Requests => "requests_row",
+    };
+    let resp = ui.interact(row, ui.make_persistent_id(id), Sense::click());
+    let (quests, requests) = (cx.view.quests_ui.open, cx.view.requests_ui.open);
+    let selected = match home {
+        Home::Friends => super::friends::is_open(cx.state) && !quests && !requests,
+        Home::Quests => super::friends::is_open(cx.state) && quests,
+        Home::Requests => requests && !quests,
+    };
     let fill = row_chrome(ui, cx, bg_slot, row, selected, resp.hovered(), false);
     let c = &cx.theme.colors;
     let color = row_text_color(c, false, selected || resp.hovered());
     let size = cx.theme.font.size;
     let icon = Rect::from_center_size(pos2(row.left() + ROW_INSET + 24.0, row.center().y), Vec2::splat(24.0));
-    icons::paint(ui.painter(), if quests { Icon::Quest } else { Icon::Members }, icon, color, row_bg(c, fill));
+    let (glyph, label) = match home {
+        Home::Friends => (Icon::Members, "Friends"),
+        Home::Quests => (Icon::Quest, "Quests"),
+        Home::Requests => (Icon::Envelope, "Message requests"),
+    };
+    icons::paint(ui.painter(), glyph, icon, color, row_bg(c, fill));
     let mut right = row.right() - ROW_INSET - 8.0;
-    let pending = if quests { cx.state.quests.claimable() } else { cx.state.pending_count() } as u32;
+    let pending = match home {
+        Home::Friends => cx.state.pending_count(),
+        Home::Quests => cx.state.quests.claimable(),
+        Home::Requests => cx.state.request_counts().0,
+    } as u32;
     if pending > 0 {
         right -= badge(ui, c, pos2(right, row.center().y), pending, None) + 8.0;
     }
     let left = row.left() + ROW_INSET + 52.0;
-    let label = if quests { "Quests" } else { "Friends" };
     let g = one_line(ui, label, FontId::proportional(size), color, right - left);
     ui.painter().galley(pos2(left, row.center().y - g.size().y / 2.0), g, color);
     if resp.has_focus() {
@@ -1386,11 +1421,17 @@ fn friends_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, quests: bool) {
         let pal = Pal::new(cx.theme);
         super::messages::focus_ring(ui, &pal, row.shrink2(vec2(ROW_INSET + 4.0, 4.0)), (f32::from(pal.radius) - 4.0).max(0.0));
     }
-    resp.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, label));
+    let name = if home == Home::Requests && pending > 0 { format!("{label}, {pending}") } else { label.to_owned() };
+    resp.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &name));
     if resp.clicked() {
-        super::friends::open(cx.state);
-        cx.view.quests_ui.open = quests;
-        cx.view.settings_open = false;
+        if home == Home::Requests {
+            super::requests::open(cx);
+        } else {
+            super::friends::open(cx.state);
+            cx.view.quests_ui.open = home == Home::Quests;
+            cx.view.requests_ui.open = false;
+            cx.view.settings_open = false;
+        }
     }
 }
 

@@ -5,7 +5,7 @@
 //! OWNERSHIP: friends/DMs/inbox engineer (docs/SOCIAL_DESIGN.md). The signatures are the contract.
 
 use super::super::{ApiClient, ApiError, net_err};
-use crate::backend::{ContextLocation, FriendReply, MentionFilter};
+use crate::backend::{ContextLocation, FriendReply, MAX_REJECT_BATCH, MentionFilter};
 use crate::model::{Channel, Id, Message, UserProfile};
 use base64::Engine as _;
 use reqwest::{Method, Url};
@@ -19,6 +19,10 @@ const MAX_GROUP_OTHERS: usize = 9;
 const MAX_NOTE_CHARS: usize = 256;
 /// `POST /read-states/ack-bulk` chunk size (cap UNCONFIRMED; 100 is what the notes use).
 const ACK_CHUNK: usize = 100;
+/// `consent_status` ACCEPTED; the other statuses are employee-only.
+const CONSENT_ACCEPTED: u8 = 2;
+/// `supplemental-data` takes 1-25 channel ids.
+const MAX_PREVIEW_IDS: usize = 25;
 
 impl ApiClient {
     /// `POST /users/@me/relationships {"username":"name","discriminator":null}` (a typed
@@ -111,6 +115,30 @@ impl ApiClient {
             url.query_pairs_mut().append_pair("silent", "true");
         }
         self.send(Method::DELETE, url, None).await.map(drop)
+    }
+
+    /// Accept a message request: `PUT /channels/{c}/recipients/@me {"consent_status":2}` -> the DM
+    /// (dropped; CHANNEL_UPDATE follows with `is_message_request:false`).
+    pub async fn accept_message_request(&self, c: Id) -> Result<(), ApiError> {
+        self.send(Method::PUT, request_url(c), Some(json!({ "consent_status": CONSENT_ACCEPTED }))).await.map(drop)
+    }
+
+    /// Ignore message requests: one id `DELETE /channels/{c}/recipients/@me`, 2..=50 `PUT
+    /// /channels/recipients/@me/batch-reject {"channel_ids"}`. The DMs come back (dropped);
+    /// CHANNEL_UPDATE / CHANNEL_DELETE follow.
+    pub async fn reject_message_requests(&self, ids: &[Id]) -> Result<(), ApiError> {
+        let (method, url, body) = reject_route(ids)?;
+        self.send(method, url, body).await.map(drop)
+    }
+
+    /// `GET /users/@me/message-requests/supplemental-data?channel_ids=…` (1-25) -> the trigger
+    /// message of each request that has one.
+    pub async fn message_request_previews(&self, ids: &[Id]) -> Result<Vec<Message>, ApiError> {
+        if ids.is_empty() || ids.len() > MAX_PREVIEW_IDS {
+            return Err(local("Ask for 1 to 25 message request previews at a time."));
+        }
+        let wire: Vec<PreviewWire> = self.send_json(Method::GET, previews_url(ids), None).await?;
+        Ok(wire.into_iter().filter_map(PreviewWire::into_message).collect())
     }
 
     /// `GET /users/@me/mentions?limit=1..100&roles=&everyone=[&guild_id=][&before=]` -> newest first.
@@ -230,6 +258,38 @@ fn recipient_url(channel_id: Id, user_id: Id) -> Url {
     ApiClient::url(&["channels", &channel_id.to_string(), "recipients", &user_id.to_string()])
 }
 
+fn request_url(c: Id) -> Url {
+    ApiClient::url(&["channels", &c.to_string(), "recipients", "@me"])
+}
+
+fn previews_url(ids: &[Id]) -> Url {
+    let mut url = ApiClient::url(&["users", "@me", "message-requests", "supplemental-data"]);
+    url.query_pairs_mut().extend_pairs(ids.iter().map(|id| ("channel_ids", id.to_string())));
+    url
+}
+
+/// The request for ignoring `ids`: one DELETE, or one batch PUT.
+fn reject_route(ids: &[Id]) -> Result<(Method, Url, Option<Value>), ApiError> {
+    match ids {
+        [] => Err(local("Pick at least one request.")),
+        [one] => Ok((Method::DELETE, request_url(*one), None)),
+        _ if ids.len() > MAX_REJECT_BATCH => Err(local("You can ignore up to 50 requests at once.")),
+        _ => Ok((Method::PUT, ApiClient::url(&["channels", "recipients", "@me", "batch-reject"]), Some(json!({ "channel_ids": ids })))),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct PreviewWire {
+    channel_id: Id,
+    message_preview: Option<Message>,
+}
+
+impl PreviewWire {
+    fn into_message(self) -> Option<Message> {
+        self.message_preview.map(|m| Message { channel_id: self.channel_id, ..m })
+    }
+}
+
 fn note_url(user_id: Id) -> Url {
     ApiClient::url(&["users", "@me", "notes", &user_id.to_string()])
 }
@@ -332,5 +392,26 @@ mod tests {
         );
         let acks: Vec<(Id, Id)> = (0..250).map(|i| (Id(i), Id(i))).collect();
         assert_eq!(acks.chunks(ACK_CHUNK).map(<[_]>::len).collect::<Vec<_>>(), [100, 100, 50]);
+    }
+
+    #[test]
+    fn message_request_routes() {
+        let base = "https://discord.com/api/v9";
+        assert_eq!(request_url(Id(5)).as_str(), format!("{base}/channels/5/recipients/@me"));
+        assert!(previews_url(&[Id(1), Id(2)]).as_str().ends_with("supplemental-data?channel_ids=1&channel_ids=2"));
+        assert!(reject_route(&[]).is_err());
+        let (m, u, b) = reject_route(&[Id(5)]).unwrap();
+        assert_eq!((m, u.as_str().to_owned(), b), (Method::DELETE, format!("{base}/channels/5/recipients/@me"), None));
+        let (m, u, b) = reject_route(&[Id(1), Id(2)]).unwrap();
+        assert_eq!((m, u.as_str().to_owned()), (Method::PUT, format!("{base}/channels/recipients/@me/batch-reject")));
+        assert_eq!(b, Some(json!({"channel_ids":["1","2"]})));
+        let many = |n: u64| (1..=n).map(Id).collect::<Vec<_>>();
+        assert!(reject_route(&many(50)).is_ok() && reject_route(&many(51)).is_err());
+        let wire: Vec<PreviewWire> = serde_json::from_str(
+            r#"[{"channel_id":"7","message_preview":{"id":"9","channel_id":"1","author":{"id":"3","username":"w"},"content":"hi","timestamp":"2026-11-01T00:00:00+00:00"}},{"channel_id":"8","message_preview":null}]"#,
+        )
+        .unwrap();
+        let msgs: Vec<Message> = wire.into_iter().filter_map(PreviewWire::into_message).collect();
+        assert_eq!((msgs.len(), msgs[0].channel_id), (1, Id(7)));
     }
 }
