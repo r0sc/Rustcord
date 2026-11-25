@@ -1027,7 +1027,7 @@ fn stays_listed(s: &AppState, id: Id) -> bool {
 
 /// Channel and thread ids of a server in sidebar order, as the list shows them (voice channels
 /// included; the caller filters).
-#[cfg_attr(not(test), allow(dead_code, reason = "the quick switcher uses it next"))]
+#[cfg_attr(not(test), allow(dead_code, reason = "the navigation keys use it next"))]
 pub(super) fn listed_channels(s: &AppState, view: &ViewState, guild_id: Id) -> Vec<Id> {
     let mut items = s.sidebar_channels(guild_id);
     if view.hide_muted.contains(&guild_id) {

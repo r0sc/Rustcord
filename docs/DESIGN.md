@@ -265,7 +265,8 @@ loops on its own (spinners while loading excepted) and asks for frames only whil
 
 - Curves: entering ease-out (`motion::ease`, cubic-out), leaving the same curve backwards
   (ease-in), moves between two spots cubic in-out. Linear only for spinners and progress bars.
-- Instant on purpose (frequency of use): hover colours, message rows, channel rows under a
+- Instant on purpose (frequency of use): the quick switcher (Ctrl+K: opens and closes at once,
+  ux-motion 20), hover colours, message rows, channel rows under a
   collapsing category, autocomplete, tab / channel / server switches, scrolling to a message,
   closing menus and popovers, the update screen, the captcha slot, the game overlay. A press
   draws the control 1 px smaller per side while held, no tween.
@@ -969,6 +970,21 @@ Playing                                     <- label role: "Playing" / "Listenin
   (description by install kind; disabled with its reason on copies that can't update
   themselves and in development builds), then a row "Version 0.1.0" whose description says
   what the updater is doing, with a secondary "Check for updates".
+
+**Quick switcher** (switcher.rs, Ctrl+K; docs/FEATURES_NOTES.md §4.9)
+- A modal under the title bar, 520 wide (narrow windows: window − 80, at least 200), radius 2r,
+  `raised` fill, 16 px padding, scrim behind. It has no motion: no fade, no grow, no ghost.
+- Input 48 tall, title-role text, `code_background` well, radius r, the 2 px `focus` ring in place
+  of a border while focused. A 20 px `Search` icon in `text_muted` 12 px from the left; hint "Jump to a channel, server or person".
+- 8 px, then the list: rows 32 tall, 2 apart, full width, radius r; up to 8 rows (3 to 8 by window
+  height), so typing never resizes the modal. Selected row `selected`, hovered `hover`, both at once.
+- Row: 20 px icon (server icon, channel kind icon, avatar), name in body 500 (600 when unread),
+  on the right the server name (channels) or the username (people) in the meta role `text_muted`
+  (at most 40 % wide, no middle dots), then a mention badge.
+- Up / Down move the selection (wrapping), Enter opens it, a click opens it, Esc or a click on the
+  scrim closes. Empty text lists recent and unread channels; no hits say "No matches. Try fewer letters."
+- Footer: 8 px, a 1 px `rule` hairline, 8 px, then "Start with @ for people, # for text
+  channels, ! for voice channels or * for servers." in meta `text_muted`.
 
 ---
 

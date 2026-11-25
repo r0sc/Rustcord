@@ -153,7 +153,7 @@ segment, two rows ticked, the batch Ignore question, or a request's DM with the 
 
 ## Not assigned yet
 The chat header's notification bell (`UpdateChannelOverride`; the channel menu already has Mute ▸
-and Notification Settings ▸), quick switcher, channel drag reorder in the sidebar
+and Notification Settings ▸), channel drag reorder in the sidebar
 (`ReorderChannels`), server folder menu (rename / colour / ungroup), Change Nickname as a dialog
 (now a field in the member menu's submenu), thread Mute / Notification Settings (the thread menu and
 the thread panel's bell show them disabled until backend.rs has a

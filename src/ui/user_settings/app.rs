@@ -403,8 +403,8 @@ fn sync_zoom(ctx: &egui::Context, cx: &mut UiCx<'_>) -> bool {
     adopt
 }
 
-/// Toggle Mute / Deafen (like the user panel's buttons) and Toggle Streamer Mode. True when a
-/// setting changed (save).
+/// Toggle Mute / Deafen (like the user panel's buttons) and Toggle Streamer Mode, then the
+/// switcher's keys. True when a setting changed (save).
 fn global_keys(ctx: &egui::Context, cx: &mut UiCx<'_>) -> bool {
     let pressed = |b| keybinds::shortcut(cx.settings, b).is_some_and(|k| ctx.input_mut(|i| i.consume_shortcut(&k)));
     let (mic, phones, streamer) = (pressed(Bind::ToggleMute), pressed(Bind::ToggleDeafen), pressed(Bind::ToggleStreamerMode));
@@ -416,6 +416,8 @@ fn global_keys(ctx: &egui::Context, cx: &mut UiCx<'_>) -> bool {
         s.enabled = !s.enabled;
         cx.view.toast(if s.enabled { "Streamer mode is on" } else { "Streamer mode is off" }.to_owned(), false);
     }
+    // The quick switcher's keys (ui/switcher.rs); before the chat, so a focused field never sees them.
+    super::super::switcher::keys(ctx, cx);
     streamer
 }
 

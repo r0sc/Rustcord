@@ -1,7 +1,7 @@
 //! Settings → Keybinds (docs/SETTINGS_NOTES.md §3 Keybinds, this device only): the app's
 //! shortcuts with Discord's defaults, each re-recordable (click, press the new combination;
 //! Esc cancels, Backspace clears). `shortcut` is what the call sites read (inbox, search, pins,
-//! accept call); mute / deafen / Streamer Mode are handled in `app::frame`. Push to talk stays
+//! accept call, the quick switcher's keys in `ui/switcher.rs`); mute / deafen / Streamer Mode are handled in `app::frame`. Push to talk stays
 //! on Voice & Video (it needs a key-up, outside egui).
 //! OWNERSHIP: user-settings engineer.
 
@@ -19,10 +19,11 @@ pub enum Bind {
     Search,
     Pins,
     AcceptCall,
+    QuickSwitcher,
 }
 
 impl Bind {
-    pub(super) const ALL: [Bind; 7] = [Bind::ToggleMute, Bind::ToggleDeafen, Bind::ToggleStreamerMode, Bind::Inbox, Bind::Search, Bind::Pins, Bind::AcceptCall];
+    pub(super) const ALL: [Bind; 8] = [Bind::ToggleMute, Bind::ToggleDeafen, Bind::ToggleStreamerMode, Bind::Inbox, Bind::Search, Bind::Pins, Bind::AcceptCall, Bind::QuickSwitcher];
 
     /// Key in `Settings::keybinds`.
     fn name(self) -> &'static str {
@@ -34,6 +35,7 @@ impl Bind {
             Bind::Search => "search",
             Bind::Pins => "pins",
             Bind::AcceptCall => "accept_call",
+            Bind::QuickSwitcher => "quick_switcher",
         }
     }
 
@@ -46,6 +48,7 @@ impl Bind {
             Bind::Search => "Search the Channel",
             Bind::Pins => "Pinned messages",
             Bind::AcceptCall => "Answer incoming call",
+            Bind::QuickSwitcher => "Open quick switcher",
         }
     }
 
@@ -58,6 +61,7 @@ impl Bind {
             Bind::Search => "Ctrl+F",
             Bind::Pins => "Ctrl+P",
             Bind::AcceptCall => "Ctrl+Enter",
+            Bind::QuickSwitcher => "Ctrl+K",
         }
     }
 }
@@ -129,6 +133,9 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     hint(ui, cx.theme, "Click a shortcut, then press the new keys. Esc cancels, Backspace removes it.");
     section(ui, cx.theme, "Keybinds");
     for (i, b) in Bind::ALL.into_iter().enumerate() {
+        if b == Bind::QuickSwitcher {
+            section(ui, cx.theme, "Navigation");
+        }
         ui.horizontal(|ui| {
             ui.set_min_height(36.0);
             ui.label(RichText::new(b.label()).color(pal.text));

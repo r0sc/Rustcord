@@ -38,6 +38,7 @@ pub mod search;
 pub mod server_menu;
 pub mod server_settings;
 pub mod sidebar;
+pub mod switcher;
 pub mod threads;
 pub mod update;
 pub mod user_settings;
@@ -204,6 +205,7 @@ pub struct ViewState {
     pub quests_ui: quests::QuestsUi,
     pub requests_ui: requests::RequestsUi,
     pub media_ui: viewer::MediaUi,
+    pub switcher_ui: switcher::SwitcherUi,
 }
 
 /// A modal dialog (`ViewState::modal`, drawn by `show_modals` through the owning module).
@@ -245,6 +247,8 @@ pub enum Modal {
     Forward { channel_id: Id, message_id: Id },
     /// polls.rs: create a poll in `channel_id` (its draft lives in `ViewState::polls_ui`).
     CreatePoll { channel_id: Id },
+    /// switcher.rs: the quick switcher (Ctrl+K).
+    QuickSwitcher,
 }
 
 /// A pending confirmation: `show_modals` asks, `then` goes out on the danger button.
@@ -317,6 +321,7 @@ impl Default for ViewState {
             quests_ui: Default::default(),
             requests_ui: Default::default(),
             media_ui: Default::default(),
+            switcher_ui: Default::default(),
         }
     }
 }
@@ -751,6 +756,7 @@ impl RustcordApp {
             // (thread panel; selects its parent), `card:<user id>` (that user's profile card),
             // `modal:<name>` (`demo_modal`), `confirm` (Leave Server question for the open guild).
             // DM calls (dm_call.rs `demo`): `call:<dm id>` (a call going on there), `ring:<dm id>` (it rings me).
+            // `switcher[:<query>]` (the quick switcher with that text typed in; no comma in it).
             // None of them sends a request.
             let open = std::env::var("RUSTCORD_OPEN").unwrap_or_default();
             for open in open.split(',') {
@@ -767,6 +773,7 @@ impl RustcordApp {
                         let page = server_settings::Page::from_name(page.trim_start_matches(':')).unwrap_or_default();
                         self.view.server_settings = Some((g, page));
                     }
+                    s if let Some(q) = s.strip_prefix("switcher").map(|q| q.trim_start_matches(':')) => switcher::open(&mut self.view, q),
                     "friends" => friends::demo(&mut self.state),
                     "inbox" => self.view.inbox_open = true,
                     "threads" => egui::Popup::open_id(ctx, threads::popup_id()),
@@ -1321,6 +1328,7 @@ pub fn show_modals(ctx: &egui::Context, cx: &mut UiCx<'_>) {
         Some(Modal::Media) => viewer::lightbox(ctx, cx),
         Some(Modal::Forward { channel_id, message_id }) => forward::modal(ctx, cx, channel_id, message_id),
         Some(Modal::CreatePoll { channel_id }) => polls::create_modal(ctx, cx, channel_id),
+        Some(Modal::QuickSwitcher) => switcher::modal(ctx, cx),
         // A server just joined from its tag card wants its rules accepted first.
         None => {
             if let Some(g) = cx.state.account.verify_after_join.take() {

@@ -799,6 +799,7 @@ Density (`.density-compact | default | cozy`): `--space-xs/sm/md/lg/xl/xxl` = 6/
 - **Thread panel:** right-docked chat with 1 px borders, top-left radius 12, own header (name, mute, settings, ×) and composer; 8 px resize handle on its left; floats with `0 8px 40px` shadow on narrow windows.
 - **Forum:** top "New Post" bar + Sort & View + tag pills; list cards radius 12, 1 px border, padding 12×10, hover raised bg + stronger border + low shadow; grid = media tiles (columns UNCONFIRMED); a post opens as the thread panel.
 - **Quick switcher** (Ctrl+K): centred modal radius 8, padding 12×20, ~570 wide (UNCONFIRMED); input 70 px tall, 22 px font; results scroller 236 px ("Unread Channels", recents); prefixes `@` users, `#` text, `!` voice, `*` servers; protip footer (10 px padding, 1 px top border).
+  - **Rustcord:** `ui/switcher.rs`, 520 wide, input 48 tall at 20 px, rows 32, up to 8, footer tip (docs/DESIGN.md §12). Local state only (servers, channels, joined threads, group DMs, friends and 1:1 DM recipients); no request of its own. A pick goes through what a click does: `select_channel`, the cached DM (else `OpenDm`), and a voice channel joins like a row click. Empty text lists recent and unread channels.
 - Generic modal: 442/602/800, padding 24×16, radius 8–12, dark scrim, Esc closes.
 
 ## 4.10 Keyboard shortcuts (bind strings from the BUNDLE; `mod` = Ctrl)

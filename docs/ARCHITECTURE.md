@@ -137,6 +137,7 @@ cargo check
 | ui-shell | `src/ui/mod.rs`, `login.rs`, `members.rs`, `chrome.rs` (frameless window: title bar buttons, drag, edge resize), `motion.rs` (DESIGN §7 tokens and helpers) |
 | cosmetics | `src/ui/cosmetics.rs` (shared renderers), `src/api/{cosmetics,collectibles}.rs`, `src/ui/user_settings/{cosmetics,connections}.rs`, `src/theme/gradient.rs`: see `docs/COSMETICS_NOTES.md` |
 | ui-messages | `src/ui/messages.rs`, `composer.rs`, `polls.rs`, `forward.rs` |
+| navigation | `src/ui/switcher.rs` (quick switcher, navigation keys; called from `user_settings/app.rs` `global_keys`), helpers in `sidebar.rs` / `server_menu.rs` |
 | markdown | `src/ui/markdown.rs`, `src/ui/markdown/parse.rs` |
 | phase2-profile | `src/overrides.rs` (local banner/avatar and local cosmetics: client-only, never uploaded) |
 | social / server / settings UI | `src/ui/{sidebar,friends,inbox,profile,profile_modal,threads,forum,server_menu,server_settings,user_settings}.rs`, `src/ui/user_settings/*`: split in `docs/SOCIAL_UI_DESIGN.md` |
@@ -311,6 +312,7 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   ends after them. `=gated` shows the panes only while a registered game is in front (real
   foreground detection; stderr says `overlay: voice shown|hidden`); try it with Registered
   games = `charmap.exe`. `RUSTCORD_OPEN=voice:<channel id>` fills the call.
+  `RUSTCORD_OPEN=switcher[:<query>]` opens the quick switcher with that text typed in (no comma in it).
 - `RUSTCORD_NAV_DEMO=<comma list>` (ui/sidebar.rs `nav_demo`): navigation / social states
   offline mode can't reach, none sends a request: `folders` / `folder-open` (server bar
   folders), `mentions` (inbox mentions from cached messages), `profile` (loaded profiles; with
