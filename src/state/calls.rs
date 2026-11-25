@@ -67,6 +67,15 @@ impl AppState {
             .min()
     }
 
+    /// I'm connected in a DM / group DM call that is ringing someone else, and nobody else has
+    /// joined it yet (the outgoing ring plays).
+    pub fn outgoing_ring(&self) -> bool {
+        let (Some(me), Some(ch)) = (self.my_id(), self.voice.channel_id) else { return false };
+        self.voice.connected
+            && self.calls.ringing.get(&ch).is_some_and(|r| r.iter().any(|u| *u != me))
+            && self.voice_states.get(&ch).is_none_or(|m| m.keys().all(|u| *u == me))
+    }
+
     /// Who calls: someone already in the call, else the other user of a 1:1 DM.
     pub fn caller(&self, channel_id: Id) -> Option<Id> {
         let me = self.my_id();
@@ -200,6 +209,25 @@ mod tests {
         // A new session forgets every call (READY is followed by fresh CALL_CREATEs).
         s.apply_gateway(GatewayEvent::Ready(Box::default()), None);
         assert!(s.calls.ringing.is_empty());
+    }
+
+    #[test]
+    fn outgoing_ring_until_someone_joins() {
+        let mut s = state();
+        assert!(!s.outgoing_ring(), "no call");
+        s.voice.channel_id = Some(DM);
+        call(&mut s, DM, &[BOB]);
+        assert!(!s.outgoing_ring(), "not connected yet");
+        s.voice.connected = true;
+        assert!(s.outgoing_ring());
+        let vs = |u| VoiceState { channel_id: Some(DM), user_id: u, ..Default::default() };
+        s.apply_gateway(GatewayEvent::VoiceStateUpdate(Box::new(vs(ME))), None);
+        assert!(s.outgoing_ring(), "only I am in it");
+        s.apply_gateway(GatewayEvent::VoiceStateUpdate(Box::new(vs(BOB))), None);
+        assert!(!s.outgoing_ring(), "Bob picked up");
+        call(&mut s, DM, &[ME]);
+        s.apply_gateway(GatewayEvent::VoiceStateUpdate(Box::new(VoiceState { channel_id: None, user_id: BOB, ..Default::default() })), None);
+        assert!(!s.outgoing_ring(), "ringing only me");
     }
 
     #[test]

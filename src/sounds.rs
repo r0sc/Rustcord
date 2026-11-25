@@ -139,6 +139,15 @@ pub fn dnd(state: &AppState) -> bool {
     state.chat.my_status == Some(UserStatus::Dnd)
 }
 
+/// The ring that should loop now.
+pub fn ring(state: &AppState) -> Option<Sound> {
+    if state.incoming_call().is_some() {
+        Some(Sound::IncomingRing)
+    } else {
+        state.outgoing_ring().then_some(Sound::OutgoingRing)
+    }
+}
+
 const MIN_GAP: Duration = Duration::from_millis(200);
 const MAX_PLAYING: usize = 3;
 const TAIL: Duration = Duration::from_millis(50);

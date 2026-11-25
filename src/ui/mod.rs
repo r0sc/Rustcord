@@ -389,6 +389,8 @@ pub struct RustcordApp {
     overlay: overlay::Overlay,
     /// Discord's captcha inside the login card (Windows, macOS; a stub elsewhere): `src/captcha.rs`.
     captcha: crate::captcha::Inline,
+    /// Voice, mute and stream sounds come from what changed between two passes.
+    cues: crate::sounds::Cues,
 }
 
 impl RustcordApp {
@@ -440,10 +442,28 @@ impl RustcordApp {
             frame_no: 0,
             overlay: Default::default(),
             captcha: Default::default(),
+            cues: Default::default(),
             last_cache_save: Instant::now(),
             event_pass: false,
             interacted: false,
         }
+    }
+
+    /// Voice, mute, push-to-talk and stream sounds (changes since the last pass) and the call
+    /// rings (recomputed from state). Plays nothing outside the main screen; no repaint.
+    fn sound_cues(&mut self) {
+        let main = self.view.screen == Screen::Main;
+        let deaf = crate::sounds::deafened(&self.state, self.view.self_deaf);
+        let dnd = crate::sounds::dnd(&self.state);
+        if main {
+            let snap = crate::sounds::Snap::of(&self.state, self.view.self_mute, self.view.self_deaf, self.settings.push_to_talk);
+            if let Some(sound) = self.cues.step(snap, std::time::Instant::now()) {
+                crate::sounds::play(sound, &self.settings, deaf, dnd);
+            }
+        } else {
+            self.cues = Default::default();
+        }
+        crate::sounds::set_ring(main.then(|| crate::sounds::ring(&self.state)).flatten(), &self.settings, deaf, dnd);
     }
 
     fn drain_events(&mut self, ctx: &egui::Context) {
@@ -936,6 +956,7 @@ impl eframe::App for RustcordApp {
         // Videos shown in the last pass stay decoded, the rest are hidden (also while minimized).
         call::sync(&mut self.view, &mut self.state, &self.backend.cmd, &self.backend.video);
         dm_call::logic(&mut self.state, &self.backend.cmd, &self.settings.camera);
+        self.sound_cues();
         self.overlay.logic(ctx, &self.state, &self.view, &self.settings, &self.theme, &mut self.images);
         let pressed = |e: &egui::Event| matches!(e, egui::Event::PointerButton { pressed: true, .. } | egui::Event::Key { pressed: true, .. });
         self.interacted |= ctx.input(|i| i.events.iter().any(pressed));
@@ -994,6 +1015,8 @@ impl eframe::App for RustcordApp {
 
         // The captcha webview follows the login card's slot (a native child of this window).
         self.captcha.sync(&ctx, frame, &mut self.view, &self.theme, &self.backend.cmd);
+        // Clicks and keybinds handled above (`logic` runs before them).
+        self.sound_cues();
         frame_stats::time("end", || {
             self.show_toasts(&ctx);
             self.images.end_frame(&ctx);
