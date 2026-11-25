@@ -541,7 +541,7 @@ fn tile_fill(ui: &egui::Ui, c: &ThemeColors, morph: f32) -> Color32 {
 /// Server icon `index` in `rect`; without one, its initials in semibold `text` on a neutral tile
 /// that lifts as `morph` goes to 1 (unavailable servers muted). An animated icon plays while
 /// `animate`, showing the static frame while the animation loads.
-fn paint_guild_icon(ui: &mut egui::Ui, cx: &mut UiCx<'_>, index: usize, rect: Rect, radius: f32, morph: f32, animate: bool) {
+pub(super) fn paint_guild_icon(ui: &mut egui::Ui, cx: &mut UiCx<'_>, index: usize, rect: Rect, radius: f32, morph: f32, animate: bool) {
     let g = &cx.state.guilds[index];
     let unavailable = g.unavailable;
     let text = initials(&g.name);
@@ -1001,11 +1001,7 @@ fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
                 // Collapsed categories still show the open channel, channels needing attention
                 // and occupied voice channels.
                 let occupied = cx.state.voice_states.contains_key(&id);
-                let shown = !collapsed
-                    || cx.state.selected_channel == Some(id)
-                    || occupied
-                    || cx.state.mention_count(id) > 0
-                    || (cx.state.is_unread(id) && !cx.state.is_channel_muted(id));
+                let shown = !collapsed || stays_listed(cx.state, id);
                 if shown {
                     channel_row(ui, cx, id);
                     if occupied {
@@ -1017,6 +1013,50 @@ fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
                 }
             }
         }
+    }
+}
+
+/// What a collapsed category still lists: the open channel, an occupied voice channel, one with
+/// mentions, or one that is unread and not muted.
+fn stays_listed(s: &AppState, id: Id) -> bool {
+    s.selected_channel == Some(id)
+        || s.voice_states.contains_key(&id)
+        || s.mention_count(id) > 0
+        || (s.is_unread(id) && !s.is_channel_muted(id))
+}
+
+/// Channel and thread ids of a server in sidebar order, as the list shows them (voice channels
+/// included; the caller filters).
+#[cfg_attr(not(test), allow(dead_code, reason = "the quick switcher uses it next"))]
+pub(super) fn listed_channels(s: &AppState, view: &ViewState, guild_id: Id) -> Vec<Id> {
+    let mut items = s.sidebar_channels(guild_id);
+    if view.hide_muted.contains(&guild_id) {
+        drop_muted(s, &mut items);
+    }
+    let threads = s.sidebar_threads(guild_id);
+    let mut out = Vec::new();
+    let mut collapsed = false;
+    for item in items {
+        match item {
+            SidebarItem::Category { id, .. } => collapsed = view.collapsed_categories.contains(&id),
+            SidebarItem::Channel { id } if !collapsed || stays_listed(s, id) => {
+                out.push(id);
+                out.extend(threads.get(&id).into_iter().flatten().copied());
+            }
+            SidebarItem::Channel { .. } => {}
+        }
+    }
+    out
+}
+
+/// What a click on a channel row does: join a voice or stage channel, else open it.
+pub(super) fn open_channel(cx: &mut UiCx<'_>, id: Id) {
+    let Some(ch) = cx.state.channels.get(&id) else { return };
+    if matches!(ch.kind, ct::GUILD_VOICE | ct::GUILD_STAGE_VOICE) && cx.state.voice.channel_id != Some(id) {
+        cx.cmd.send(Command::JoinVoice { guild_id: ch.guild_id, channel_id: id });
+    } else {
+        cx.state.select_channel(id);
+        cx.view.settings_open = false;
     }
 }
 
@@ -1175,13 +1215,13 @@ fn channel_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     resp.context_menu(|ui| channel_menu(ui, cx, id, guild_id, voice.then_some(connected)));
     if !supported {
         resp.on_hover_text("Rustcord can't open this channel type yet.");
-    } else if voice && !connected && !open_chat && resp.clicked() {
-        cx.cmd.send(Command::JoinVoice { guild_id, channel_id: id });
-    } else if open_chat || resp.clicked() {
+    } else if open_chat {
         cx.state.select_channel(id);
         cx.view.settings_open = false;
         // The call view opens instead of the chat: show its chat column.
-        cx.view.call_ui.chat |= open_chat && connected;
+        cx.view.call_ui.chat |= connected;
+    } else if resp.clicked() {
+        open_channel(cx, id);
     }
 }
 
@@ -1325,16 +1365,7 @@ fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) {
         cx.view.hidden_dms.remove(&open);
     }
     let query = cx.view.dm_filter.trim().to_lowercase();
-    let mut ids: Vec<Id> = cx
-        .state
-        .dm_order
-        .iter()
-        .copied()
-        .filter(|&id| dm_listed(cx.state, &cx.view.hidden_dms, id) && !cx.state.is_message_request(id))
-        .filter(|&id| query.is_empty() || cx.state.channel_name(id).to_lowercase().contains(&query))
-        .collect();
-    // Plugins (PinDMs): pinned DMs on top, under their own "Pinned" header.
-    let pins = crate::plugins::sidebar::pins_first(&mut ids);
+    let (ids, pins) = listed_dms(cx.state, cx.view);
     let (requests, spam) = cx.state.request_counts();
     // The "Message requests" row, while there are any or its page is open.
     let req = usize::from(requests + spam > 0 || cx.view.requests_ui.open);
@@ -1365,6 +1396,21 @@ fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) {
             }
         }
     });
+}
+
+/// The DM ids as the list shows them (not closed, matching the filter, PinDMs' pinned ones on
+/// top) and how many are pinned.
+pub(super) fn listed_dms(s: &AppState, view: &ViewState) -> (Vec<Id>, usize) {
+    let query = view.dm_filter.trim().to_lowercase();
+    let mut ids: Vec<Id> = s
+        .dm_order
+        .iter()
+        .copied()
+        .filter(|&id| dm_listed(s, &view.hidden_dms, id) && !s.is_message_request(id))
+        .filter(|&id| query.is_empty() || s.channel_name(id).to_lowercase().contains(&query))
+        .collect();
+    let pins = crate::plugins::sidebar::pins_first(&mut ids);
+    (ids, pins)
 }
 
 /// The DM list's entries above the conversations.
@@ -2151,6 +2197,18 @@ fn connection_label(conn: &ConnState, elapsed_secs: u64, offline_mode: bool) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn listed_channels_follow_the_sidebar() {
+        let snapshot = serde_json::from_str(include_str!("../../tests/fixtures/home/cache/snapshot.json")).unwrap();
+        let s = AppState::from_snapshot(snapshot);
+        let mut view = ViewState::default();
+        let rust = Id(1565443437363200006);
+        let ids = |ns: &[u64]| ns.iter().map(|n| Id(1565443437363200000 + n)).collect::<Vec<_>>();
+        assert_eq!(listed_channels(&s, &view, rust), ids(&[10, 11, 12, 14]));
+        view.collapsed_categories.insert(Id(1565443437363200013));
+        assert_eq!(listed_channels(&s, &view, rust), ids(&[10, 11, 12]));
+    }
 
     #[test]
     fn initials_of_names() {

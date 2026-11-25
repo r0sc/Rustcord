@@ -300,14 +300,18 @@ fn mark_read_item(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, text: Colo
     let s = &*cx.state;
     let unread = s.channels.values().any(|c| c.guild_id == Some(guild_id) && s.is_unread(c.id));
     if ui.add_enabled_ui(unread, |ui| menu_item(ui, "Mark as read", MenuIcon::Icon(Icon::Check), text)).inner {
-        // §3.11: every unread channel and joined thread, acked in bulk.
-        let acks = cx.state.mark_guild_read(guild_id);
-        for (ch, _) in &acks {
-            cx.view.pending_acks.remove(ch);
-        }
-        if cx.settings.send_read_acks && !acks.is_empty() {
-            cx.cmd.send(Command::Social(crate::backend::SocialCommand::MarkAllRead { acks }));
-        }
+        mark_server_read(cx, guild_id);
+    }
+}
+
+/// Mark as read on a server (its menu, Shift+Esc): every unread channel and joined thread, acked in bulk (§3.11).
+pub(super) fn mark_server_read(cx: &mut UiCx<'_>, guild_id: Id) {
+    let acks = cx.state.mark_guild_read(guild_id);
+    for (ch, _) in &acks {
+        cx.view.pending_acks.remove(ch);
+    }
+    if cx.settings.send_read_acks && !acks.is_empty() {
+        cx.cmd.send(Command::Social(crate::backend::SocialCommand::MarkAllRead { acks }));
     }
 }
 
