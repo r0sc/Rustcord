@@ -105,7 +105,8 @@ pub struct MediaUi {
     pub author: Option<Author>,
     /// (scale in points per image pixel, pan of the image centre); None = fitted.
     zoom: Option<(f32, Vec2)>,
-    opened: f64,
+    /// Where the click that opened the lightbox was: the media grows from there.
+    from: Option<egui::Pos2>,
     players: HashMap<u64, Slot>,
     /// gifv players some copy on screen wants playing this frame (`end_frame` pauses the rest).
     gifv_want: HashSet<u64>,
@@ -126,7 +127,7 @@ impl Default for MediaUi {
             index: 0,
             author: None,
             zoom: None,
-            opened: 0.0,
+            from: None,
             players: HashMap::new(),
             gifv_want: HashSet::new(),
             textures: HashMap::new(),
@@ -235,7 +236,7 @@ pub fn open_icon(ctx: &egui::Context, cx: &mut UiCx<'_>, url: String, aspect: f3
 fn open_items(ctx: &egui::Context, cx: &mut UiCx<'_>, items: Vec<MediaItem>, index: usize, author: Option<Author>) {
     let mu = &mut cx.view.media_ui;
     (mu.index, mu.items, mu.author, mu.zoom) = (index.min(items.len().saturating_sub(1)), items, author, None);
-    mu.opened = ctx.input(|i| i.time);
+    mu.from = ctx.input(|i| i.pointer.any_click().then(|| i.pointer.interact_pos()).flatten());
     cx.view.modal = Some(Modal::Media);
     // Enter, arrows and Space belong to the lightbox, not the composer below it.
     ctx.memory_mut(|m| m.stop_text_input());
@@ -830,15 +831,14 @@ pub fn lightbox(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let mp = media_pal(&pal);
     let screen = ctx.content_rect();
     let area = Rect::from_min_max(pos2(screen.left(), screen.top() + TITLE_BAR_H), screen.max);
-    // 140 ms fade and scale 0.97 → 1 on open; none with reduced motion.
-    let secs = if ctx.global_style().animation_time > 0.0 { 0.14 } else { 0.0 };
-    let t = if secs > 0.0 { ((ctx.input(|i| i.time) - cx.view.media_ui.opened) / secs).clamp(0.0, 1.0) as f32 } else { 1.0 };
-    if t < 1.0 {
-        ctx.request_repaint();
-    }
+    // Opens over BASE (fade, media 0.92 -> 1 from the click) and fades out over half of it on close (§7).
+    let id = egui::Id::unique("rc_lightbox");
+    let layer = egui::LayerId::new(egui::Order::Foreground, id);
+    let t = super::motion::opened(ctx, layer, super::motion::BASE);
+
     let mut step = 0i32;
     let mut closing = false;
-    egui::Area::new(egui::Id::unique("rc_lightbox")).order(egui::Order::Foreground).fixed_pos(area.min).constrain(false).show(ctx, |ui| {
+    egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(area.min).constrain(false).fade_in(false).show(ctx, |ui| {
         super::motion::own(ctx, ui.layer_id());
         ui.set_min_size(area.size());
         ui.set_opacity(t);
@@ -847,7 +847,7 @@ pub fn lightbox(ctx: &egui::Context, cx: &mut UiCx<'_>) {
         ui.painter().rect_filled(area, 0, pal.tk.media_scrim);
         // The media fitted (never upscaled) into the room between the bars and the arrows.
         let room = Rect::from_min_max(area.min + vec2(SIDE, BAR_H), area.max - vec2(SIDE, BAR_H));
-        let media = Rect::from_center_size(room.center(), room.size() * (0.97 + 0.03 * t));
+        let media = super::motion::about(cx.view.media_ui.from.unwrap_or(room.center()), egui::lerp(0.92..=1.0, t)) * room;
         // A zoomed image runs under the bars: it goes first, and the bars sit on scrim bands.
         let image_hit = match item.kind {
             Kind::Image { gif } => Some(image_view(ui, cx, &item, media, area, gif)),
@@ -920,6 +920,7 @@ pub fn lightbox(ctx: &egui::Context, cx: &mut UiCx<'_>) {
             closing = true;
         }
     });
+    super::motion::leave(ctx, layer);
     // Keys: Esc closes, ←/→ step (a focused seek bar took its arrows already), Space plays.
     let (esc, left, right, space) = ctx.input_mut(|i| {
         (
