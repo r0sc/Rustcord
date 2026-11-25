@@ -58,7 +58,7 @@
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header">
   <a class="brand" href="#top"><img src="favicon.svg" alt="" width="28" height="28"><span>Rustcord</span></a>
-  <nav aria-label="Page"><a href="#tour">Tour</a><a href="#features">Features</a></nav>
+  <nav aria-label="Page"><a href="#tour">Tour</a><a href="#features">Features</a><a href="#faq">Questions</a></nav>
   <div class="hdr-end">
     <a class="link-ext" href="https://github.com/r0sc/Rustcord">GitHub <svg class="icon" aria-hidden="true"><use href="#i-ext"/></svg></a>
     <a class="btn btn-secondary btn-small" href="#download">Download</a>
@@ -221,8 +221,6 @@
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-key"/></svg>Sign-in and account</h3><p>Sign in with a QR code, with email and password (with 2FA), or with a token. Your session token is kept in your system’s credential store, never in a file. Account security, settings and server administration are built in.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-desktop"/></svg>On your desktop</h3><p>A tray icon, start at sign-in and desktop notifications on Windows, Linux and macOS. The second start shows your cached servers right away. Installed copies update themselves, and updates are signed.</p></div>
     </div>
-    <div class="not-included"><h3><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>Not included</h3>
-      <p>Account creation, slash commands and bot components, the sticker picker, other Nitro features and completing quests for you. Rustcord never solves captchas: when Discord asks for one, you solve it yourself in the sign-in card on Windows and macOS.</p></div>
   </div>
 </section>
 
@@ -288,9 +286,23 @@
           <div class="cmd"><pre><code data-v="tar -xzf rustcord-{v}-linux-x86_64.tar.gz&#10;sh rustcord-{v}/install.sh">tar -xzf rustcord-&lt;version&gt;-linux-x86_64.tar.gz
 sh rustcord-&lt;version&gt;/install.sh</code></pre><button class="btn btn-secondary btn-small" type="button" data-copy><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span aria-live="polite">Copy</span></button></div>
           <p>Rustcord runs on X11, or through XWayland on Wayland desktops. The tray icon needs a desktop with a StatusNotifierItem tray, like KDE, Xfce, Cinnamon or Ubuntu’s GNOME.</p></div></details>
-      <details id="notes-updates"><summary>Updates come from GitHub <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+    </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec band" id="faq" aria-labelledby="faq-title">
+  <div class="wrap narrow">
+    <h2 id="faq-title">Questions</h2>
+    <div class="acc">
+      <details id="faq-missing"><summary>What’s not included? <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body"><p>Account creation, slash commands and bot components, the sticker picker, other Nitro features and completing quests for you. Rustcord never solves captchas: when Discord asks for one, you solve it yourself in the sign-in card on Windows and macOS.</p></div></details>
+      <details id="faq-plugins"><summary>Where do the plugins come from? <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body"><p>They do what <a href="https://github.com/Vendicated/Vencord">Vencord</a>’s plugins (GPL-3.0) do, rebuilt in Rust. No Vencord code, keys or assets are included. All 48 are off until you turn them on, and they only change this app.</p></div></details>
+      <details id="notes-updates"><summary>Where do updates come from? <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
         <div class="acc-body"><p>To update itself, Rustcord asks GitHub for the newest version every 6 hours. GitHub sees your IP address and the app’s version; no Discord token or other personal data is sent.</p></div></details>
-      <details id="notes-verify"><summary>Check a download <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+      <details id="notes-verify"><summary>How do I check a download? <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
         <div class="acc-body">
           <p>Every release has a SHA256SUMS file. Compare your download with it:</p>
           <p class="cmd-label">Windows (PowerShell)</p>
@@ -300,8 +312,6 @@ sh rustcord-&lt;version&gt;/install.sh</code></pre><button class="btn btn-second
           <p class="cmd-label">macOS</p>
           <div class="cmd"><pre><code>shasum -a 256 &lt;file&gt;</code></pre><button class="btn btn-secondary btn-small" type="button" data-copy><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span aria-live="polite">Copy</span></button></div>
           <p>Updates are signed with Ed25519, and Rustcord checks the signature before it trusts anything in the update feed.</p></div></details>
-    </div>
-    </div>
     </div>
   </div>
 </section>

@@ -159,11 +159,9 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
   .features > div:nth-child(odd) { padding-right: 48px; border-right: 1px solid var(--rule); }
   .features > div:nth-child(even) { padding-left: 48px; }
 }
-.features h3, .not-included h3 { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.features h3 .icon, .not-included h3 .icon { color: var(--muted); }
-.features p, .not-included p { margin-bottom: 12px; }
-.not-included { margin-top: 64px; max-width: 68ch; }
-.not-included p { color: var(--muted); }
+.features h3 { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.features h3 .icon { color: var(--muted); }
+.features p { margin-bottom: 12px; }
 details > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 details > summary::-webkit-details-marker { display: none; }
 .chev { rotate: -90deg; color: var(--muted); }
