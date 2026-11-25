@@ -127,10 +127,38 @@ impl ApiClient {
         let url = poll_url(channel_id, message_id, "@me");
         self.send(Method::PUT, url, Some(json!({ "answer_ids": answer_ids }))).await.map(drop)
     }
+
+    /// `GET /channels/{c}/polls/{m}/answers/{a}?limit=100[&after=<user id>]` -> `{"users":[…]}`.
+    pub async fn poll_voters(&self, channel_id: Id, message_id: Id, answer_id: u32, after: Option<Id>) -> Result<Vec<User>, ApiError> {
+        let resp = self.send(Method::GET, voters_url(channel_id, message_id, answer_id, after), None).await?;
+        voters(&resp.bytes().await.map_err(net_err)?)
+    }
 }
 
 fn poll_url(channel_id: Id, message_id: Id, answer: &str) -> Url {
     ApiClient::url(&["channels", &channel_id.to_string(), "polls", &message_id.to_string(), "answers", answer])
+}
+
+fn voters_url(channel_id: Id, message_id: Id, answer_id: u32, after: Option<Id>) -> Url {
+    let mut url = poll_url(channel_id, message_id, &answer_id.to_string());
+    {
+        let mut q = url.query_pairs_mut();
+        q.append_pair("limit", "100");
+        if let Some(a) = after {
+            q.append_pair("after", &a.to_string());
+        }
+    }
+    url
+}
+
+/// `{"users":[…]}`; a null or missing list is empty.
+fn voters(body: &[u8]) -> Result<Vec<User>, ApiError> {
+    #[derive(Deserialize)]
+    struct Wire {
+        #[serde(default, deserialize_with = "null_default")]
+        users: Vec<User>,
+    }
+    serde_json::from_slice::<Wire>(body).map(|w| w.users).map_err(|e| ApiError::Decode(e.to_string()))
 }
 
 /// A send body without text: forwards (and polls) carry no `content` key at all.
@@ -373,6 +401,21 @@ mod tests {
         assert_eq!(route_key("PUT", u.path()).route, "PUT /channels/{channel_id}/polls/{id}/answers/@me");
         assert_eq!(json!({ "answer_ids": [1u32, 3] }), json!({"answer_ids":[1,3]}));
         assert_eq!(json!({ "answer_ids": &[] as &[u32] }), json!({"answer_ids":[]}));
+    }
+
+    #[test]
+    fn poll_voters_url_and_list() {
+        let u = voters_url(Id(1), Id(2), 3, None);
+        assert_eq!(u.as_str(), "https://discord.com/api/v9/channels/1/polls/2/answers/3?limit=100");
+        assert_eq!(voters_url(Id(1), Id(2), 3, Some(Id(77))).query(), Some("limit=100&after=77"));
+        let users = voters(br#"{"users":[{"id":"5","username":"a"},{"id":"6","username":"b"}]}"#).unwrap();
+        assert_eq!(users.iter().map(|u| u.id).collect::<Vec<_>>(), [Id(5), Id(6)]);
+        assert!(voters(br#"{"users":null}"#).unwrap().is_empty() && voters(b"{}").unwrap().is_empty());
+        assert!(voters(b"<html>").is_err());
+        // Listing voters never queues behind my own vote.
+        let vote = poll_url(Id(1), Id(2), "@me");
+        assert_ne!(route_key("GET", u.path()), route_key("PUT", vote.path()));
+        assert_eq!(route_key("GET", u.path()).route, "GET /channels/{channel_id}/polls/{id}/answers/{id}");
     }
 
     #[test]

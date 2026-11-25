@@ -1140,6 +1140,7 @@ Sending a forward: `POST /channels/{dest}/messages` with `message_reference {typ
 ### Polls (a message with `poll`; sources: docs.discord.food message "Poll", docs.discord.com poll)
 - Object: `question {text}`, `answers [{answer_id, poll_media {text?, emoji?}}]`, `expiry` (ISO-8601), `allow_multiselect`, `layout_type` (only 1), `results? {is_finalized, answer_counts [{id, count, me_voted}]}`. An answer without a count entry has 0 votes. A message without `results` (a MESSAGE_UPDATE) means **unknown**, not zero: keep the last ones. Counts may be a little off until `is_finalized`. A poll message can't be edited or forwarded.
 - Vote: `PUT /channels/{c}/polls/{m}/answers/@me {"answer_ids":[…]}` (204); `[]` removes my votes. Events `MESSAGE_POLL_VOTE_ADD` / `_REMOVE {user_id, channel_id, message_id, guild_id?, answer_id}`, one per answer. Whether my own sessions get the echo is unconfirmed: counting my click once and ignoring its echo works either way.
+- Voters: `GET /channels/{c}/polls/{m}/answers/{answer_id}?limit=1..100[&after=<user id>]` -> `{"users":[partial user]}`. Rustcord asks for 100 and pages with `after`; the route key (`GET …/polls/{id}/answers/{id}`) differs from the vote's (`PUT …/answers/@me`).
 
 ---
 

@@ -13,10 +13,11 @@
 //! OWNERSHIP: ui-messages.
 
 use super::icons::{self, Icon};
-use super::messages::{Btn, Pal, button, emoji_texture, focus_ring, paint_checkbox, paint_radio};
+use super::messages::{Btn, Pal, button, emoji_texture, focus_ring, paint_checkbox, paint_radio, small_button};
 use super::{UiCx, motion, one_line, semibold};
 use crate::backend::{ChatCommand, Command};
 use crate::model::{Id, Message, Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};
+use crate::state::chat::PollVotersView;
 use crate::state::polls::my_votes;
 use egui::{Align, FontId, Frame, Image, Label, Layout, Margin, Rect, RichText, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
 use std::time::Duration;
@@ -31,6 +32,8 @@ pub struct PollsUi {
     picked: Option<(Id, Vec<u32>)>,
     /// The poll whose results I look at without having voted.
     peek: Option<Id>,
+    /// The open voters popover: poll, answer, and "opened this pass" (it opens its popup once).
+    voters: Option<(Id, u32, bool)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +110,7 @@ struct Row {
     winner: bool,
 }
 
-pub(super) fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, mid: Id, poll: &Poll) {
+pub(super) fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, guild_id: Option<Id>, mid: Id, poll: &Poll) {
     let ctx = ui.ctx().clone();
     let now = chrono::Utc::now().timestamp_millis();
     let mine = my_votes(poll);
@@ -133,6 +136,8 @@ pub(super) fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, mid:
             ui.label(RichText::new(hint).size(pal.meta()).color(pal.muted));
         }
         let mut clicked = None;
+        let open = cx.view.polls_ui.voters.filter(|(m, _, _)| *m == mid).map(|(_, a, _)| a);
+        let mut anchor = None;
         for (i, a) in poll.answers.iter().enumerate() {
             let row = Row {
                 count: counts[i],
@@ -141,11 +146,17 @@ pub(super) fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, mid:
                 picked: picked.contains(&a.answer_id),
                 winner: view.closed && counts[i] > 0 && counts[i] == top,
             };
-            if answer_row(ui, cx, pal, &view, a, &row) {
-                clicked = Some(a.answer_id);
+            let (hit, rect) = answer_row(ui, cx, pal, &view, a, &row);
+            if hit {
+                clicked = Some((a.answer_id, rect));
+            }
+            if open == Some(a.answer_id) {
+                anchor = Some((i, rect));
             }
         }
-        if let Some(id) = clicked {
+        if let Some((id, _)) = clicked.filter(|_| view.results) {
+            toggle_voters(&ctx, cx, ch, mid, id);
+        } else if let Some((id, _)) = clicked {
             let ui_state = &mut cx.view.polls_ui;
             let mut ids = picked.clone();
             if view.multi {
@@ -160,6 +171,10 @@ pub(super) fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, mid:
             }
             ui_state.picked = Some((mid, ids));
         }
+        // Opened by a click on that row (or the demo): while its rows are not drawn, nothing is.
+        if let Some((i, rect)) = anchor {
+            voters_popover(ui, cx, pal, (ch, guild_id, mid), &poll.answers[i], counts[i], rect);
+        }
         ui.add_space(4.0);
         footer(ui, cx, pal, &view, (ch, mid), (total, &mine, &picked), poll, now);
     });
@@ -169,28 +184,31 @@ pub(super) fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, mid:
     }
 }
 
-/// One answer: a row to pick (vote view) or a bar with its share (results view). True when a
-/// vote row was clicked.
-fn answer_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, v: &View, a: &PollAnswer, r: &Row) -> bool {
+/// One answer: a row to pick (vote view) or a bar with its share (results view). True when it
+/// was clicked, and its rect.
+fn answer_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, v: &View, a: &PollAnswer, r: &Row) -> (bool, Rect) {
     let text = a.poll_media.text.as_str();
-    let sense = if v.results { Sense::hover() } else { Sense::click() };
+    // A result with votes opens the voters; one without (or without counts) is just a label.
+    let voters = v.results && v.known && r.count > 0;
+    let sense = if v.results && !voters { Sense::hover() } else { Sense::click() };
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), sense);
     if v.results {
         let note = format!("{text}: {}, {}%{}{}", votes(r.count), r.share, if r.mine { ", your vote" } else { "" }, if r.winner { ", most votes" } else { "" });
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, note.clone()));
+        let role = if voters { egui::Role::Button } else { egui::Role::Label };
+        resp.widget_info(|| egui::WidgetInfo::labeled(role, true, note.clone()));
     } else {
         let role = if v.multi { egui::Role::CheckBox } else { egui::Role::RadioButton };
         resp.widget_info(|| egui::WidgetInfo::selected(role, true, r.picked, text));
     }
-    let resp = if v.results && v.known && r.count > 0 { resp.on_hover_text(votes(r.count)) } else { resp };
+    let resp = if voters { resp.on_hover_text(votes(r.count)).on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp };
     if !ui.is_rect_visible(rect) {
-        return resp.clicked();
+        return (resp.clicked(), rect);
     }
     let (tk, radius) = (&pal.tk, pal.radius);
     let mut right = rect.right() - 12.0;
     let family = if v.results && r.winner { crate::theme::semibold_family() } else { crate::theme::medium_family() };
     if v.results {
-        ui.painter().rect_filled(rect, radius, tk.hover);
+        ui.painter().rect_filled(rect, radius, if voters && resp.hovered() { tk.hover.blend(pal.tint()) } else { tk.hover });
         if v.known {
             let w = rect.width() * r.share as f32 / 100.0 * v.grow;
             if w >= 1.0 {
@@ -207,6 +225,9 @@ fn answer_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, v: &View, a: &Pol
                 icons::paint(ui.painter(), Icon::Check, Rect::from_center_size(pos2(right + 8.0, rect.center().y), Vec2::splat(16.0)), pal.link, tk.chip);
             }
         }
+        if voters && resp.has_focus() {
+            focus_ring(ui, pal, rect, f32::from(radius));
+        }
     } else {
         let draw = motion::pressed(&resp, rect);
         ui.painter().rect_filled(draw, radius, if r.picked || resp.hovered() { tk.selected } else { tk.hover });
@@ -222,7 +243,7 @@ fn answer_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, v: &View, a: &Pol
         right = control.left();
     }
     paint_text(ui, cx, pal, a, rect, right - 8.0, family);
-    resp.clicked()
+    (resp.clicked(), rect)
 }
 
 /// The answer's emoji and text, left aligned in `rect`, ending before `right`.
@@ -298,6 +319,112 @@ fn send_vote(cx: &mut UiCx<'_>, ch: Id, mid: Id, answers: Vec<u32>, mine: &[u32]
 }
 
 // ---------------------------------------------------------------------------
+// Who voted
+// ---------------------------------------------------------------------------
+
+fn voters_id(mid: Id, answer: u32) -> egui::Id {
+    egui::Id::unique(("rc_poll_voters", mid.0, answer))
+}
+
+/// A click on a result row: its voters open (one request), a second click closes them.
+fn toggle_voters(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, mid: Id, answer: u32) {
+    let open = cx.view.polls_ui.voters;
+    cx.view.polls_ui.voters = None;
+    cx.state.chat.poll_voters = None;
+    if let Some((m, a, _)) = open {
+        egui::Popup::close_id(ctx, voters_id(m, a));
+    }
+    if open.is_some_and(|(m, a, _)| (m, a) == (mid, answer)) {
+        return;
+    }
+    cx.view.polls_ui.voters = Some((mid, answer, true));
+    cx.state.chat.poll_voters = Some(PollVotersView { channel_id: ch, message_id: mid, answer_id: answer, loading: true, ..Default::default() });
+    cx.cmd.send(Command::Chat(ChatCommand::FetchPollVoters { channel_id: ch, message_id: mid, answer_id: answer, after: None }));
+}
+
+/// The list under the open answer's row: avatar and name, a click opens the profile.
+fn voters_popover(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, (ch, guild_id, mid): (Id, Option<Id>, Id), answer: &PollAnswer, count: u32, row: Rect) {
+    let ctx = ui.ctx().clone();
+    let id = voters_id(mid, answer.answer_id);
+    let opened_now = cx.view.polls_ui.voters.as_mut().is_some_and(|v| std::mem::take(&mut v.2));
+    let frame = Frame::popup(ui.style()).fill(pal.tk.raised).stroke(Stroke::new(1.0, pal.tk.rule)).corner_radius(pal.card_radius()).inner_margin(Margin::same(8));
+    egui::Popup::new(id, ctx.clone(), row, ui.layer_id())
+        .kind(egui::PopupKind::Popup)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .open_memory(opened_now.then_some(egui::SetOpenCommand::Bool(true)))
+        .align(egui::RectAlign::BOTTOM_START)
+        .align_alternatives(&[egui::RectAlign::TOP_START])
+        .gap(4.0)
+        .width(280.0)
+        .frame(frame)
+        .show(|ui| voters_list(ui, cx, pal, (ch, guild_id, mid), answer, count));
+    if !egui::Popup::is_id_open(&ctx, id) {
+        cx.view.polls_ui.voters = None;
+        cx.state.chat.poll_voters = None;
+    }
+}
+
+fn voters_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, (ch, guild_id, mid): (Id, Option<Id>, Id), answer: &PollAnswer, count: u32) {
+    ui.set_width(ui.available_width());
+    ui.spacing_mut().item_spacing.y = 4.0;
+    let Some(v) = cx.state.chat.poll_voters.as_ref().filter(|v| (v.message_id, v.answer_id) == (mid, answer.answer_id)) else { return };
+    let (users, loading, error, more) = (v.users.clone(), v.loading, v.error.clone(), v.has_more);
+    ui.horizontal(|ui| {
+        ui.add(Label::new(RichText::new(&answer.poll_media.text).font(semibold(pal.label())).color(pal.muted)).truncate());
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label(RichText::new(votes(count)).size(pal.meta()).color(pal.muted)));
+    });
+    let fetch = |cx: &mut UiCx<'_>, after: Option<Id>| {
+        if let Some(v) = cx.state.chat.poll_voters.as_mut() {
+            (v.loading, v.error) = (true, None);
+        }
+        cx.cmd.send(Command::Chat(ChatCommand::FetchPollVoters { channel_id: ch, message_id: mid, answer_id: answer.answer_id, after }));
+    };
+    // Up to ten rows fit as they are; more scroll (a scroll area clips the last row of a short list).
+    let rows = |ui: &mut egui::Ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        for u in &users {
+            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
+            let name = cx.state.member_display_name(guild_id, u, None);
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name.clone()));
+            if !ui.is_rect_visible(rect) {
+                continue;
+            }
+            if resp.hovered() {
+                ui.painter().rect_filled(rect, pal.radius, pal.tk.hover);
+            }
+            if resp.has_focus() {
+                focus_ring(ui, pal, rect, f32::from(pal.radius));
+            }
+            let avatar = Rect::from_min_size(pos2(rect.left() + 4.0, rect.center().y - 12.0), Vec2::splat(24.0));
+            let url = super::images::user_avatar_url(guild_id, u, None, 48, false);
+            super::sidebar::user_avatar_at(ui, cx.images, &url, avatar, false, 1.0, (u.id, &name));
+            let g = one_line(ui, name.as_str(), FontId::new(pal.body(), crate::theme::medium_family()), pal.text, rect.right() - avatar.right() - 16.0);
+            ui.painter().galley(pos2(avatar.right() + 8.0, rect.center().y - g.size().y / 2.0), g, pal.text);
+            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                cx.view.open_profile(u.id, guild_id, rect.right_top());
+                ui.close();
+            }
+        }
+    };
+    if users.len() > 10 {
+        egui::ScrollArea::vertical().id_salt("rc_poll_voters_list").max_height(320.0).auto_shrink([false, true]).show(ui, rows);
+    } else {
+        ui.scope(rows);
+    }
+    if loading && users.is_empty() {
+        ui.label(RichText::new("Loading…").size(pal.meta()).color(pal.muted));
+    }
+    if let Some(e) = error {
+        ui.label(RichText::new(format!("Could not load the voters: {e}")).size(pal.meta()).color(pal.danger));
+        if small_button(ui, pal, "Retry", pal.text).clicked() {
+            fetch(cx, users.last().map(|u| u.id));
+        }
+    } else if more && !loading && button(ui, pal, Btn::Ghost, "Show more", true).clicked() {
+        fetch(cx, users.last().map(|u| u.id));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Test hook
 // ---------------------------------------------------------------------------
 
@@ -344,6 +471,7 @@ pub(super) fn demo(cx: &mut UiCx<'_>, ch: Id, demo: impl Fn(&str) -> bool) {
         allow_multiselect: false,
         results: Some(PollResults { is_finalized: true, answer_counts: vec![PollAnswerCount { id: 1, count: 4, me_voted: true }, PollAnswerCount { id: 2, count: 9, me_voted: false }, PollAnswerCount { id: 3, count: 7, me_voted: false }] }),
     };
+    let multi_id = Id(newest.0.0 + (2 << 22));
     for (i, poll) in [single, multi, done].into_iter().enumerate() {
         list.msgs.push(Message {
             id: Id(newest.0.0 + ((i as u64 + 1) << 22)),
@@ -354,6 +482,14 @@ pub(super) fn demo(cx: &mut UiCx<'_>, ch: Id, demo: impl Fn(&str) -> bool) {
             poll: Some(Box::new(poll)),
             ..Message::default()
         });
+    }
+    // `poll-voters`: the voters of "Polls" in the second poll, from the cached users.
+    if demo("poll-voters") {
+        let mut users: Vec<_> = cx.state.users.values().cloned().collect();
+        users.sort_by_key(|u| u.id);
+        users.truncate(6);
+        cx.view.polls_ui.voters = Some((multi_id, 1, true));
+        cx.state.chat.poll_voters = Some(PollVotersView { channel_id: ch, message_id: multi_id, answer_id: 1, users, ..Default::default() });
     }
 }
 

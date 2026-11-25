@@ -699,6 +699,11 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 - Footer, 12 above: votes and time left in meta `text_muted`; buttons 32 tall on the right. Vote
   is **Secondary**, not Primary (one ember button per view); Show results, Back to voting and
   Remove vote are Ghost.
+- Voters popover (a click on a result row with votes): E2 `raised`, 1 px `rule`, container radius,
+  280 wide, 8 padding, below the row (above when short of room). Header: the answer in the label
+  role (600, muted) and the vote count in meta; rows 32 tall with an avatar 24 and the name body
+  15/500, `hover` fill, a click opens the profile; "Show more" (Ghost) pages by 100, a failure
+  shows the error and a small Retry.
 - Motion: the bars grow 0 -> share over BASE only after my own Vote or Show results; other
   people's votes and the end of the poll change them without a tween; rows draw 1 px smaller while
   held.

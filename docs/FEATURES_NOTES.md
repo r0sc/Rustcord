@@ -847,6 +847,7 @@ Mark As Read | Invite to Server | Mute Server ▸ (15 min / 1 h / 3 h / 8 h / 24
 - Mark-unread target id and the auto-ack pause rule; new-messages bar wording and time anchor; grouping threshold (7 min).
 - Forward + content in one request (Rustcord sends none).
 - Forwarding a message that is itself a forward (Rustcord hides the action).
+- Poll voters are fetched with limit=100 (the documented maximum; the default is 25).
 - Poll vote echo to my own sessions (a vote of mine is counted once, from the click).
 - Search GET vs `/search/tabs` in today's client; forum listing sequence (search vs sync + post-data); op 28 payload; forum ack on view.
 - Profile popout query flags; Inbox Unreads loading; ack-bulk chunk cap; group DM icon path variant.

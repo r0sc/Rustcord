@@ -43,6 +43,8 @@ pub struct ChatState {
     /// Jump-to-message window (`FetchAround`), separate from the channel history.
     pub around: Option<AroundView>,
     pub reaction_users: Option<ReactionUsersView>,
+    /// Who voted for one answer (the voters popover, ui/polls.rs).
+    pub poll_voters: Option<PollVotersView>,
     /// Recent op 8 answers, oldest first.
     pub member_search: VecDeque<MemberSearch>,
     /// Marked unread by the user: `mark_read` (automatic acks) skips this channel until the
@@ -106,6 +108,18 @@ pub struct ReactionUsersView {
     pub channel_id: Id,
     pub message_id: Id,
     pub emoji: Emoji,
+    pub users: Vec<User>,
+    /// A full page (100) came back: fetch more with `after` = last user id.
+    pub has_more: bool,
+    pub loading: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct PollVotersView {
+    pub channel_id: Id,
+    pub message_id: Id,
+    pub answer_id: u32,
     pub users: Vec<User>,
     /// A full page (100) came back: fetch more with `after` = last user id.
     pub has_more: bool,
@@ -194,6 +208,24 @@ impl AppState {
                     .reaction_users
                     .as_mut()
                     .filter(|v| (v.channel_id, v.message_id) == (channel_id, message_id) && v.emoji == emoji)?;
+                v.loading = false;
+                match result {
+                    Ok(users) => {
+                        if after.is_none() {
+                            v.users.clear();
+                        }
+                        v.has_more = users.len() >= 100;
+                        v.users.extend(users);
+                        v.error = None;
+                    }
+                    Err(e) => v.error = Some(e),
+                }
+            }
+            E::PollVoters { channel_id, message_id, answer_id, after, result } => {
+                let v = c
+                    .poll_voters
+                    .as_mut()
+                    .filter(|v| (v.channel_id, v.message_id, v.answer_id) == (channel_id, message_id, answer_id))?;
                 v.loading = false;
                 match result {
                     Ok(users) => {
@@ -592,6 +624,33 @@ mod tests {
         assert_eq!(s.chat.uploads["n"].sent, 0, "kept for Retry");
         s.on_chat_send_result("n", true);
         assert!(s.chat.uploads.is_empty());
+    }
+
+    #[test]
+    fn poll_voters_fill_the_open_view_only() {
+        let mut s = state();
+        let view = |answer_id| PollVotersView { channel_id: TEXT, message_id: Id(5), answer_id, loading: true, ..Default::default() };
+        let page = |n: u64| (1..=n).map(|i| user(Id(100 + i), "v")).collect::<Vec<_>>();
+        let ev = |answer_id, after, result| ChatEvent::PollVoters { channel_id: TEXT, message_id: Id(5), answer_id, after, result };
+        s.chat.poll_voters = Some(view(2));
+        // Another answer's page (a stale answer) is dropped.
+        s.apply_chat(ev(1, None, Ok(page(3))));
+        assert!(s.chat.poll_voters.as_ref().unwrap().users.is_empty() && s.chat.poll_voters.as_ref().unwrap().loading);
+        s.apply_chat(ev(2, None, Ok(page(100))));
+        let v = s.chat.poll_voters.as_ref().unwrap();
+        assert_eq!((v.users.len(), v.has_more, v.loading), (100, true, false));
+        // The next page adds; a short one ends the list.
+        s.apply_chat(ev(2, Some(Id(200)), Ok(page(5))));
+        let v = s.chat.poll_voters.as_ref().unwrap();
+        assert_eq!((v.users.len(), v.has_more), (105, false));
+        // A first page replaces what was there; an error keeps the users and says why.
+        s.apply_chat(ev(2, None, Ok(page(2))));
+        assert_eq!(s.chat.poll_voters.as_ref().unwrap().users.len(), 2);
+        s.apply_chat(ev(2, None, Err("nope".into())));
+        let v = s.chat.poll_voters.as_ref().unwrap();
+        assert_eq!((v.users.len(), v.error.as_deref()), (2, Some("nope")));
+        s.chat.poll_voters = None;
+        assert_eq!(s.apply_chat(ev(2, None, Ok(page(1)))), None);
     }
 
     #[test]

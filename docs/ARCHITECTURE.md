@@ -280,7 +280,8 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   "still indexing" state) and `detached` (the older half shown as a jump window with the
   target flashed), `forward` (ui/forward.rs: a forward of the message in the middle of the loaded
   history, with its origin link), `poll` (ui/polls.rs: three polls at the end of the open channel,
-  a vote view, a multiple choice I voted in, a closed one). Composer (ui/composer.rs): `attach` (tray with sample files and an error),
+  a vote view, a multiple choice I voted in, a closed one), `poll-voters` (with `poll`: the voters popover
+  open on "Polls" of the second poll, filled from the cached users). Composer (ui/composer.rs): `attach` (tray with sample files and an error),
   `upload` (an upload in flight), `typing` (two people typing), `gif` (GIF tab with placeholder
   category tiles; its Trending tile lists placeholder results), `ac` / `ac-channel` / `ac-emoji` (`@` / `#` / `:` autocomplete open), `cooldown`
   (send cooldown), `drop` (drag-and-drop overlay). Media (ui/viewer.rs `demo`, files seeded into

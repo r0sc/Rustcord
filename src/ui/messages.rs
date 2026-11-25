@@ -1957,7 +1957,7 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
         });
     }
     if let Some(p) = &msg.poll {
-        super::polls::card(ui, cx, &pal, lc.ch, msg.id, p);
+        super::polls::card(ui, cx, &pal, lc.ch, lc.guild_id, msg.id, p);
     }
     forwarded(ui, cx, lc, msg);
     media_parts(ui, cx, lc, msg);
