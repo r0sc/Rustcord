@@ -1,7 +1,6 @@
 // Run: node --test site/test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ease, tierFor, ramp, wmSeamY } from './fx.js';
 import { detectOs, pickAssets, fetchLatest, buttonState, mb, LATEST, REPO } from './download.js';
 
 const UA = {
@@ -82,12 +81,4 @@ test('API failure and bad status fall back', async () => {
   await assert.rejects(fetchLatest(async () => { throw new Error('offline'); }));
   const r = await fetchLatest(async () => ({ ok: true, json: async () => rel }));
   assert.equal(r.v, '0.1.2');
-});
-
-test('fx helpers', () => {
-  assert.equal(ease(0), 0); assert.equal(ease(.5), .5); assert.equal(ease(1), 1);
-  assert.equal(tierFor({ w: 1440, hc: 16, mem: 8 }), 3); assert.equal(tierFor({ w: 1000, hc: 8, mem: 8 }), 2);
-  assert.equal(tierFor({ w: 390 }), 1); assert.equal(tierFor({ w: 1440, hc: 4 }), 1); assert.equal(tierFor({ w: 1440, save: true }), 0);
-  assert.deepEqual(ramp(0), [254, 238, 193, 1]); assert.equal(ramp(1)[3], 0);
-  assert.equal(wmSeamY(.5, 0, 100), 50);
 });

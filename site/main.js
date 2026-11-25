@@ -1,9 +1,6 @@
-import { startFx } from './fx.js';
 import { SYSTEMS, LATEST, detectOs, fetchLatest, buttonState, mb } from './download.js';
 
-const html = document.documentElement, q = new URLSearchParams(location.search);
-html.classList.add('ready');
-if (window.rcSyncMotion) window.rcSyncMotion();
+const q = new URLSearchParams(location.search);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 // ---- download ----
@@ -63,57 +60,3 @@ function copy(btn, text, done) {
 }
 $$('[data-copy-link]').forEach(b => b.addEventListener('click', () => copy(b, location.origin + location.pathname, 'Link copied')));
 $$('[data-copy]').forEach(b => b.addEventListener('click', () => copy(b, b.parentElement.querySelector('code').textContent, 'Copied')));
-
-// ---- 199 ms bar ----
-const boot = document.querySelector('[data-boot]');
-if (boot && html.classList.contains('motion')) {
-  const run = () => { boot.classList.remove('run'); void boot.offsetWidth; boot.classList.add('run'); };
-  const rb = boot.querySelector('[data-boot-replay]'); rb.hidden = false; rb.addEventListener('click', run);
-  const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { run(); io.disconnect(); } }, { threshold: 0.6 });
-  io.observe(boot);
-}
-
-// ---- first shot: the load sweep plays when it is first seen ----
-const first = document.querySelector('.tour-item:first-child .tour-shot');
-if (first) new IntersectionObserver(([e], o) => { if (e.isIntersecting) { first.classList.add('lit'); o.disconnect(); } }, { threshold: 0.5 }).observe(first);
-
-// ---- tour ----
-const tour = document.querySelector('[data-tour]');
-if (tour && !html.classList.contains('sda')) {
-  const items = $$('.tour-item', tour);
-  const headerH = () => parseFloat(getComputedStyle(html).getPropertyValue('--header-h')) || 64;
-  let step = -1, raf = 0;
-  const setStep = s => {
-    if (s === step) return;
-    const forward = step !== -1 && s > step; step = s; tour.dataset.step = s;
-    items.forEach((li, i) => {
-      li.classList.toggle('is-shown', i <= s); li.classList.toggle('is-current', i === s);
-      if (forward && i === s) { li.classList.remove('forge'); void li.offsetWidth; li.classList.add('forge'); }
-    });
-  };
-  const measure = () => {
-    raf = 0; const r = tour.getBoundingClientRect(), h = headerH();
-    const p = Math.min(1, Math.max(0, (h - r.top) / (r.height - (innerHeight - h))));
-    setStep(Math.min(items.length - 1, Math.floor(p * items.length)));
-  };
-  const onScroll = () => { raf = raf || requestAnimationFrame(measure); };
-  new IntersectionObserver(([e]) => {
-    if (e.isIntersecting) { addEventListener('scroll', onScroll, { passive: true }); onScroll(); }
-    else removeEventListener('scroll', onScroll);
-  }).observe(tour);
-  setStep(0);
-  const io = new IntersectionObserver(es => es.forEach(e => {
-    if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); } }), { threshold: 0.35 });
-  $$('.tour-shot', tour).forEach(el => io.observe(el));
-}
-
-// ---- test hook: ?tour=0..4 lands mid-hold for that step when pinned ----
-const tk = q.get('tour');
-if (tk !== null && tour && html.classList.contains('pin')) {
-  const k = Math.min(4, Math.max(0, +tk || 0));
-  const place = () => { const top = tour.getBoundingClientRect().top + scrollY, len = tour.offsetHeight - (innerHeight - parseFloat(getComputedStyle(html).getPropertyValue('--header-h')));
-    scrollTo({ top: top - (parseFloat(getComputedStyle(html).getPropertyValue('--header-h')) || 64) + len * (k + .5) / 5, behavior: 'instant' }); };
-  addEventListener('load', () => { place(); setTimeout(place, 300); });
-}
-
-startFx();

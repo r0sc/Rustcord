@@ -23,20 +23,12 @@
 <script>
 (function () {
   var d = document.documentElement, s = /[?&]static=1(&|$)/.test(location.search);
-  var sda = !!(window.CSS && CSS.supports('animation-timeline: view()'));
   var m = matchMedia('(prefers-reduced-motion: no-preference)');
-  var w = matchMedia('(min-width: 960px) and (min-height: 640px)');
-  d.classList.add('js'); if (s) d.classList.add('static'); if (sda) d.classList.add('sda');
-  function sync() {
-    var motion = m.matches && !s;
-    d.classList.toggle('motion', motion);
-    d.classList.toggle('pin', motion && w.matches && (sda || d.classList.contains('ready')));
-  }
-  sync(); m.addEventListener('change', sync); w.addEventListener('change', sync);
-  window.rcSyncMotion = sync;
+  d.classList.add('js');
+  function sync() { d.classList.toggle('motion', m.matches && !s); }
+  sync(); m.addEventListener('change', sync);
 })();
 </script>
-<link rel="modulepreload" href="fx.js">
 <script type="module" src="main.js"></script>
 </head>
 <body id="top">
@@ -50,7 +42,7 @@
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5" fill="currentColor"/><path d="m11.5 11.5 9-9M16 7l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-desktop" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 20h8M12 16v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   <symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="m5.6 5.6 12.8 12.8" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
-  <symbol id="i-dl" viewBox="0 0 24 24"><path style="translate:0 var(--dl-dy,0px);transition:translate var(--t-base) var(--ease-out)" d="M12 4v11M7 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
@@ -102,19 +94,19 @@
       <ol class="tour-list">
         <li class="tour-item"><figure>
           <div class="tour-shot"><img src="shots/main.webp" srcset="shots/main-960.webp 960w, shots/main.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" fetchpriority="high" alt="Rustcord’s main window in the Ember Dark theme: the server bar, the Rust Workshop server’s channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc’s custom status “Rewriting it in Rust”, a game and Spotify"></div>
-          <figcaption><h3>Your servers and chats</h3><p>Servers, channels, DMs and the member list sit where you expect them.</p><span class="tour-count" aria-hidden="true">1 of 5</span></figcaption></figure></li>
+          <figcaption><h3>Your servers and chats</h3><p>Servers, channels, DMs and the member list sit where you expect them.</p></figcaption></figure></li>
         <li class="tour-item"><figure>
           <div class="tour-shot"><img src="shots/stream.webp" srcset="shots/stream-960.webp 960w, shots/stream.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="A voice channel in Rustcord: Cara’s live stream of Red Eclipse gameplay fills the stage, with Alice, Bob, Cara, dan_ops and rosc in the tiles below and rosc connected to Lounge in the voice panel"></div>
-          <figcaption><h3>Voice, video and streams</h3><p>Join voice channels with end-to-end encryption and watch streams.</p><span class="tour-count" aria-hidden="true">2 of 5</span></figcaption></figure></li>
+          <figcaption><h3>Voice, video and streams</h3><p>Join voice channels with end-to-end encryption and watch streams.</p></figcaption></figure></li>
         <li class="tour-item"><figure>
           <div class="tour-shot"><img src="shots/profile.webp" srcset="shots/profile-960.webp 960w, shots/profile.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="rosc’s profile popout above the user panel, with a local-only banner, the custom status “Rewriting it in Rust”, a game activity and the status picker"></div>
-          <figcaption><h3>Profiles and status</h3><p>Set your status and custom status and see what friends are playing.</p><span class="tour-count" aria-hidden="true">3 of 5</span></figcaption></figure></li>
+          <figcaption><h3>Profiles and status</h3><p>Set your status and custom status and see what friends are playing.</p></figcaption></figure></li>
         <li class="tour-item"><figure>
           <div class="tour-shot"><img src="shots/plugins.webp" srcset="shots/plugins-960.webp 960w, shots/plugins.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="Settings, Plugins: the built-in Vencord-style plugins, 4 of 48 turned on"></div>
-          <figcaption><h3>48 plugins, built in</h3><p>Each plugin has its own switch in Settings.</p><span class="tour-count" aria-hidden="true">4 of 5</span></figcaption></figure></li>
+          <figcaption><h3>48 plugins, built in</h3><p>Each plugin has its own switch in Settings.</p></figcaption></figure></li>
         <li class="tour-item"><figure>
           <div class="tour-shot"><img src="shots/light.webp" srcset="shots/light-960.webp 960w, shots/light.webp 1600w" sizes="(min-width: 960px) 1200px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="The same #general chat in the Paper Light theme"></div>
-          <figcaption><h3>Themes</h3><p>The same chat, switched to Paper Light.</p><span class="tour-count" aria-hidden="true">5 of 5</span></figcaption></figure></li>
+          <figcaption><h3>Themes</h3><p>The same chat, switched to Paper Light.</p></figcaption></figure></li>
       </ol>
     </div>
   </div>
@@ -124,16 +116,6 @@
   <div class="wrap">
     <h2 id="speed-title">How light it is</h2>
     <p class="lede">Rustcord draws its own interface with egui and runs its network code on tokio. There’s no Electron and no bundled browser.</p>
-    <figure class="boot" data-boot>
-      <div class="boot-scale">
-        <span class="boot-l boot-l-top">Window visible, 183 ms</span>
-        <div class="boot-track"><div class="boot-fill"></div><i class="tick" style="left:91.5%"></i><i class="tick" style="left:99.5%"></i></div>
-        <span class="boot-l boot-l-zero">0 ms</span>
-        <span class="boot-l boot-l-bot">First frame, 199 ms</span>
-      </div>
-      <figcaption>The bar fills in 199 ms, the time from starting Rustcord to its first frame with your cached servers.
-        <button class="btn btn-secondary btn-small" type="button" data-boot-replay hidden>Replay</button></figcaption>
-    </figure>
     <dl class="stats">
       <div><dt>Memory in use</dt><dd class="stat">96 MB</dd><dd>working set, 87 MB of it private</dd></div>
       <div><dt>CPU while idle</dt><dd class="stat">0 %</dd><dd>16 ms of CPU in 20 s</dd></div>
