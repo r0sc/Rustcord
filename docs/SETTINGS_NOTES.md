@@ -287,6 +287,7 @@ All ✔ except spell check. They are cheap render gates in the message view.
 | Notify friends / server members when I go live | off / ? | `P7.2` / `P7.26` | ✔ |
 | Notify friends when I come online / update my profile | on | `P7.25` / `P7.24` | ✔ |
 | Activity notifications | on | `P7.11` voice activity, `P7.12` friend online, `P7.13` friend returning ("resurrection"), `P7.14` anniversaries, `P7.15` game updates, `P7.16` profile updates, `P7.17` server trending, `P7.18` DM reply nudges, `P7.19` summaries, `P7.21` friend gaming, `P7.22` upcoming events, `P7.23` screen-time schedule | ✔ (mostly inbox "For You" and mobile push) |
+| Quiet hours and pause | off | L (Rustcord only; P7.5/P7.6 never written) | ✔ `[quiet_hours]`: a weekly window silences desktop notifications, the overlay toast, taskbar flashing and alerting sounds; status, read states and the in-app call popup stay |
 | Quiet mode / focus mode | off | `P7.5 Bool` / `P7.6` fixed64 expiry ms (UI UNCONFIRMED) | later |
 | Custom-status push (mobile) | — | `P7.9` | ✗ |
 | Email notifications | — | `GET/PATCH /users/@me/email-settings {"settings":{"categories":{…}}}`. Categories: communication, social, recommendations_and_events, tips, updates_and_announcements, family_center_digest | ✔ |

@@ -463,7 +463,10 @@ impl RustcordApp {
         } else {
             self.cues = Default::default();
         }
-        crate::sounds::set_ring(main.then(|| crate::sounds::ring(&self.state)).flatten(), &self.settings, deaf, dnd);
+        let ring = main.then(|| crate::sounds::ring(&self.state)).flatten();
+        // Quiet hours silence the incoming ring only; the popup stays. The clock is read only while one rings.
+        let quiet = matches!(ring, Some(crate::sounds::Sound::IncomingRing)) && self.settings.quiet_hours.quiet_now();
+        crate::sounds::set_ring(ring, &self.settings, deaf, dnd || quiet);
     }
 
     fn drain_events(&mut self, ctx: &egui::Context) {
@@ -501,9 +504,10 @@ impl RustcordApp {
                     }
                     // Plugins (MessageLogger, RelationshipNotifier) see it first; may swallow it.
                     let Some(ev) = crate::plugins::on_gateway(&mut self.state, &mut self.view, &self.settings, ev) else { continue };
-                    // Do Not Disturb: unread state still updates, but no toast or taskbar flash.
+                    // Do Not Disturb and quiet hours: unread state still updates, but no toast, sound or taskbar flash.
                     if let Some(n) = self.state.apply_gateway(ev, focused_channel)
                         && self.state.chat.my_status != Some(crate::model::UserStatus::Dnd)
+                        && !self.settings.quiet_hours.quiet_now()
                         // Plugins (OnePingPerDM): one per DM until it is read.
                         && crate::plugins::notifier::one_ping(&self.state, n.channel_id)
                     {
@@ -939,7 +943,10 @@ impl eframe::App for RustcordApp {
             // overlay shows it in a game.
             let dnd_off = self.state.chat.my_status != Some(crate::model::UserStatus::Dnd);
             for body in quests::completed(&mut self.state, &self.view) {
-                if dnd_off && self.settings.notification("", "").is_some() && !self.overlay.notify(&self.state, &self.settings, "Quest complete", &body, None) {
+                if dnd_off
+                    && self.settings.notification("", "").is_some()
+                    && !self.settings.quiet_hours.quiet_now()
+                    && !self.overlay.notify(&self.state, &self.settings, "Quest complete", &body, None) {
                     crate::notify::show("Quest complete", &body);
                     self.view.quests_ui.notified_last = true;
                 }

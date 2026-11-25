@@ -22,6 +22,7 @@
 //! (`settings_layer`, `nav_item`, `section`, `hint`, `dialog`) is shared in mod.rs.
 
 mod account;
+mod alerts;
 mod app;
 mod connections;
 mod cosmetics;
@@ -153,7 +154,7 @@ impl Page {
             Page::VoiceVideo => ("Voice & video", "voice", "microphone speaker camera push to talk input output"),
             Page::Clips => ("Clips", "clips", "clips recording record voice"),
             Page::Chat => ("Chat", "chat", "text images embeds links media emoji reactions spoilers"),
-            Page::Notifications => ("Notifications", "notifications", "desktop taskbar push mute servers sound sounds ping ring ringtone volume"),
+            Page::Notifications => ("Notifications", "notifications", "desktop taskbar push mute servers sound sounds ping ring ringtone volume quiet hours schedule pause snooze"),
             Page::Keybinds => ("Keybinds", "keybinds", "shortcuts hotkeys keyboard"),
             Page::Language => ("Language", "language", "locale"),
             // One id on every OS; title and rows say Windows, Linux or macOS.
@@ -189,6 +190,7 @@ impl Page {
             Page::Notifications => &[
                 "Desktop notifications",
                 "Flash the taskbar",
+                "Quiet hours",
                 "Sounds",
                 "Play sounds",
                 "Volume",
@@ -492,6 +494,7 @@ fn page(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         Page::Accessibility => changed |= app::accessibility(ui, cx),
         Page::Notifications => {
             changed |= notification_switches(ui, cx);
+            changed |= alerts::show(ui, cx);
             changed |= sounds::show(ui, cx);
         }
         Page::Keybinds => changed |= keybinds::show(ui, cx),
@@ -580,7 +583,7 @@ fn notification_switches(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         ui,
         cx.theme,
         "Desktop notifications",
-        Some("Direct messages and mentions, following each server's settings. Silenced while you're on Do Not Disturb."),
+        Some("Direct messages and mentions, following each server's settings. Silenced on Do Not Disturb and during quiet hours."),
         &mut s.desktop_notifications,
     );
     desktop | switch_row(ui, cx.theme, "Flash the taskbar", Some("When a notification arrives while Rustcord is in the background."), &mut s.flash_taskbar)
@@ -831,6 +834,7 @@ mod tests {
         assert!(hits("open inbox").contains(&Page::Keybinds), "a keybind action");
         assert!(hits("spoiler").contains(&Page::Chat), "a synced option's label");
         assert!(hits("developer").contains(&Page::Advanced));
+        assert_eq!(hits("quiet hours"), [Page::Notifications]);
         assert_eq!(hits("upgrade"), [Page::Windows]);
         assert_eq!(hits("install updates"), [Page::Windows], "the Updates rows");
         assert_eq!(hits("authenticator"), [Page::MyAccount]);

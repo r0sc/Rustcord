@@ -148,6 +148,8 @@ pub struct Settings {
     pub overlay: OverlaySettings,
     /// Notifications > Sounds (`src/sounds.rs`).
     pub sounds: SoundSettings,
+    /// Notifications > Quiet hours and the pause from the tray / account menu (crate::alerts).
+    pub quiet_hours: crate::alerts::QuietHours,
 }
 
 /// Notifications > Sounds (`src/sounds.rs`): Rustcord's own sounds.
@@ -287,6 +289,7 @@ impl Default for Settings {
             auto_update: true,
             overlay: OverlaySettings::default(),
             sounds: SoundSettings::default(),
+            quiet_hours: Default::default(),
         }
     }
 }
@@ -393,6 +396,11 @@ mod tests {
         assert!(old.auto_update && back.auto_update);
         let off: Settings = toml::from_str(&toml::to_string_pretty(&Settings { auto_update: false, ..Default::default() }).unwrap()).unwrap();
         assert!(!off.auto_update);
+        // Quiet hours: off in older files; a round trip keeps the schedule and the pause.
+        assert!(!old.quiet_hours.enabled && old.quiet_hours.paused_until.is_none());
+        let q = crate::alerts::QuietHours { enabled: true, days: 0b0011111, start: 23 * 60 + 30, end: 6 * 60, paused_until: Some(1_800_000_000) };
+        let back: Settings = toml::from_str(&toml::to_string_pretty(&Settings { quiet_hours: q.clone(), ..Default::default() }).unwrap()).unwrap();
+        assert_eq!(back.quiet_hours, q);
     }
 
     #[test]

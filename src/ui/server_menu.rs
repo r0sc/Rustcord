@@ -1545,7 +1545,7 @@ fn form_field(ui: &mut egui::Ui, pal: &Pal, theme: &crate::theme::Theme, f: &ser
 }
 
 /// A §9 checkbox row (20 px box, label ui 14).
-fn check_row(ui: &mut egui::Ui, pal: &Pal, label: &str, on: &mut bool, enabled: bool) {
+pub(super) fn check_row(ui: &mut egui::Ui, pal: &Pal, label: &str, on: &mut bool, enabled: bool) {
     let font = egui::FontId::proportional(pal.ui());
     let w = ui.painter().layout_no_wrap(label.to_owned(), font.clone(), pal.text).size().x;
     let (rect, resp) = ui.allocate_exact_size(vec2(28.0 + w, 32.0), if enabled { Sense::click() } else { Sense::hover() });

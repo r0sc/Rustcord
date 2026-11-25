@@ -933,6 +933,7 @@ Playing                                     <- label role: "Playing" / "Listenin
 - Selected nav row: `selected` fill only.
 - Page title in the title role.
 - Section heading in the heading role with 32 above. No rule under it (ui/mod.rs:1292 `section`).
+- Notifications page order: Desktop notifications, Flash the taskbar, Quiet hours, (Keyword alerts), Sounds, Discord's synced groups, Servers. "Quiet hours": a switch row; when on, "From" [time] "to" [time] (two 96 px combos in 30-minute steps), then seven day check rows (Mon to Sun). An error line in `danger`, meta size, under them: "Pick an end time different from the start." or "Pick at least one day."
 - Notifications > Sounds: section "Sounds", the "Play sounds" switch row, a "Volume" label with a slider (a release plays the message sound), then a row per sound (title, optional meta) with a 28 px play button, 8 px, and a switch on the right. Play buttons are disabled while deafened (a hint says so); the rows are disabled while Play sounds is off.
 - Setting row:
   - left: title ui 14/500 and a meta `text_muted` description
