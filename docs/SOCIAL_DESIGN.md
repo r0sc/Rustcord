@@ -24,7 +24,9 @@ actions an `ActionFailed`).
 ## Contract (additive only; ask the contract owner before changing)
 - `backend.rs`: `Command::Social`, `SocialCommand`, `SocialEvent`, `BackendEvent::Social`,
   `ThreadList`, `ArchivedThreads`, `ThreadQuery`, `ThreadSort`, `ForumPost`, `MentionFilter`,
-  `ContextLocation`, `FriendTarget`, `FriendReply`, `Command::AckThread`; `handle_social` +
+  `ContextLocation`, `FriendTarget`, `FriendReply`, `Command::AckThread`, `MAX_REJECT_BATCH`, the message
+  request commands / events (`FetchRequestPreviews`, `AcceptMessageRequest`,
+  `RejectMessageRequests`, `RequestPreviewsLoaded`, `MessageRequestsDone`); `handle_social` +
   `opened` (done).
 - `model.rs`: `Channel` thread/forum fields (`thread_metadata`, `member`, `member_count`,
   `message_count`, `applied_tags`, `available_tags`, `default_reaction_emoji`,
@@ -40,7 +42,9 @@ actions an `ActionFailed`).
 - `state/social.rs`: `SocialState` and its views (UI reads fields directly), `FriendsTab`,
   `PROFILE_CACHE`, `PROFILE_TTL`, `AppState::{apply_social, request_profile, profile, dm_with,
   friends_tab, friend_name, pending_count, sidebar_threads, active_threads, open_thread,
-  unread_channels, mark_all_read}`.
+  unread_channels, mark_all_read, message_requests, request_counts, begin_request_previews,
+  more_request_previews, begin_request_action, request_preview}`; `SocialState.request_previews` /
+  `request_busy`, `RequestPreviews`.
 
 ## File ownership
 | Owner | Files | Status |
@@ -103,7 +107,7 @@ recent activity dropped, never the open one; not written to the disk cache). Thr
 - `can_set_archived(.., false)` (unarchive) uses SEND_MESSAGES_IN_THREADS on the parent; the
   notes only say "any member unless locked", so this rule is a reading, not a confirmed fact.
 - Not covered yet: thread member list (op 37 `thread_member_lists`), thread notification/mute
-  settings (reading the mute works), message requests, group icon / owner transfer, friend
+  settings (reading the mute works), spam reports for message requests, group icon / owner transfer, friend
   nickname / ignore, clear-all requests, For You tab, mutual-friends list call, bulk notes,
   forum `post-data`, THREAD_LIST_SYNC `most_recent_messages` (ignored), the sidebar's
   `auto_archive_duration` hide rule.
@@ -135,6 +139,9 @@ events are applied by `apply_gateway`. The UI only sends commands and reads stat
 | Add / remove group member | `AddRecipient` / `RemoveRecipient` (owner) | `ChannelRecipientAdd/Remove`; a 1:1 DM → `ChannelOpened` (new group) | `channels[c].recipient_ids` |
 | Rename group | `RenameGroup { channel_id, name }` (`""` = no name) | CHANNEL_UPDATE; `ActionFailed` | `channels[c].name` |
 | Close DM / leave group | `CloseDm { channel_id, silent }` (confirm leaving) | CHANNEL_DELETE; `ActionFailed` | – |
+| Message requests: previews | `social.request_previews = Some(Default::default())`, then `if let Some(ids) = state.begin_request_previews(spam) { FetchRequestPreviews { channel_ids: ids } }` (≤ 25; only on a click: open, tab, "Load more previews", "Retry") | `RequestPreviewsLoaded` (an error is kept in the view, no toast) | `request_preview(c)`, `more_request_previews(spam)`, `RequestPreviews.loading/error` |
+| Message requests: accept | `if state.begin_request_action(&[c]) { AcceptMessageRequest { channel_id: c } }` | `MessageRequestsDone { accepted: true }` clears the flags (CHANNEL_UPDATE does too) | `request_busy`, `can_send(c)` |
+| Message requests: ignore | `begin_request_action(&ids)`, then `RejectMessageRequests { channel_ids }` (one id = DELETE, 2..=`MAX_REJECT_BATCH` = batch; confirm batches) | `MessageRequestsDone { accepted: false }` removes the channels locally (a `ChannelDelete`) | `message_requests(spam)`, `request_counts()` |
 | Inbox: Mentions | `social.mentions = Some(MentionsView::new(filter))`, `FetchMentions { filter, before: None, limit: 25 }`; more: `before = v.next_before()` | `MentionsLoaded` | `MentionsView.messages/has_more/loading/error` |
 | Inbox: remove a mention | `DeleteMention { message_id }` | `RecentMentionDelete` removes it | – |
 | Inbox: Unreads | nothing (local) | – | `unread_channels()` |

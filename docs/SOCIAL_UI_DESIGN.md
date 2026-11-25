@@ -22,7 +22,7 @@ Open items: "Not assigned yet" below and each module's doc comment.
 | Owner | Files | Surfaces |
 |---|---|---|
 | contract owner (shell) | `ui/mod.rs`, `messages.rs` header/menu hooks, `members.rs`, this page | `ViewState` fields, `Modal`, `Confirm` + `ViewState::confirm`, `show_modals`, `dialog*`, `settings_layer`, `nav_*`, `section`, `hint`, `main_layout` routing, test hooks |
-| navigation-social (friends / DMs / inbox / profile) | `friends.rs`, `inbox.rs`, `profile.rs`, `profile_modal.rs`, `sidebar.rs` | server bar (folders, drag reorder), Friends page (tabs, Add Friend, Pending with Spam, Active Now, the 80013 question), user / DM menu items, New Group DM picker, inbox popout (Mentions, Unreads, Mark all read), profile popout (About Me, Member Since, Note, `FetchProfile` on open, the action row), full profile modal |
+| navigation-social (friends / DMs / inbox / profile) | `friends.rs`, `requests.rs`, `inbox.rs`, `profile.rs`, `profile_modal.rs`, `sidebar.rs` | server bar (folders, drag reorder), Friends page (tabs, Add Friend, Pending with Spam, Active Now, the 80013 question), Message requests page (Requests / Spam, previews, Accept, Ignore, batch Ignore) and the request bar, user / DM menu items, New Group DM picker, inbox popout (Mentions, Unreads, Mark all read), profile popout (About Me, Member Since, Note, `FetchProfile` on open, the action row), full profile modal |
 | threads / forum | `threads.rs`, `forum.rs`; the thread panel's message list and composer need `messages::show` / `composer::show` for a channel other than the selected one: that change in `messages.rs` / `composer.rs` is theirs too (keep `chat_header` / `message_menu` hooks) | sidebar thread rows, Threads button + popout (Active / Archived, Join), thread split panel, Create Thread modal, forum / media post list (sort, tags, cards, paging), New Post modal; the chat header's breadcrumb for threads and forum glyph |
 | server | `server_menu.rs`, `server_settings.rs` | server header + its dropdown, server icon / channel / category / member menu items, Create Channel / Category, Invite, Add a Server (join + create), Kick / Ban modal, server settings layer (Overview, Roles, Emoji, Members, Invites, Bans, Edit Channel incl. permission overwrites) |
 | user settings | `user_settings.rs`, `user_settings/theme_editor.rs`, `user_settings/local_profile.rs` | user settings layer (My Account, Profiles, Data & Privacy, Local Profile, Appearance, Notifications, Voice & Video, Log Out), Set Custom Status modal, the account popout's lower part (`account_popout`: status picker, custom status, Edit Profile) |
@@ -87,6 +87,8 @@ additive change.
 | Caller | Call | Module |
 |---|---|---|
 | `main_layout` | DM home with no DM open: `friends::is_open` → `friends::show` (no right column) | friends |
+| `main_layout` | `requests::sync` first in every pass; the DM home shows `requests::show` while `requests_ui.open` | requests |
+| `composer::show` | a request's DM (`!can_send`): `requests::bar` instead of the composer | requests |
 | `main_layout` | open channel is a forum / media channel: `forum::open_forum` → `forum::show` in the chat's place | forum |
 | `main_layout` | `thread_panel` → `threads::panel` (full-height right column, 400 px; narrow windows: in the chat's place) | threads |
 | `main_layout` | `settings_open` → `user_settings::show`; `server_settings` → `server_settings::show` | settings |
@@ -96,7 +98,7 @@ additive change.
 | `sidebar::guild_channels` | under each channel: `threads::sidebar_rows(ui, cx, parent, &sidebar_threads(g)[parent])`; category right-click → `server_menu::category_menu` | threads, server |
 | `sidebar::channel_menu` | `server_menu::channel_menu_items` (Edit / Delete Channel) before Copy Link | server |
 | `sidebar::user_menu` (member list, voice users) | `friends::user_menu_items` (Message, Add Friend), then `server_menu::member_menu_items` (Kick, Ban) | friends, server |
-| `sidebar::dm_list` | "Friends" row → `friends::open`; header "+" → `friends::open_group_dm`; DM menu → `friends::dm_menu_items` | friends |
+| `sidebar::dm_list` | "Message requests" row (under Quests) → `requests::open`; "Friends" row → `friends::open`; header "+" → `friends::open_group_dm`; DM menu → `friends::dm_menu_items` | friends |
 | `messages::chat_header` | `threads::header_button` (text / announcement channels) | threads |
 | `sidebar::title_bar` | `inbox::button` (right end; not under a settings layer) | inbox |
 | `messages::message_menu` | "Create Thread" (`can_create_thread`) → `threads::open_create(cx, ch, Some(msg))` | threads |
@@ -141,7 +143,9 @@ and the guild owner), `confirm` (Leave Server question for the open guild).
 `RUSTCORD_NAV_DEMO=<comma list>` (sidebar.rs `nav_demo`, sends nothing): `folders` /
 `folder-open` (server bar folders as READY would bring them), `mentions` (inbox mentions from
 cached messages), `profile` (loaded profiles: bio, pronouns, mutuals, a note),
-`tab:<online|all|pending|blocked|add>` (Friends tab). With `RUSTCORD_HOME` (a copy of
+`tab:<online|all|pending|blocked|add>` (Friends tab). `RUSTCORD_OPEN=requests[:spam|ticked|confirm|open|spam-open]`
+(`requests::demo`, sends nothing): the Message requests page with invented requests, the Spam
+segment, two rows ticked, the batch Ignore question, or a request's DM with the bar. With `RUSTCORD_HOME` (a copy of
 `tests/fixtures/home`, extended with threads / a forum / roles as needed), `RUSTCORD_OFFLINE=1`,
 `RUSTCORD_WINDOW_SIZE=1180x760 | 720x420`, `RUSTCORD_SCREENSHOT=<png>`, `RUSTCORD_POINTER` /
 `RUSTCORD_CLICK`. Add a hook for each new page or modal (one match arm in `startup_hooks` or a
@@ -149,8 +153,7 @@ cached messages), `profile` (loaded profiles: bio, pronouns, mutuals, a note),
 
 ## Not assigned yet
 The chat header's notification bell (`UpdateChannelOverride`; the channel menu already has Mute ▸
-and Notification Settings ▸), quick switcher, Message Requests (entry + page; the DM list then
-skips `is_message_request`, `message_requests()` lists them), channel drag reorder in the sidebar
+and Notification Settings ▸), quick switcher, channel drag reorder in the sidebar
 (`ReorderChannels`), server folder menu (rename / colour / ungroup), Change Nickname as a dialog
 (now a field in the member menu's submenu), thread Mute / Notification Settings (the thread menu and
 the thread panel's bell show them disabled until backend.rs has a

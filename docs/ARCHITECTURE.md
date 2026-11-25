@@ -347,6 +347,9 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   modal; `bg` the same video playing without its modal (the user panel's "Quest video" section, the
   card's "Open video"); `complete` the Friends page with quest 101 completing (the "Quest complete"
   notification, `quests-notified.txt` written in the home). No request is sent.
+- `RUSTCORD_OPEN=requests[:spam|ticked|confirm|open|spam-open]` (ui/requests.rs `demo`): the Message requests page
+  with three invented requests and one spam DM (previews filled), the Spam segment, two rows
+  ticked, the batch Ignore question, or a request's DM with the Accept / Ignore bar. No request is sent.
 - `RUSTCORD_CALL_DEMO=<comma list>` (ui/call.rs `demo`), with
   `RUSTCORD_OPEN=voice:<id>,channel:<id>` (the call view): `people` (cached users in the call:
   speaking, muted, deafened + live, camera), `video` (synthetic camera / stream frames, my camera

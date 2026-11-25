@@ -142,8 +142,8 @@ What's in it so far:
 - File uploads (button, drag & drop, paste), emoji and GIF pickers, `@ # :` autocomplete,
   typing indicator, online status + custom status, pins, search, mark unread.
 - Threads (sidebar rows, thread panel, create), forum/media channels (posts, tags, new post).
-- Friends (online/all/pending/blocked, add by username), DMs and group DMs, inbox
-  (mentions/unreads), full user profiles with notes.
+- Friends (online/all/pending/blocked, add by username), DMs and group DMs, message requests
+  (accept, ignore, spam), inbox (mentions/unreads), full user profiles with notes.
 - User settings with Discord's pages and order, searchable: My Account, Profiles, Content &
   Social, Data & Privacy, Devices, Authorized Apps, Connections, Friend Requests, Appearance,
   Accessibility, Voice & Video, Chat, Notifications, Keybinds, Language, Streamer Mode,
