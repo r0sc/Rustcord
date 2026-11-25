@@ -52,7 +52,7 @@ Principles:
 3. **Colour always comes with a word or a shape.** A dot has its word in the tooltip; a switch
    knob shows a check or a cross; a muted mic is slashed.
 4. **Quiet type.** One family. Hierarchy comes from weight before size. Sentence case, no tracking.
-5. **Motion only answers an action**, and `settings.reduced_motion` (config.rs:123) turns it off.
+5. **Motion only answers an action**, and `settings.reduced_motion` (config.rs:128, §7) turns it off.
 
 **Signature (the one bold element): the heat bar** (§10.1). The rail's selection pill glows like
 metal fresh from the forge. Nothing else in the chrome uses a gradient or a glow.
@@ -253,8 +253,28 @@ r = `layout.corner_radius` (default 8). Tiers are derived; a theme with 0 stays 
 
 ## 7. Motion
 
-| What | Duration |
-|---|---|
+Every animation goes through `src/ui/motion.rs` (tokens and helpers) and follows the ux-motion
+skill (`~/.claude/skills/ux-motion/SKILL.md`, 20 principles). Motion answers an action, never
+loops on its own (spinners while loading excepted) and asks for frames only while it moves.
+
+| Token | Open | Close | Used for |
+|---|---|---|---|
+| `FAST` | 120 ms | instant | menus, context menus, submenus, tooltips, popovers, pickers: fade + grow 0.96 → 1 from their trigger (egui `animation_time` = `FAST`, `motion::end_pass`); switch knob (stretches 15 % mid-travel), segmented selection, category chevron, rail pill and tile morph; speaking rings fade out in `FAST` |
+| `BASE` | 200 ms | 100 ms | modals and confirms (`motion::modal`: scrim fade; panel fade + grow 0.96 → 1 from the click that opened it), the lightbox (media 0.92 → 1 from the click), toasts (fade + 8 px rise), my reaction's pop (1 → 1.12 → 1), quest cards after the skeletons (fade + 8 px rise, 40 ms apart) |
+| `LARGE` | 300 ms | instant | settings layers (fade + 0.98 → 1), the title-bar update pill (fade + 8 px slide), the login error shake (3 × ±6 px, decaying) |
+
+- Curves: entering ease-out (`motion::ease`, cubic-out), leaving the same curve backwards
+  (ease-in), moves between two spots cubic in-out. Linear only for spinners and progress bars.
+- Instant on purpose (frequency of use): hover colours, message rows, channel rows under a
+  collapsing category, autocomplete, tab / channel / server switches, scrolling to a message,
+  closing menus and popovers, the update screen, the captcha slot, the game overlay. A press
+  draws the control 1 px smaller per side while held, no tween.
+- `reduced_motion` (config.rs:128) sets every duration to 0 and egui's scroll animation to none;
+  static states (heat colours) stay; typing dots and call rings stop pulsing. On Windows it is
+  also on while the system's "Animation effects" are off (`motion::os_reduced`, read once).
+- `RUSTCORD_MOTION_SCALE=<f>` multiplies every duration (10: screenshots mid-animation).
+
+---|---|
 | heat bar and pill | 150 ms (existing `ANIM`) |
 | switch knob, segmented selection, category chevron (0 ↔ −90°) | 120 ms |
 | modal open | 140 ms fade + scale 0.97 → 1 |
@@ -529,7 +549,7 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 - Track 40×24, pill. Knob 18.
 - Off: track `edge`; knob `text` (dark) or white (light) with a 1.5 px × in the track colour.
 - On: track `positive`; knob `on_positive` with a check in `positive`.
-- Slides in 120 ms.
+- Slides in `FAST`, cubic in-out; the knob stretches 15 % mid-travel (§7).
 
 **Checkbox and radio**
 - Checkbox 20, radius chip: off has a 1.5 px `edge` border; on is `positive` with an
@@ -539,7 +559,7 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 **Segmented control** (login tabs, plugin filter, status picker, Friends tabs)
 - Track `code_background`, radius control, padding 2.
 - Segment 32 tall, radius r−2.
-- Selected segment: `raised` (light) or `selected` (dark), label 500 `text`. Others: `text_muted`.
+- Selected segment: `raised` (light) or `selected` (dark), label 500 `text`. Others: `text_muted`. The selection slides in `FAST`.
 
 **Menus**
 - E2, radius container, padding 4, 188–320 wide.
@@ -613,7 +633,7 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
   1. Paint the pill in `heat[0]`.
   2. Over [top+3, bottom−3], paint one vertex-coloured `Mesh` with stops at 0, 0.3, 0.5, 0.7
      and 1: `heat[0]`, `heat[1]`, `heat[2]`, `heat[1]`, `heat[0]`.
-- It heats on select and cools on leave through the existing 150 ms `ANIM`.
+- It heats on select and cools on leave through `FAST` (§7).
 - Light and HC themes use a solid accent (all stops = accent).
 - No glow, no shadow.
 
@@ -691,8 +711,7 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
   image", `Link` "Copy link", `Close` with "Esc"); arrows 40 discs 16 in from the sides when
   there is more than one item; the media fitted, never upscaled, 72 px from the sides and 56 from
   the bars; bottom bar "Open in browser" + `External` 16 (the only way to the browser) and
-  "2 of 3". Images zoom (click fit ↔ 1:1, wheel up to 2×, drag pans); 140 ms fade + 0.97 → 1
-  scale on open, none with reduced motion. No accent anywhere on media.
+  "2 of 3". Images zoom (click fit ↔ 1:1, wheel up to 2×, drag pans); opens and closes per §7. No accent anywhere on media.
 
 **Composer:**
 - E1 `surface`, radius container, min 44, no border.
@@ -975,7 +994,7 @@ Owners follow the module table in ARCHITECTURE.md. Each area re-reads files befo
 | A8 | P1 | Radius tiers §5: default 8, `card_radius` 1.5r, `modal_radius` | theme/mod.rs:187; messages.rs:108; sidebar.rs:1731 |
 | A9 | P1 | No ALL CAPS in shared helpers: `nav_heading`, `section` (no rule), "ESC" caption out, dialog footer without band, modal widths 440/520/640 | ui/mod.rs:1253,1263-1297,1100-1170 |
 | A10 | P1 | Switch, checkbox, radio, segmented, focus ring per §9 (shared painters next to `icon_button`) | messages.rs (shared helpers); used by settings |
-| A11 | P2 | Motion §7 (modal and menu fade, switch slide, chevron), all behind `reduced_motion` | ui/mod.rs dialogs; menus; sidebar.rs category header |
+| A11 | P2 | Done: §7, `ui/motion.rs` | ui/mod.rs dialogs; menus; sidebar.rs category header |
 | A12 | P2 | Update the "Visual direction" paragraph in ARCHITECTURE.md to point here | docs/ARCHITECTURE.md:125-132 |
 
 ### (B) Main window
@@ -1022,6 +1041,7 @@ one gradient theme:
 - `settings:my-account`, `settings:appearance`, `settings:plugins`
 - `modal:create-channel`, `server-menu`
 - `RUSTCORD_LOGIN_TAB=email`
+- Motion: mid-animation with `RUSTCORD_MOTION_SCALE=10` (and `RUSTCORD_SCREENSHOT_FRAME`)
 
 Zoom 3× into:
 - the 20 px channel icons (text, voice, locked, NSFW, rules)
