@@ -370,6 +370,7 @@ The rest are drawn on the same rules from these shapes:
 - `Trash`: lid bar, handle and tapered can with two slits.
 - `Reply`: a curved arrow left.
 - `Forward`: the `Reply` strokes mirrored (a curved arrow right).
+- `Poll`: three filled bars, radius 2: (3.5,4)-(20.5,8), (3.5,10)-(14.5,14), (3.5,16)-(17.5,20).
 - `Copy`: two offset sheets (existing).
 - `Link`: two rounded links (existing).
 - `IdCard`: card outline, a disc and two bars, no letters.
@@ -704,6 +705,11 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
   role (600, muted) and the vote count in meta; rows 32 tall with an avatar 24 and the name body
   15/500, `hover` fill, a click opens the profile; "Show more" (Ghost) pages by 100, a failure
   shows the error and a small Retry.
+- **Poll result** (the message Discord posts when a poll ends): `surface`, control radius, 12
+  padding, at most 440 wide. `Poll` 16 and "Poll closed" in meta `text_muted`, the question body
+  15/600, then `Check` 16 with the winner (ui 14/500) and "9 votes, 45%" in meta, or "The poll ended
+  in a tie." / "No one voted.". With a reference to the poll the whole card is a button
+  (`surface` blended with `hover`, tooltip "View poll") that jumps to the poll.
 - Motion: the bars grow 0 -> share over BASE only after my own Vote or Show results; other
   people's votes and the end of the poll change them without a tween; rows draw 1 px smaller while
   held.

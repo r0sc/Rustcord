@@ -16,7 +16,7 @@ use super::icons::{self, Icon};
 use super::messages::{Btn, Pal, button, emoji_texture, focus_ring, paint_checkbox, paint_radio, small_button};
 use super::{UiCx, motion, one_line, semibold};
 use crate::backend::{ChatCommand, Command};
-use crate::model::{Id, Message, Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};
+use crate::model::{Embed, EmbedField, Id, Message, MessageReference, Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};
 use crate::state::chat::PollVotersView;
 use crate::state::polls::my_votes;
 use egui::{Align, FontId, Frame, Image, Label, Layout, Margin, Rect, RichText, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
@@ -319,6 +319,89 @@ fn send_vote(cx: &mut UiCx<'_>, ch: Id, mid: Id, answers: Vec<u32>, mine: &[u32]
 }
 
 // ---------------------------------------------------------------------------
+// The result message (type 46)
+// ---------------------------------------------------------------------------
+
+/// What a `poll_result` embed says.
+#[derive(Debug, PartialEq)]
+struct Summary {
+    question: String,
+    /// Set when there is a single winner.
+    winner: Option<String>,
+    votes: u32,
+    total: u32,
+}
+
+fn field<'a>(e: &'a Embed, name: &str) -> Option<&'a str> {
+    e.fields.iter().find(|f| f.name == name).map(|f| f.value.as_str())
+}
+
+fn result_summary(e: &Embed) -> Summary {
+    let number = |name| field(e, name).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    let winner = field(e, "victor_answer_id")
+        .filter(|id| !id.is_empty())
+        .and_then(|_| field(e, "victor_answer_text").or_else(|| field(e, "victor_answer_emoji_name")))
+        .filter(|t| !t.is_empty())
+        .map(str::to_owned);
+    Summary { question: field(e, "poll_question_text").unwrap_or_default().to_owned(), winner, votes: number("victor_answer_votes"), total: number("total_votes") }
+}
+
+/// "Poll closed" with the question and the winner. When the message points at the poll, the whole
+/// card is a button that jumps there.
+pub(super) fn result_card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id, msg: &Message, e: &Embed) {
+    let s = result_summary(e);
+    let target = msg.message_reference.as_ref().and_then(|r| Some((r.channel_id.unwrap_or(ch), r.message_id?)));
+    let width = ui.available_width().min(MAX_W);
+    let bg = ui.painter().add(egui::Shape::Noop);
+    let fill = pal.surface;
+    let rect = Frame::new().corner_radius(pal.radius).inner_margin(Margin::same(12)).show(ui, |ui| {
+        ui.set_width(width - 24.0);
+        ui.spacing_mut().item_spacing.y = 4.0;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            super::messages::vector_icon(ui, Icon::Poll, 16.0, pal.muted, fill);
+            ui.label(RichText::new("Poll closed").size(pal.meta()).color(pal.muted));
+        });
+        ui.add(Label::new(RichText::new(&s.question).font(semibold(pal.body())).color(pal.text)).wrap());
+        match (&s.winner, s.total) {
+            (_, 0) => {
+                ui.label(RichText::new("No one voted.").size(pal.meta()).color(pal.muted));
+            }
+            (Some(w), total) => {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    super::messages::vector_icon(ui, Icon::Check, 16.0, pal.text, fill);
+                    ui.label(RichText::new(w).font(FontId::new(pal.ui(), crate::theme::medium_family())).color(pal.text));
+                    ui.add_space(4.0);
+                    let pct = shares(&[s.votes, total.saturating_sub(s.votes)])[0];
+                    ui.label(RichText::new(format!("{}, {pct}%", votes(s.votes))).size(pal.meta()).color(pal.muted));
+                });
+            }
+            (None, _) => {
+                ui.label(RichText::new("The poll ended in a tie.").size(pal.meta()).color(pal.muted));
+            }
+        }
+    })
+    .response
+    .rect;
+    let tk = &pal.tk;
+    let Some((tch, mid)) = target else {
+        ui.painter().set(bg, egui::Shape::rect_filled(rect, pal.radius, fill));
+        return;
+    };
+    let resp = ui.interact(rect, ui.make_persistent_id(("rc_poll_result", msg.id.0)), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("View poll: {}", s.question)));
+    let shown = if resp.hovered() { fill.blend(tk.hover) } else { fill };
+    ui.painter().set(bg, egui::Shape::rect_filled(rect, pal.radius, shown));
+    if resp.has_focus() {
+        focus_ring(ui, pal, rect, f32::from(pal.radius));
+    }
+    if resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("View poll").clicked() {
+        super::messages::jump_to(ui.ctx(), cx, tch, mid);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Who voted
 // ---------------------------------------------------------------------------
 
@@ -483,6 +566,24 @@ pub(super) fn demo(cx: &mut UiCx<'_>, ch: Id, demo: impl Fn(&str) -> bool) {
             ..Message::default()
         });
     }
+    // The message Discord posts when the third poll ends (type 46), pointing at it.
+    let fields = [("poll_question_text", "Best editor?"), ("victor_answer_votes", "9"), ("total_votes", "20"), ("victor_answer_id", "2"), ("victor_answer_text", "Neovim")];
+    let embed = Embed {
+        kind: Some("poll_result".into()),
+        fields: fields.iter().map(|(n, v)| EmbedField { name: (*n).into(), value: (*v).into(), inline: false }).collect(),
+        ..Embed::default()
+    };
+    list.msgs.push(Message {
+        id: Id(newest.0.0 + (4 << 22)),
+        channel_id: ch,
+        guild_id,
+        author,
+        kind: 46,
+        timestamp: newest.1.clone(),
+        embeds: vec![embed],
+        message_reference: Some(MessageReference { message_id: Some(Id(newest.0.0 + (3 << 22))), channel_id: Some(ch), guild_id, kind: 0 }),
+        ..Message::default()
+    });
     // `poll-voters`: the voters of "Polls" in the second poll, from the cached users.
     if demo("poll-voters") {
         let mut users: Vec<_> = cx.state.users.values().cloned().collect();
@@ -525,6 +626,26 @@ mod tests {
         assert_eq!(votes(1), "1 vote");
         assert_eq!(votes(0), "0 votes");
         assert_eq!(votes(12), "12 votes");
+    }
+
+    fn embed(fields: &[(&str, &str)]) -> Embed {
+        Embed { fields: fields.iter().map(|(n, v)| EmbedField { name: (*n).into(), value: (*v).into(), inline: false }).collect(), ..Embed::default() }
+    }
+
+    #[test]
+    fn result_summary_winner_tie_and_no_votes() {
+        let win = embed(&[("poll_question_text", "Best?"), ("victor_answer_votes", "9"), ("total_votes", "20"), ("victor_answer_id", "2"), ("victor_answer_text", "Neovim")]);
+        assert_eq!(result_summary(&win), Summary { question: "Best?".into(), winner: Some("Neovim".into()), votes: 9, total: 20 });
+        // An emoji-only answer shows its emoji name.
+        let emoji = embed(&[("victor_answer_id", "1"), ("victor_answer_emoji_name", "🎉"), ("victor_answer_votes", "3"), ("total_votes", "3")]);
+        assert_eq!(result_summary(&emoji).winner.as_deref(), Some("🎉"));
+        // No winner id: a tie.
+        let tie = embed(&[("poll_question_text", "Best?"), ("victor_answer_votes", "5"), ("total_votes", "10")]);
+        assert_eq!(result_summary(&tie), Summary { question: "Best?".into(), winner: None, votes: 5, total: 10 });
+        // Nothing voted, or fields that are not numbers.
+        let none = embed(&[("poll_question_text", "Best?"), ("total_votes", "0")]);
+        assert_eq!((result_summary(&none).total, result_summary(&none).winner), (0, None));
+        assert_eq!(result_summary(&embed(&[("total_votes", "many")])).total, 0);
     }
 
     #[test]

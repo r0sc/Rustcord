@@ -2227,6 +2227,7 @@ fn embed(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message, e: &Embe
                 }
             }
         }
+        ("poll_result", _) => super::polls::result_card(ui, cx, &lc.pal, lc.ch, msg, e),
         _ => embed_card(ui, cx, lc, msg, e, kind, idx),
     }
 }

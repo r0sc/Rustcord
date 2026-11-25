@@ -99,6 +99,7 @@ pub(crate) enum Icon {
     Star,
     Globe,
     Info,
+    Poll,
     // Quests (ui/quests.rs).
     Quest,
     Orb,
@@ -144,13 +145,13 @@ pub(crate) enum Badge {
 
 impl Icon {
     /// Every icon, in declaration order (the icon sheet hook, tests).
-    pub(crate) const ALL: [Icon; 103] = {
+    pub(crate) const ALL: [Icon; 104] = {
         use Icon::*;
         [
             Text, Voice, Announcement, Stage, Forum, Media, Thread, Rules, Directory, Playing, Listening, Streaming, Watching, Competing, Mic, MicOff, Headphones,
             Deafened, Camera, CameraOff, Screen, Hangup, Phone, Gear, Person, PersonAdd, PersonRemove, Members, At, IdCard, Close, Plus, Minus, Check, Search, Edit,
             Trash, Reply, Forward, Copy, Link, External, Leave, Block, Shield, Ban, Refresh, Reset, Sort, Grip, More, Inbox, Pin, Message, Bell, BellOff, Archive, Envelope,
-            SplitView, File, Attach, Hourglass, Key, Desktop, Card, Video, Eye, EyeOff, Lock, Unlock, Boost, Clock, Star, Globe, Info, Quest, Orb, Gift, Verified, Partnered, BoostTier1, BoostTier2, BoostTier3, Play, Pause, Download, VoiceOff, Expand, Collapse, ArrowLeft, ArrowRight, ChevronUp,
+            SplitView, File, Attach, Hourglass, Key, Desktop, Card, Video, Eye, EyeOff, Lock, Unlock, Boost, Clock, Star, Globe, Info, Poll, Quest, Orb, Gift, Verified, Partnered, BoostTier1, BoostTier2, BoostTier3, Play, Pause, Download, VoiceOff, Expand, Collapse, ArrowLeft, ArrowRight, ChevronUp,
             ChevronDown,
             ChevronLeft, ChevronRight, Smile, Leaf, Food, Ball, Car, Bulb, Heart, Flag,
         ]
@@ -1003,6 +1004,11 @@ fn draw(k: &mut Pen, icon: Icon, locked: bool) {
             k.ring(12.0, 12.0, 9.0);
             k.disc(12.0, 7.75, 1.4);
             k.line(&[(12.0, 11.0), (12.0, 16.5)]);
+        }
+        Poll => {
+            k.rrect(3.5, 4.0, 20.5, 8.0, 2.0);
+            k.rrect(3.5, 10.0, 14.5, 14.0, 2.0);
+            k.rrect(3.5, 16.0, 17.5, 20.0, 2.0);
         }
         Verified => {
             seal(k);
