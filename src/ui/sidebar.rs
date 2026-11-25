@@ -149,8 +149,9 @@ fn finish_drag(ui: &mut egui::Ui, cx: &mut UiCx<'_>, target: Option<Target>) {
         }
     }
     if let (Some(p), Some(index)) = (ctx.pointer_latest_pos(), cx.state.guilds.iter().position(|g| g.id == id)) {
-        let ghost = egui::Area::new(egui::Id::unique("rc_guild_drag")).order(egui::Order::Tooltip).interactable(false);
+        let ghost = egui::Area::new(egui::Id::unique("rc_guild_drag")).order(egui::Order::Tooltip).interactable(false).fade_in(false);
         ghost.fixed_pos(p - Vec2::splat(ICON / 2.0)).show(&ctx, |ui| {
+            super::motion::own(&ctx, ui.layer_id());
             let (r, _) = ui.allocate_exact_size(Vec2::splat(ICON), Sense::hover());
             ui.multiply_opacity(0.8);
             paint_guild_icon(ui, cx, index, r, ICON_R, 1.0, false);
@@ -1657,7 +1658,7 @@ pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32) {
     let h = user_panel_h(cx);
     let screen = ctx.content_rect();
     let pos = pos2(screen.left() + PANEL_MARGIN, screen.bottom() - PANEL_MARGIN - h);
-    egui::Area::new(egui::Id::unique("user_panel")).order(egui::Order::Middle).fixed_pos(pos).show(ctx, |ui| {
+    egui::Area::new(egui::Id::unique("user_panel")).order(egui::Order::Middle).fixed_pos(pos).fade_in(false).show(ctx, |ui| {
         let (rect, _) = ui.allocate_exact_size(vec2(width - 2.0 * PANEL_MARGIN, h), Sense::hover());
         ui.painter().rect_filled(rect, panel_r(cx.theme), user_panel_fill(&c));
         let quest_h = quest_h(cx.view);

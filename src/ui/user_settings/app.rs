@@ -225,15 +225,16 @@ pub(super) fn advanced(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
 // Per frame (RustcordApp::ui, every screen)
 // ---------------------------------------------------------------------------
 
-/// egui's default `Style::animation_time`.
-const ANIMATION_TIME: f32 = 0.2;
-
 /// Applies the settings that act every frame. Saves when a key changed one.
 pub(in crate::ui) fn frame(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let mut save = sync_zoom(ctx, cx);
-    let want = if cx.settings.reduced_motion { 0.0 } else { ANIMATION_TIME };
+    let want = crate::ui::motion::animation_time(cx.settings.reduced_motion);
     if ctx.global_style().animation_time != want {
-        ctx.all_styles_mut(|s| s.animation_time = want);
+        // egui's programmatic scroll animation (100-300 ms) would still move under Reduced motion.
+        ctx.all_styles_mut(|s| {
+            s.animation_time = want;
+            s.scroll_animation = if want == 0.0 { egui::style::ScrollAnimation::none() } else { Default::default() };
+        });
     }
     caret_timeout(ctx);
     // Signed in only; recording a shortcut on the Keybinds page takes every key.

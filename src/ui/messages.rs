@@ -2922,7 +2922,8 @@ fn delete_modal(ctx: &egui::Context, cx: &mut UiCx<'_>, lc: &Lcx) {
         return;
     };
     let frame = Frame::popup(&ctx.global_style()).fill(pal.surface).corner_radius(pal.card_radius()).inner_margin(Margin::same(24));
-    let resp = egui::Modal::new(egui::Id::unique("rc_confirm_delete")).frame(frame).show(ctx, |ui| {
+    let id = egui::Id::unique("rc_confirm_delete");
+    let resp = super::motion::modal(ctx, egui::Modal::default_area(id), frame, pal.tk.scrim, |ui| {
         ui.set_width(380.0);
         ui.label(RichText::new("Delete message").family(bold_family()).size(pal.size + 3.0).color(pal.text));
         ui.label(RichText::new("This can't be undone.").color(pal.muted));

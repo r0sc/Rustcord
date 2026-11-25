@@ -120,7 +120,7 @@ pub fn show(ctx: &egui::Context, cx: &mut UiCx<'_>, user_id: Id, guild_id: Optio
     let area = egui::Modal::default_area(id).anchor(egui::Align2::CENTER_TOP, vec2(0.0, y)).constrain(false);
     let member = guild_id.and_then(|g| cx.state.find_member(g, user_id)).cloned();
     let fx = crate::overrides::effective_for(&user, member.as_ref());
-    let resp = egui::Modal::new(id).area(area).frame(frame).backdrop_color(pal.tk.scrim).show(ctx, |ui| {
+    let resp = super::motion::modal(ctx, area, frame, pal.tk.scrim, |ui| {
         if look.theme.is_some() {
             cosmetics::theme_visuals(ui, &pal);
         }

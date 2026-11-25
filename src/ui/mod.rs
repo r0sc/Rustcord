@@ -23,6 +23,7 @@ pub mod login;
 pub mod markdown;
 pub mod members;
 pub mod messages;
+pub mod motion;
 pub mod overlay;
 pub mod pickers;
 pub mod pins;
@@ -672,6 +673,7 @@ impl RustcordApp {
             .order(egui::Order::Foreground)
             .interactable(false)
             .show(ctx, |ui| {
+                motion::own(ctx, ui.layer_id());
                 ui.set_max_width(360.0);
                 ui.spacing_mut().item_spacing.y = 8.0;
                 for t in &self.view.toasts {
@@ -946,6 +948,7 @@ impl eframe::App for RustcordApp {
             chrome::resize_cursor(&ctx);
             text_field_focus_ring(&ctx);
             self.settle_after_events(&ctx);
+            motion::end_pass(&ctx);
         });
         frame_stats::end(&ctx);
     }
@@ -1322,7 +1325,7 @@ pub fn dialog_closable<R>(ctx: &egui::Context, theme: &Theme, salt: &str, width:
     let max_h = (ctx.content_rect().height() - TITLE_BAR_H - 24.0 - 48.0).max(120.0);
     let id = egui::Id::unique(salt);
     let area = egui::Modal::default_area(id).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, TITLE_BAR_H / 2.0));
-    egui::Modal::new(id).area(area).frame(frame).backdrop_color(pal.tk.scrim).show(ctx, |ui| {
+    motion::modal(ctx, area, frame, pal.tk.scrim, |ui| {
         ui.set_width(width);
         // An area's ui is only as tall as last frame's contents; the scroll area takes its height
         // from it, so without this the dialog could never grow.

@@ -839,6 +839,7 @@ pub fn lightbox(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let mut step = 0i32;
     let mut closing = false;
     egui::Area::new(egui::Id::unique("rc_lightbox")).order(egui::Order::Foreground).fixed_pos(area.min).constrain(false).show(ctx, |ui| {
+        super::motion::own(ctx, ui.layer_id());
         ui.set_min_size(area.size());
         ui.set_opacity(t);
         // First, so everything drawn later is on top of it for clicks.

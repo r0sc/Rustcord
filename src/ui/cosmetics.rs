@@ -599,7 +599,8 @@ impl ProfileLook {
     /// effect (`t`: seconds shown) over it.
     #[allow(clippy::too_many_arguments, reason = "the card's geometry and clock")]
     pub fn finish(&self, ui: &egui::Ui, images: &mut ImageCache, card: Rect, radius: u8, behind: egui::layers::ShapeIdx, t: f64, animate: bool) {
-        let lp = ui.ctx().layer_painter(ui.layer_id());
+        let mut lp = ui.ctx().layer_painter(ui.layer_id());
+        lp.set_opacity(ui.opacity()); // a fresh painter would ignore the card's (and modal's) fade
         if let Some(f) = &self.frame {
             lp.set(behind, Shape::Vec(frame_shapes(ui, images, card, f, true)));
             for s in frame_shapes(ui, images, card, f, false) {

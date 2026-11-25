@@ -134,7 +134,7 @@ cargo check
 | state | `src/state.rs` |
 | cache | `src/cache/*`, `src/ui/images.rs` |
 | theme+notify | `src/theme/*`, `src/notify.rs` |
-| ui-shell | `src/ui/mod.rs`, `login.rs`, `members.rs`, `chrome.rs` (frameless window: title bar buttons, drag, edge resize) |
+| ui-shell | `src/ui/mod.rs`, `login.rs`, `members.rs`, `chrome.rs` (frameless window: title bar buttons, drag, edge resize), `motion.rs` (DESIGN §7 tokens and helpers) |
 | cosmetics | `src/ui/cosmetics.rs` (shared renderers), `src/api/{cosmetics,collectibles}.rs`, `src/ui/user_settings/{cosmetics,connections}.rs`, `src/theme/gradient.rs`: see `docs/COSMETICS_NOTES.md` |
 | ui-messages | `src/ui/messages.rs`, `composer.rs` |
 | markdown | `src/ui/markdown.rs`, `src/ui/markdown/parse.rs` |
@@ -301,6 +301,7 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   modals, the lightbox), end (toasts, image cache, hooks); `unscoped` = app - top-level sections.
   `RUSTCORD_FRAME_STATS=continuous` also repaints every frame (the cost of a full repaint).
   Off, each timer is one cached check.
+- `RUSTCORD_MOTION_SCALE=<f>` (ui/motion.rs): every UI animation duration x f; with `RUSTCORD_SCREENSHOT_FRAME` it catches a menu, modal or toast mid-animation.
 - `RUSTCORD_OVERLAY_DEMO=1` (Windows, ui/overlay): the game overlay with fake call members and a
   notification over Rustcord's own window (it plays the game); with `RUSTCORD_SCREENSHOT=<png>`
   each pane also saves `<stem>-overlay-voice.png` / `-overlay-toast.png` (over grey) and the run

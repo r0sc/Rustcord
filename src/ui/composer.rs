@@ -609,7 +609,8 @@ fn ac_popup(
     let frame = Frame::popup(&ctx.global_style()).fill(pal.tk.raised).stroke(Stroke::new(1.0, pal.tk.rule)).corner_radius(pal.card_radius()).inner_margin(Margin::same(8));
     let margin = frame.total_margin().sum();
     let mut clicked = None;
-    egui::Area::new(id).order(Order::Foreground).fixed_pos(anchor.left_top() - vec2(0.0, 8.0)).pivot(Align2::LEFT_BOTTOM).show(ctx, |ui| {
+    egui::Area::new(id).order(Order::Foreground).fixed_pos(anchor.left_top() - vec2(0.0, 8.0)).pivot(Align2::LEFT_BOTTOM).fade_in(false).show(ctx, |ui| {
+        super::motion::own(ctx, ui.layer_id());
         frame.show(ui, |ui| {
             let w = anchor.width() - margin.x;
             ui.set_width(w);
@@ -880,6 +881,7 @@ pub(super) fn human_size(bytes: u64) -> String {
 fn drop_overlay(ctx: &egui::Context, pal: &Pal, title: &str) {
     let screen = ctx.content_rect();
     egui::Area::new(trays_id().with("drop")).order(Order::Foreground).fixed_pos(screen.min).interactable(false).show(ctx, |ui| {
+        super::motion::own(ctx, ui.layer_id());
         let p = ui.painter();
         p.rect_filled(screen, 0, Color32::from_black_alpha(170));
         let card = Rect::from_center_size(screen.center(), vec2(320.0, 168.0));
