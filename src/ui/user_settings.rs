@@ -186,7 +186,7 @@ impl Page {
             Page::StreamerMode => &["Streamer mode", "Hide personal information", "Hide invite links", "Disable notifications", "Hide window from screen capture"],
             Page::Privacy => &["Send read receipts"],
             Page::Notifications => &["Desktop notifications", "Flash the taskbar"],
-            Page::VoiceVideo => &["Input mode", "Voice activity", "Push to talk", "Input sensitivity", "Microphone and sound", "Mute", "Deafen", "Video", "Camera"],
+            Page::VoiceVideo => &["Input volume", "Input mode", "Voice activity", "Push to talk", "Input sensitivity", "Microphone and sound", "Mute", "Deafen", "Video", "Camera"],
             Page::Advanced => &["Hardware acceleration"],
             Page::GameOverlay => &["Enable in-game overlay", "Position", "Avatar size", "Show names", "Show users"],
             Page::ThemeEditor => &[
