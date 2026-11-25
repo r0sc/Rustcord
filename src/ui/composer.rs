@@ -1180,6 +1180,11 @@ fn next_nonce(unix_ms: u64) -> u64 {
     n
 }
 
+/// A fresh nonce for a send that does not go through the composer (Forward, polls).
+pub(super) fn new_nonce() -> String {
+    next_nonce(unix_ms()).to_string()
+}
+
 fn unix_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }

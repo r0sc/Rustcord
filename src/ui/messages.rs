@@ -803,6 +803,7 @@ struct HoverRow {
     own: bool,
     system: bool,
     editable: bool,
+    forwardable: bool,
     content: String,
 }
 
@@ -1708,6 +1709,7 @@ fn message_block(
         own: lc.me == Some(msg.author.id),
         system: system.is_some() || stub,
         editable: msg.can_edit(),
+        forwardable: system.is_none() && !stub && msg.forwardable(),
         content: msg.content.clone(),
     })
 }
@@ -2661,6 +2663,10 @@ fn hover_toolbar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
                 memo.menu = (!open).then_some(MsgMenu { id: h.id, anchor: more.rect, from_button: true, new: true });
                 ui.ctx().request_repaint();
             }
+            if h.forwardable && vector_button(ui, &pal, Icon::Forward, "Forward", SIDE, false, pal.text).clicked() {
+                super::forward::open(cx, lc.ch, h.id);
+                ui.ctx().request_repaint();
+            }
             if h.own && !h.system && h.editable && icon_button(ui, &pal, "✏", "Edit", SIDE, false, pal.text).clicked() {
                 start_edit(cx, lc.ch, h.id, &h.content);
                 ui.ctx().request_repaint();
@@ -2741,7 +2747,7 @@ fn message_menu(ui: &egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo) {
     let plugin_msg = msg.clone();
     let system = !normal_kind(msg.kind);
     let own = lc.me == Some(msg.author.id);
-    let can_edit = msg.can_edit();
+    let (can_edit, forwardable) = (msg.can_edit(), msg.forwardable());
     let content = msg.content.clone();
     let (mid, pinned, flags) = (msg.id, msg.pinned, msg.flags);
     let embeds = !msg.embeds.is_empty() && flags & SUPPRESS_EMBEDS == 0;
@@ -2810,6 +2816,9 @@ fn message_menu(ui: &egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo) {
             }
             if lc.can_send && !system && menu_item(ui, "Reply", MenuIcon::Glyph("↩"), pal.text) {
                 cx.view.reply_to = Some((lc.ch, mid, crate::plugins::chat::reply_ping(cx.state, lc.ch, mid)));
+            }
+            if !system && forwardable && menu_item(ui, "Forward", MenuIcon::Icon(Icon::Forward), pal.text) {
+                super::forward::open(cx, lc.ch, mid);
             }
             if !system
                 && super::threads::has_threads(lc.kind)
@@ -3146,6 +3155,11 @@ fn system_icon(kind: u8) -> Option<Icon> {
         8..=11 => Icon::Boost,
         _ => return None,
     })
+}
+
+/// `reply_preview` with the mention tokens turned into names (the Forward dialog).
+pub(super) fn preview_text(state: &AppState, m: &Message) -> String {
+    resolve_tokens(&reply_preview(m), |tok| token_name(state, m.guild_id, &m.mentions, tok))
 }
 
 fn reply_preview(m: &Message) -> String {

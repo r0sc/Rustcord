@@ -866,6 +866,12 @@ impl Message {
         matches!(self.kind, 0 | 19) && self.message_snapshots.is_empty()
     }
 
+    /// Discord forwards plain messages only: no components, ephemeral or forward of a forward
+    /// (unconfirmed).
+    pub fn forwardable(&self) -> bool {
+        matches!(self.kind, 0 | 19 | 20 | 23) && self.message_snapshots.is_empty() && self.flags & (1 << 15 | 1 << 6) == 0
+    }
+
     pub fn nonce_str(&self) -> Option<String> {
         match &self.nonce {
             Some(serde_json::Value::String(s)) => Some(s.clone()),
@@ -2125,5 +2131,17 @@ mod tests {
         assert!(!m(7).can_edit() && !m(20).can_edit());
         let fwd = Message { message_snapshots: vec![MessageSnapshot::default()], ..Default::default() };
         assert!(!fwd.can_edit());
+    }
+
+    #[test]
+    fn forwardable_messages() {
+        let m = |kind, flags| Message { kind, flags, ..Default::default() };
+        assert!(m(0, 0).forwardable() && m(19, 0).forwardable() && m(20, 0).forwardable() && m(23, 0).forwardable());
+        assert!(!m(7, 0).forwardable() && !m(46, 0).forwardable());
+        assert!(!m(0, 1 << 15).forwardable(), "components v2");
+        assert!(!m(0, 1 << 6).forwardable(), "ephemeral");
+        assert!(m(0, 1 << 2).forwardable(), "suppressed embeds are fine");
+        let fwd = Message { message_snapshots: vec![MessageSnapshot::default()], ..Default::default() };
+        assert!(!fwd.forwardable());
     }
 }

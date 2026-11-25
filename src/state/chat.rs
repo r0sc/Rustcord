@@ -207,8 +207,30 @@ impl AppState {
                     Err(e) => v.error = Some(e),
                 }
             }
+            // Answered by the UI (ui/mod.rs).
+            E::Forwarded { .. } => {}
         }
         None
+    }
+
+    /// Channels and DMs a message can be forwarded to (the Forward dialog): text chats I can
+    /// send in, no threads. A query is a lowercase substring of the channel's or its server's
+    /// name. Newest activity first, DMs and server channels mixed.
+    pub fn forward_targets(&self, query: &str, limit: usize) -> Vec<Id> {
+        let q = query.trim().to_lowercase();
+        let mut found: Vec<(Option<Id>, Id)> = self
+            .channels
+            .values()
+            .filter(|c| c.is_text_chat() && !c.is_thread() && self.can_send(c.id))
+            .filter(|c| {
+                q.is_empty()
+                    || self.channel_name(c.id).to_lowercase().contains(&q)
+                    || c.guild_id.and_then(|g| self.guild(g)).is_some_and(|g| g.name.to_lowercase().contains(&q))
+            })
+            .map(|c| (c.last_message_id, c.id))
+            .collect();
+        found.sort_by(|a, b| b.cmp(a));
+        found.into_iter().take(limit).map(|(_, id)| id).collect()
     }
 
     /// Display names of who is typing in a channel (earliest first; me, blocked and expired
@@ -566,5 +588,34 @@ mod tests {
         assert_eq!(s.chat.uploads["n"].sent, 0, "kept for Retry");
         s.on_chat_send_result("n", true);
         assert!(s.chat.uploads.is_empty());
+    }
+
+    #[test]
+    fn forward_targets_are_sendable_non_threads_newest_first() {
+        let mut s = state();
+        let perms = perm::VIEW_CHANNEL | perm::SEND_MESSAGES;
+        s.guilds[0].name = "Rust Club".into();
+        s.guilds[0].owner_id = Id(999);
+        s.guilds[0].roles = vec![Role { id: G, permissions: Perms(perms), ..Default::default() }];
+        let ch = |id: u64, kind: u8, last: u64| Channel { id: Id(id), kind, guild_id: Some(G), name: Some(format!("room{id}")), last_message_id: Some(Id(last)), ..Default::default() };
+        let denied = Channel { permission_overwrites: vec![Overwrite { id: G, kind: 0, deny: Perms(perm::SEND_MESSAGES), ..Default::default() }], ..ch(303, channel_type::GUILD_TEXT, 60) };
+        for c in [
+            ch(301, channel_type::GUILD_TEXT, 50),
+            ch(302, channel_type::GUILD_TEXT, 70),
+            denied,
+            Channel { parent_id: Some(Id(301)), ..ch(304, channel_type::PUBLIC_THREAD, 99) },
+            ch(305, channel_type::GUILD_FORUM, 98),
+        ] {
+            s.channels.insert(c.id, c);
+        }
+        s.channels.get_mut(&TEXT).unwrap().last_message_id = Some(Id(10));
+        s.channels.get_mut(&DM).unwrap().last_message_id = Some(Id(90));
+        // The DM first (newest), then 302, 301, and the old empty-named TEXT; no 303 (no send), thread or forum.
+        assert_eq!(s.forward_targets("", 50), [DM, Id(302), Id(301), TEXT]);
+        assert_eq!(s.forward_targets("", 2), [DM, Id(302)]);
+        assert_eq!(s.forward_targets("ROOM301", 50), [Id(301)]);
+        // The server's name matches all of its channels.
+        assert_eq!(s.forward_targets("rust club", 50), [Id(302), Id(301), TEXT]);
+        assert_eq!(s.forward_targets("nothing", 50), Vec::<Id>::new());
     }
 }

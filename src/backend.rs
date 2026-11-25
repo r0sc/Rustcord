@@ -155,6 +155,9 @@ pub enum ChatCommand {
     /// Who reacted (§1.9): `GET …/reactions/{emoji}?type=0|1&limit=100&after=` -> `ReactionUsers`.
     #[allow(dead_code, reason = "sent by the who-reacted popout, which is not built yet")]
     FetchReactionUsers { channel_id: Id, message_id: Id, emoji: Emoji, burst: bool, after: Option<Id> },
+    /// Forward one message to one channel: `POST /channels/{dest}/messages` with a type 1
+    /// `message_reference` to `message_id` in `channel_id`, no content -> `Forwarded`.
+    Forward { channel_id: Id, guild_id: Option<Id>, message_id: Id, dest: Id, nonce: String },
 }
 
 /// One attachment of `ChatCommand::SendWithFiles`.
@@ -259,6 +262,8 @@ pub enum ChatEvent {
     /// `?around=` page, as received (state sorts).
     AroundLoaded { channel_id: Id, message_id: Id, result: Result<Vec<Message>, String> },
     ReactionUsers { channel_id: Id, message_id: Id, emoji: Emoji, after: Option<Id>, result: Result<Vec<User>, String> },
+    /// Answer of `Forward`; the forwarded message arrives as MESSAGE_CREATE.
+    Forwarded { dest: Id, result: Result<(), String> },
 }
 
 /// Social requests (FEATURES_NOTES Part 2). Each is the direct result of one user action; none
@@ -1481,6 +1486,12 @@ fn handle_chat(cmd: ChatCommand, session: &mut Option<Session>, sink: &EventSink
                 move |result| Some(chat_ev(ChatEvent::ReactionUsers { channel_id, message_id, emoji, after, result })),
             );
         }
+        C::Forward { channel_id, guild_id, message_id, dest, nonce } => rest(
+            session,
+            sink,
+            move |api| async move { api.forward(channel_id, guild_id, message_id, dest, &nonce).await },
+            move |result| Some(chat_ev(ChatEvent::Forwarded { dest, result })),
+        ),
     }
 }
 
@@ -2707,11 +2718,13 @@ mod tests {
         run(ChatCommand::FetchPins { channel_id: Id(1), before: None });
         run(ChatCommand::SendWithFiles { channel_id: Id(1), content: String::new(), nonce: "n".into(), reply: None, files: Vec::new() });
         run(ChatCommand::PinMessage { channel_id: Id(1), message_id: Id(2) });
+        run(ChatCommand::Forward { channel_id: Id(1), guild_id: None, message_id: Id(2), dest: Id(3), nonce: "n".into() });
         let evs: Vec<BackendEvent> = rx.try_iter().collect();
         assert!(matches!(&evs[0], BackendEvent::Chat(ChatEvent::PinsLoaded { result: Err(_), .. })), "{evs:?}");
         assert!(matches!(&evs[1], BackendEvent::SendResult { result: Err(_), .. }));
         assert!(matches!(&evs[2], BackendEvent::ActionFailed(m) if m.contains("pin")));
-        assert_eq!(evs.len(), 3, "typing and member search stay silent offline");
+        assert!(matches!(&evs[3], BackendEvent::Chat(ChatEvent::Forwarded { dest: Id(3), result: Err(_) })));
+        assert_eq!(evs.len(), 4, "typing and member search stay silent offline");
     }
 
     #[tokio::test]

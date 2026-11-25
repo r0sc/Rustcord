@@ -5,7 +5,7 @@
 //!
 //! OWNERSHIP: REST engineer (docs/CHAT_ESSENTIALS_DESIGN.md). The signatures are the contract.
 
-use super::{ApiClient, ApiError, net_err, reaction_path_emoji};
+use super::{ApiClient, ApiError, net_err, reaction_path_emoji, send_body};
 use crate::backend::{SearchOutcome, SearchQuery, SearchScope, SearchSort};
 use crate::model::{Channel, Emoji, GifItem, Id, Message, PinsPage, SearchPage, User, null_default};
 use reqwest::{Method, Url};
@@ -113,6 +113,32 @@ impl ApiClient {
         let url = reaction_users_url(channel_id, message_id, &reaction_path_emoji(emoji)?, burst, after);
         self.send_json(Method::GET, url, None).await
     }
+
+    /// Forward: `POST /channels/{dest}/messages` with a type 1 `message_reference` to the
+    /// message in `src_ch`, no content (MESSAGE_CREATE brings the forward).
+    pub async fn forward(&self, src_ch: Id, src_guild: Option<Id>, src_mid: Id, dest: Id, nonce: &str) -> Result<(), ApiError> {
+        let url = Self::url(&["channels", &dest.to_string(), "messages"]);
+        self.send(Method::POST, url, Some(forward_body(dest, nonce, src_ch, src_mid, src_guild))).await.map(drop)
+    }
+}
+
+/// A send body without text: forwards (and polls) carry no `content` key at all.
+fn bare_body(channel_id: Id, nonce: &str) -> Value {
+    let mut body = send_body(channel_id, "", nonce, None);
+    if let Some(o) = body.as_object_mut() {
+        o.remove("content");
+    }
+    body
+}
+
+fn forward_body(dest: Id, nonce: &str, src_ch: Id, src_mid: Id, src_guild: Option<Id>) -> Value {
+    let mut body = bare_body(dest, nonce);
+    let mut reference = json!({ "type": 1, "message_id": src_mid, "channel_id": src_ch });
+    if let Some(g) = src_guild {
+        reference["guild_id"] = json!(g);
+    }
+    body["message_reference"] = reference;
+    body
 }
 
 fn pins_url(channel_id: Id, before: Option<&str>) -> Url {
@@ -317,6 +343,16 @@ mod tests {
         assert_eq!(typing_cooldown(br#"{"message_send_cooldown_ms":0}"#), None);
         assert_eq!(typing_cooldown(br#"{"thread_create_cooldown_ms":9000}"#), None);
         assert_eq!(typing_cooldown(b"<html>"), None);
+    }
+
+    #[test]
+    fn forward_body_has_no_content_and_a_type_1_reference() {
+        let b = forward_body(Id(9), "7", Id(5), Id(6), Some(Id(3)));
+        assert!(b.get("content").is_none());
+        assert_eq!(b["message_reference"], json!({"type":1,"message_id":"6","channel_id":"5","guild_id":"3"}));
+        assert_eq!(b["nonce"], "7");
+        // A forward out of a DM has no guild.
+        assert!(forward_body(Id(9), "7", Id(5), Id(6), None)["message_reference"].get("guild_id").is_none());
     }
 
     #[test]

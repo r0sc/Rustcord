@@ -323,7 +323,7 @@ Provider is **Klipy** (LIVE responses point to `static.klipy.com`; Tenor's API s
 - Forward: only DEFAULT/REPLY messages without poll/call/components. Result has flag HAS_SNAPSHOT (1<<14) and `message_snapshots:[{message:{content, timestamp, edited_timestamp, mentions, mention_roles, attachments, embeds, type, flags, components?, sticker_items?}}]` with **no author** → render as a "Forwarded" quote linking to `message_reference`. Optional `forward_only:{attachment_ids?, embed_indices?}`. A typed comment goes as a **separate** message (DPS; same-request content UNCONFIRMED). One POST per destination.
 - Ephemeral (`flags & 64`): Copy + Dismiss (local). Failed/pending local messages: Retry + Delete (local).
 
-**Checklist:** [ ] hover toolbar (§4.6) [ ] right-click menu with gates [ ] delete confirm + Shift bypass [ ] reaction list popout [ ] mark unread with auto-ack pause [ ] forward picker + snapshot rendering [ ] suppress embeds [ ] developer-mode Copy ID
+**Checklist:** [ ] hover toolbar (§4.6) [ ] right-click menu with gates [ ] delete confirm + Shift bypass [ ] reaction list popout [ ] mark unread with auto-ack pause [x] forward picker (one destination, no text sent along) + snapshot rendering [ ] suppress embeds [ ] developer-mode Copy ID
 
 ## 1.10 "New messages" bar, Jump to present, jump to message
 
@@ -845,7 +845,8 @@ Mark As Read | Invite to Server | Mute Server ▸ (15 min / 1 h / 3 h / 8 h / 24
 - Official op 8 `limit`/debounce; whether `query` matches `global_name`; whether user `query` requests are rate-limited.
 - Klipy `url` unfurling as `gifv`.
 - Mark-unread target id and the auto-ack pause rule; new-messages bar wording and time anchor; grouping threshold (7 min).
-- Forward + content in one request.
+- Forward + content in one request (Rustcord sends none).
+- Forwarding a message that is itself a forward (Rustcord hides the action).
 - Search GET vs `/search/tabs` in today's client; forum listing sequence (search vs sync + post-data); op 28 payload; forum ack on view.
 - Profile popout query flags; Inbox Unreads loading; ack-bulk chunk cap; group DM icon path variant.
 - Thread order in the sidebar; thread notification inheritance.

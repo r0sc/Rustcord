@@ -42,7 +42,7 @@ pub mod user_settings;
 pub mod viewer;
 
 use crate::auth::Token;
-use crate::backend::{BackendEvent, BackendHandle, Command, CommandSender, ConnState};
+use crate::backend::{BackendEvent, BackendHandle, ChatEvent, Command, CommandSender, ConnState};
 use crate::cache::Snapshot;
 use crate::config::Settings;
 use crate::model::{GatewayEvent, Id, Presence};
@@ -192,6 +192,7 @@ pub struct ViewState {
     pub inbox_ui: inbox::InboxUi,
     pub threads_ui: threads::ThreadsUi,
     pub forum_ui: forum::ForumUi,
+    pub forward_ui: forward::ForwardUi,
     pub profile_modal_ui: profile_modal::ProfileModalUi,
     pub server_menu_ui: server_menu::ServerMenuUi,
     pub server_settings_ui: server_settings::ServerSettingsUi,
@@ -236,6 +237,8 @@ pub enum Modal {
     QuestClaim { quest_id: Id },
     /// viewer.rs: the media lightbox (its items live in `ViewState::media_ui`).
     Media,
+    /// forward.rs: forward a message to one channel or DM.
+    Forward { channel_id: Id, message_id: Id },
 }
 
 /// A pending confirmation: `show_modals` asks, `then` goes out on the danger button.
@@ -298,6 +301,7 @@ impl Default for ViewState {
             inbox_ui: Default::default(),
             threads_ui: Default::default(),
             forum_ui: Default::default(),
+            forward_ui: Default::default(),
             profile_modal_ui: Default::default(),
             server_menu_ui: Default::default(),
             server_settings_ui: Default::default(),
@@ -511,6 +515,8 @@ impl RustcordApp {
                         self.view.toast(msg, true);
                     }
                 }
+                // The Forward dialog answers its own request.
+                BackendEvent::Chat(ChatEvent::Forwarded { dest, result }) => forward::answered(&mut self.view, &self.state, dest, result),
                 // Chat essentials (pins, search, GIFs, uploads…) live in AppState::chat.
                 BackendEvent::Chat(ev) => {
                     // Plugins (MessageLinkEmbeds) take the answers to their own fetches.
@@ -1293,6 +1299,7 @@ pub fn show_modals(ctx: &egui::Context, cx: &mut UiCx<'_>) {
         Some(Modal::QuestClaim { quest_id }) => quests::claim_modal(ctx, cx, quest_id),
         Some(Modal::JoinApplication { guild_id }) => server_menu::join_application_modal(ctx, cx, guild_id),
         Some(Modal::Media) => viewer::lightbox(ctx, cx),
+        Some(Modal::Forward { channel_id, message_id }) => forward::modal(ctx, cx, channel_id, message_id),
         // A server just joined from its tag card wants its rules accepted first.
         None => {
             if let Some(g) = cx.state.account.verify_after_join.take() {
@@ -1582,6 +1589,8 @@ fn demo_modal(state: &AppState, name: &str) -> Option<Modal> {
         "join-server" => Modal::JoinServer,
         "kick" | "ban" => Modal::Moderate { guild_id: g?, user_id: user()?, ban: name == "ban" },
         "custom-status" => Modal::CustomStatus,
+        // The newest message of the open channel.
+        "forward" => Modal::Forward { channel_id: ch?, message_id: state.messages.get(&ch?)?.msgs.last()?.id },
         "privacy" => Modal::PrivacySettings { guild_id: g? },
         // Sample questions instead of a fetch (`server_menu::demo_verification`).
         "apply" | "apply-rules" => Modal::JoinApplication { guild_id: g? },
