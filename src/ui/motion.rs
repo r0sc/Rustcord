@@ -20,6 +20,9 @@ pub const LARGE: f32 = 0.30;
 pub const OUT: f32 = 0.5;
 /// Floats and modals grow from this scale (principle 11).
 pub const GROW: f32 = 0.96;
+/// Cards that arrive together start this far apart, at most `STAGGER_MAX` of them.
+pub const STAGGER: f32 = 0.04;
+pub const STAGGER_MAX: usize = 6;
 /// A reaction pill pops to this scale and back.
 pub const POP: f32 = 1.12;
 
@@ -123,6 +126,30 @@ pub fn popped(ctx: &Context, id: Id) -> f32 {
     }
     ctx.request_repaint();
     1.0 + (POP - 1.0) * (lin * std::f32::consts::PI).sin()
+}
+
+/// 0 -> 1 for card `k` of a list that replaces a skeleton: `on == false` (the skeleton is
+/// showing) arms it, the first `on` call after that runs BASE with `k` x STAGGER of delay (so the
+/// cards arrive one after another), and a list that was never a skeleton is at rest (1) at once
+/// (principle 3). Frames only while it runs.
+pub fn stagger(ctx: &Context, id: Id, on: bool, k: usize) -> f32 {
+    let now = ctx.input(|i| i.time);
+    if !on {
+        ctx.data_mut(|d| d.insert_temp(id, (now, false)));
+        return 0.0;
+    }
+    let Some((at, _)) = ctx.data(|d| d.get_temp::<(f64, bool)>(id)) else { return 1.0 };
+    let (dur, gap) = (secs(ctx, BASE), secs(ctx, STAGGER));
+    // The clock starts on the first drawn frame after the skeleton.
+    let start = if ctx.data(|d| d.get_temp::<(f64, bool)>(id)).is_some_and(|(_, s)| s) { at } else { now };
+    ctx.data_mut(|d| d.insert_temp(id, (start, true)));
+    let lin = ((now - start) as f32 - gap * k.min(STAGGER_MAX) as f32) / dur;
+    if dur == 0.0 || (now - start) as f32 >= dur + gap * STAGGER_MAX as f32 {
+        ctx.data_mut(|d| d.remove::<(f64, bool)>(id));
+        return 1.0;
+    }
+    ctx.request_repaint();
+    ease(lin.clamp(0.0, 1.0))
 }
 
 /// `add` drawn scaled by `s` about its own centre without moving the layout around it. The
@@ -460,5 +487,19 @@ mod tests {
     #[test]
     fn the_os_setting_reads_without_panicking() {
         let _ = os_reduced();
+    }
+
+    #[test]
+    fn cards_stagger_in_only_after_a_skeleton() {
+        let ctx = Context::default();
+        let id = Id::unique("stagger");
+        // Never a skeleton: at rest at once.
+        assert_eq!(run(&ctx, 0.0, 0.0, |c| stagger(c, id, true, 0)).0, 1.0);
+        run(&ctx, 0.1, 0.0, |c| stagger(c, id, false, 0));
+        let first = run(&ctx, 0.2, 0.0, |c| stagger(c, id, true, 0)).0;
+        let (later, busy) = run(&ctx, 0.2, 0.02, |c| stagger(c, id, true, 3));
+        assert!(first < 1.0 && later == 0.0 && busy, "card 3 waits for its turn");
+        let (end, busy) = run(&ctx, 0.3, 0.8, |c| stagger(c, id, true, 3));
+        assert!(end == 1.0 && !busy);
     }
 }

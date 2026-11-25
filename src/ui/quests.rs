@@ -124,7 +124,10 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, online: bool) {
         Load::Loaded(_) => {}
         // Skeletons for the first fetch only; a refetch keeps the cards.
         Load::Loading if !cx.state.quests.quests.is_empty() => {}
-        Load::Loading => return skeletons(ui, pal),
+        Load::Loading => {
+            super::motion::stagger(ui.ctx(), stagger_id(), false, 0);
+            return skeletons(ui, pal);
+        }
         Load::Failed(e) => {
             let e = e.clone();
             if empty_state(ui, pal, "Couldn't load quests", &e, Some("Retry")) {
@@ -152,6 +155,7 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, online: bool) {
         return;
     }
     let (n, cw) = columns(ui.available_width());
+    let mut k = 0;
     for (i, (phase, ids)) in sections.iter().enumerate() {
         if i > 0 {
             ui.add_space(8.0);
@@ -167,7 +171,15 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, online: bool) {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 for &id in row {
                     let Some(q) = cx.state.quests.quest(id).cloned() else { continue };
-                    let (h, click) = card(ui, cx, pal, &q, *phase, cw, min_h, now);
+                    // After the skeletons the cards fade in and rise 8 px, one after another.
+                    let t = super::motion::stagger(ui.ctx(), stagger_id(), true, k);
+                    k += 1;
+                    let (h, click) = ui
+                        .scope(|ui| {
+                            ui.multiply_opacity(t);
+                            ui.with_visual_transform(egui::emath::TSTransform::from_translation(egui::vec2(0.0, 8.0 * (1.0 - t))), |ui| card(ui, cx, pal, &q, *phase, cw, min_h, now)).inner
+                        })
+                        .inner;
                     tallest = tallest.max(h);
                     clicks.extend(click.map(|c| (q, c)));
                 }
@@ -249,6 +261,10 @@ fn empty_state(ui: &mut egui::Ui, pal: &Pal, title: &str, meta: &str, action: Op
 }
 
 /// First fetch: three card outlines with the hero area in `hover`, no text, no spinner.
+fn stagger_id() -> egui::Id {
+    egui::Id::unique("rc_quest_stagger")
+}
+
 fn skeletons(ui: &mut egui::Ui, pal: &Pal) {
     let (n, cw) = columns(ui.available_width());
     let hero_h = (cw * 9.0 / 16.0).round();
