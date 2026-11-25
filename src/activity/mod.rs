@@ -1,12 +1,12 @@
 //! Activities like the official desktop client: game detection (a background thread lists
 //! processes, `scan.rs`, and matches them against the detectable-games list, `detect.rs`, plus
-//! the games I added), my game in op 3 while "Share detected activity" (settings 11.3) is on,
+//! the games I added), my game, and Rustcord's own "Playing Rustcord" (a local switch), in op 3 while "Share detected activity" (settings 11.3) is on,
 //! and a picture for everyone's activity: rich-presence art, Spotify album art, else the
 //! application's icon, else the type icon (drawn by the UI).
 //!
 //! Traffic, all through the rate limiter: `GET /games/detectable` at most once a day (saved
 //! compact on disk), `GET /applications/public` once per application id that is shown without
-//! art (batched; answers saved on disk), and one op 3 per change of the game I share. The
+//! art (batched; answers saved on disk), and one op 3 per change of the game I share or of Rustcord's own presence. The
 //! Registered Games list stays on this device.
 //!
 //! OWNERSHIP: activities engineer.
@@ -57,6 +57,40 @@ impl GameActivity {
     }
 }
 
+/// What op 3 says about Rustcord itself (type 0, after my game): see `FEATURES_NOTES` §1.3.
+pub const APP_DETAILS: &str = "Third-party client, built in Rust";
+
+/// When this process started (unix ms): a reconnect keeps the timer.
+static STARTED: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+
+/// "Playing Rustcord" as op 3 carries it. Nothing personal: version and uptime only.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppActivity {
+    /// Only when the user set one (Settings > Activity privacy): its icon becomes the picture.
+    pub application_id: Option<Id>,
+    pub start_ms: u64,
+}
+
+impl AppActivity {
+    /// As a presence shows it.
+    pub fn to_activity(&self) -> Activity {
+        let state = format!("Version {}", env!("CARGO_PKG_VERSION"));
+        let rich = RichPresence {
+            details: Some(APP_DETAILS.into()),
+            state: Some(state),
+            start: Some(self.start_ms),
+            application_id: self.application_id,
+            ..Default::default()
+        };
+        Activity { kind: 0, name: crate::config::APP_NAME.into(), rich: Some(Box::new(rich)) }
+    }
+}
+
+/// Whether `a` is Rustcord's own presence (not a game that happens to be named Rustcord).
+pub fn is_rustcord(a: &Activity) -> bool {
+    a.kind == 0 && a.name == crate::config::APP_NAME && a.rich.as_ref().is_some_and(|r| r.details.as_deref() == Some(APP_DETAILS))
+}
+
 /// A program I added on the Registered Games page ("Add it!").
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AddedGame {
@@ -67,8 +101,9 @@ pub struct AddedGame {
 
 #[derive(Debug)]
 pub enum ActivityCommand {
-    /// My game in op 3 (None: no game), keeping my status and custom status.
-    SetGame(Option<GameActivity>),
+    /// My game and Rustcord's own presence in op 3 (None: not shown), keeping my status and
+    /// custom status. The game comes first.
+    SetActivities { game: Option<GameActivity>, app: Option<AppActivity> },
     /// `GET /applications/public` for these ids (≤ 25) -> `ActivityEvent::Apps`.
     FetchApps(Vec<Id>),
     /// Save my added games (local only) and scan again.
@@ -103,8 +138,10 @@ pub struct ActivityState {
     icons: HashMap<Id, Option<String>>,
     /// Asked for by drawn rows, sent by `logic`.
     wanted: Vec<Id>,
-    /// The game my session's presence carries (the last `SetGame`).
-    sent: Option<GameActivity>,
+    /// Rustcord's own presence as the settings want it now (set each frame, also offline).
+    pub app: Option<AppActivity>,
+    /// What my session's presence carries (the last `SetActivities`).
+    sent: (Option<GameActivity>, Option<AppActivity>),
 }
 
 impl ActivityState {
@@ -157,12 +194,12 @@ pub fn my_game(state: &AppState) -> Option<Activity> {
 }
 
 /// Someone's activity as rows and cards show it: their presence's; mine falls back to my shared
-/// game (my presence echo lags, and offline it never comes).
+/// game, then Rustcord's own (my presence echo lags, and offline it never comes).
 pub fn activity_of(state: &AppState, user: Id) -> Option<Cow<'_, Activity>> {
     if let Some(a) = state.presence_of(user).and_then(|p| p.activity.as_ref()) {
         return Some(Cow::Borrowed(a));
     }
-    state.me.as_ref().filter(|m| m.id == user).and_then(|_| my_game(state)).map(Cow::Owned)
+    state.me.as_ref().filter(|m| m.id == user).and_then(|_| my_game(state).or_else(|| state.activity.app.as_ref().map(AppActivity::to_activity))).map(Cow::Owned)
 }
 
 fn online(state: &AppState) -> bool {
@@ -186,15 +223,18 @@ pub fn art_url(ctx: &egui::Context, state: &mut AppState, a: &Activity, px: u32)
 }
 
 /// Each frame (`App::logic`, also while minimized), only while connected (READY's settings are
-/// in by then): one op 3 when the game to share changed, and the batched app-icon request.
-pub fn logic(state: &mut AppState, cmd: &CommandSender) {
+/// in by then): one op 3 when the game to share or Rustcord's presence changed, and the batched
+/// app-icon request.
+pub fn logic(state: &mut AppState, settings: &crate::config::Settings, cmd: &CommandSender) {
+    let p = &settings.rustcord_presence;
+    state.activity.app = p.enabled.then(|| AppActivity { application_id: p.application_id, start_ms: *STARTED.get_or_init(now_ms) });
     if !online(state) {
         return;
     }
-    let want = state.activity.detected.clone().filter(|_| sharing(state));
+    let want = (state.activity.detected.clone().filter(|_| sharing(state)), state.activity.app.clone());
     if want != state.activity.sent {
         state.activity.sent = want.clone();
-        cmd.send(Command::Activity(ActivityCommand::SetGame(want)));
+        cmd.send(Command::Activity(ActivityCommand::SetActivities { game: want.0, app: want.1 }));
     }
     let a = &mut state.activity;
     if !a.wanted.is_empty() {
@@ -214,36 +254,76 @@ mod tests {
         std::iter::from_fn(|| rx.try_recv().ok()).map(|c| format!("{c:?}")).collect()
     }
 
+    fn set(game: Option<&GameActivity>, app: Option<AppActivity>) -> String {
+        format!("{:?}", Command::Activity(ActivityCommand::SetActivities { game: game.cloned(), app }))
+    }
+
     #[test]
     fn op3_once_per_change_and_only_while_shared() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let cmd = CommandSender(tx);
         let mut s = AppState::default();
+        let mut cfg = crate::config::Settings::default();
         let game = GameActivity { name: "Factorio".into(), application_id: Some(Id(7)), start_ms: 5 };
         s.activity.apply(ActivityEvent::Detected(Some(game.clone())));
-        logic(&mut s, &cmd);
+        logic(&mut s, &cfg, &cmd);
         assert!(sent(&mut rx).is_empty(), "not connected: READY's settings may not be in");
         s.conn = ConnState::Connected;
-        logic(&mut s, &cmd);
-        assert_eq!(sent(&mut rx), [format!("{:?}", Command::Activity(ActivityCommand::SetGame(Some(game.clone()))))]);
-        logic(&mut s, &cmd);
+        logic(&mut s, &cfg, &cmd);
+        let app = s.activity.app.clone();
+        assert!(app.is_some(), "on by default");
+        assert_eq!(sent(&mut rx), [set(Some(&game), app.clone())]);
+        logic(&mut s, &cfg, &cmd);
         assert!(sent(&mut rx).is_empty(), "no change, no op 3");
-        // Sharing switched off: the game goes, once.
+        // Sharing switched off: the game goes, once; Rustcord stays.
         s.account.settings.set_local(11, &[(vec![3], SettingValue::Wrapped(0))]);
         assert!(my_game(&s).is_none());
-        logic(&mut s, &cmd);
-        logic(&mut s, &cmd);
-        assert_eq!(sent(&mut rx), ["Activity(SetGame(None))"]);
+        logic(&mut s, &cfg, &cmd);
+        logic(&mut s, &cfg, &cmd);
+        assert_eq!(sent(&mut rx), [set(None, app.clone())]);
         // While off, a new game sends nothing.
-        s.activity.apply(ActivityEvent::Detected(Some(GameActivity { name: "Celeste".into(), ..game })));
-        logic(&mut s, &cmd);
+        s.activity.apply(ActivityEvent::Detected(Some(GameActivity { name: "Celeste".into(), ..game.clone() })));
+        logic(&mut s, &cfg, &cmd);
         assert!(sent(&mut rx).is_empty());
-        // A new login starts without a game: sent again once sharing is on.
+        // Rustcord's switch off: one op 3 without it; an Application ID: one with it.
+        cfg.rustcord_presence.enabled = false;
+        logic(&mut s, &cfg, &cmd);
+        logic(&mut s, &cfg, &cmd);
+        assert_eq!(sent(&mut rx), [set(None, None)]);
+        cfg.rustcord_presence.enabled = true;
+        cfg.rustcord_presence.application_id = Some(Id(123456789012345678));
+        logic(&mut s, &cfg, &cmd);
+        assert_eq!(sent(&mut rx), [set(None, Some(AppActivity { application_id: Some(Id(123456789012345678)), ..app.clone().unwrap() }))]);
+        // A new login starts without a presence: sent again once.
         s.account.settings.set_local(11, &[(vec![3], SettingValue::Wrapped(1))]);
         s.activity = std::mem::take(&mut s.activity).after_logout();
         assert!(s.activity.table.is_none() && s.activity.detected.is_some());
-        logic(&mut s, &cmd);
+        logic(&mut s, &cfg, &cmd);
         assert_eq!(sent(&mut rx).len(), 1);
+        // Offline: nothing is sent, but my own views still know the activity.
+        s.conn = ConnState::Offline;
+        s.activity.sent = Default::default();
+        logic(&mut s, &cfg, &cmd);
+        assert!(sent(&mut rx).is_empty() && s.activity.app.is_some());
+    }
+
+    #[test]
+    fn rustcord_activity_is_recognised_and_my_fallback() {
+        let app = AppActivity { application_id: None, start_ms: 9 };
+        let a = app.to_activity();
+        assert!(is_rustcord(&a));
+        let rich = a.rich.as_deref().unwrap();
+        assert_eq!((rich.details.as_deref(), rich.state.as_deref(), rich.start), (Some(APP_DETAILS), Some(concat!("Version ", env!("CARGO_PKG_VERSION"))), Some(9)));
+        let game = GameActivity { name: "Rustcord".into(), application_id: None, start_ms: 1 }.to_activity();
+        assert!(!is_rustcord(&game), "a game named Rustcord is not it");
+        let mut s = AppState::default();
+        s.me = Some(crate::model::User { id: Id(1), ..Default::default() });
+        assert!(activity_of(&s, Id(1)).is_none());
+        s.activity.app = Some(app.clone());
+        assert_eq!(activity_of(&s, Id(1)).as_deref(), Some(&a));
+        assert!(activity_of(&s, Id(2)).is_none(), "only mine falls back");
+        s.activity.apply(ActivityEvent::Detected(Some(GameActivity { name: "Celeste".into(), application_id: None, start_ms: 1 })));
+        assert_eq!(activity_of(&s, Id(1)).map(|a| a.name.clone()).as_deref(), Some("Celeste"));
     }
 
     #[test]
@@ -251,18 +331,20 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let cmd = CommandSender(tx);
         let mut s = AppState::default();
+        // Rustcord's own presence is not under test here.
+        let off = crate::config::Settings { rustcord_presence: crate::config::RustcordPresence { enabled: false, ..Default::default() }, ..Default::default() };
         s.conn = ConnState::Connected;
         let ctx = egui::Context::default();
         let game = |id: u64| GameActivity { name: "x".into(), application_id: Some(Id(id)), start_ms: 0 }.to_activity();
         for id in [1, 2, 1, 3, 2] {
             assert_eq!(art_url(&ctx, &mut s, &game(id), 64), None);
         }
-        logic(&mut s, &cmd);
+        logic(&mut s, &off, &cmd);
         assert_eq!(sent(&mut rx), ["Activity(FetchApps([1, 2, 3]))"]);
         for id in [1, 2, 3] {
             assert_eq!(art_url(&ctx, &mut s, &game(id), 64), None);
         }
-        logic(&mut s, &cmd);
+        logic(&mut s, &off, &cmd);
         assert!(sent(&mut rx).is_empty(), "asked: not again, even before the answer");
         s.activity.apply(ActivityEvent::Apps(vec![(Id(1), Some("abc".into())), (Id(2), None)]));
         assert_eq!(art_url(&ctx, &mut s, &game(1), 64).as_deref(), Some("https://cdn.discordapp.com/app-icons/1/abc.png?size=64"));
@@ -277,7 +359,7 @@ mod tests {
         s.conn = ConnState::Offline;
         assert_eq!(art_url(&ctx, &mut s, &game(5), 64), None);
         s.conn = ConnState::Connected;
-        logic(&mut s, &cmd);
+        logic(&mut s, &off, &cmd);
         assert!(sent(&mut rx).is_empty());
     }
 }

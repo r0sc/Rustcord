@@ -956,8 +956,14 @@ impl eframe::App for RustcordApp {
             self.selection_effects(ctx);
             // Plugins (CustomIdle): auto-idle, also while minimized.
             crate::plugins::idle::logic(ctx, &self.state, &self.backend.cmd);
-            // My detected game in op 3 (while shared), batched app-icon requests.
-            crate::activity::logic(&mut self.state, &self.backend.cmd);
+            // My detected game and Rustcord's own presence in op 3, batched app-icon requests.
+            crate::activity::logic(&mut self.state, &self.settings, &self.backend.cmd);
+            // People who updated from 0.1.4 hear once that Rustcord now shows as their activity.
+            if self.state.conn == ConnState::Connected && !self.settings.rustcord_presence.notice_seen {
+                self.settings.rustcord_presence.notice_seen = true;
+                self.view.toast("Rustcord now shows as your activity. Change it in Settings > Activity privacy.", false);
+                let _ = self.settings.save();
+            }
             // A quest video the user started plays on and reports progress, also minimized.
             quests::logic(ctx, &mut self.state, &mut self.view, &self.backend.cmd);
             // Like messages: not in Do Not Disturb, only with desktop notifications on, and the

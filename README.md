@@ -59,8 +59,11 @@ again.</sub>
 
 > **Warning.** Third-party clients that log in with a user account violate Discord's Terms of
 > Service and can get the account banned. You use this at your own risk. I made Rustcord behave
-> like a normal user client (no automation, nothing is sent on your behalf, all rate limits are
-> respected), but that doesn't remove the risk. Rustcord is not affiliated with Discord.
+> like a normal user client (no automation, nothing is sent on your behalf except your status and
+> activity, like the official app, all rate limits are respected), but that doesn't remove the
+> risk. Rustcord shows "Playing Rustcord" as your activity by default. Friends, and Discord, can
+> see that you use a third-party client. Turn it off in Settings → Activity privacy. Rustcord is
+> not affiliated with Discord.
 
 ## Why Rustcord
 
@@ -136,6 +139,8 @@ What's in it so far:
 - Activities like Discord's: games with their art, party size and elapsed time, Spotify with
   album art and a progress bar, streaming, watching; detected games show the game's icon, or
   a controller when there is none. Member list, DMs, friends and profile cards show them.
+- Your activity shows Rustcord by default (with your version and how long it has been open); a
+  game you play shows first. Settings → Activity privacy.
 - Game detection: every 15 s Rustcord looks at the running programs (on Linux also Wine and
   Proton games, on macOS app bundles) and matches them against Discord's list of detectable
   games and the games you added in Settings → Registered games ("Add it!" picks an open

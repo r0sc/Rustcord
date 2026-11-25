@@ -214,6 +214,24 @@ Errors: 40005/413, 50045, 50046, 50146, 400001. Pre-check sizes client-side, tru
 - Display: phone glyph if only `client_status.mobile`; custom status = type 4 as `{emoji} {state}`; others "Playing {name}" (0), "Streaming" (1), "Listening to" (2), "Watching" (3), "Competing in" (5).
 - `SESSIONS_REPLACE` (and READY `sessions[]`): `[{session_id, client_info{client,os,version}, status, activities, hidden_activities, active?}]`, max 15 plus `session_id:"all"` = what others see. Use `all` for your own effective status.
 
+**Rustcord presence** (`activity::AppActivity`, local switch `rustcord_presence.enabled`, default on)
+- One more entry in op 3's list, after the custom status and my game: `{"type":0,"name":"Rustcord","details":"Third-party client, built in Rust","state":"Version <x.y.z>","timestamps":{"start":<process start, unix ms>}}`, plus `application_id` only when the user set one (Settings > Activity privacy). No assets, buttons, party or secrets. Left out while Invisible.
+- Sent only on change, through the existing debounce and limiter: the first time the UI is connected, a new session (READY), a switch or Application ID change. A status change or a game start carries it in the op 3 that goes out anyway. RESUME sends nothing.
+- My own user panel ignores it (`activity::is_rustcord`), so it still shows my status; my profile and member row show it.
+
+| Fact | Status | Source |
+|---|---|---|
+| Op 3 is 5 per 20 s and replaces the whole activity list | confirmed | UD gateway-events |
+| `name` 1-128, `details`/`state` max 128, `buttons` max 2 | confirmed | UD presence |
+| Image keys: app asset id, `mp:`, `spotify:`, `twitch:`, `youtube:` | confirmed | UD presence |
+| Buttons need `metadata.button_urls` and a real application id; you never see your own | endpoint confirmed, "needs an app id" inferred | UD presence, Discord docs |
+| Bots may send only `name`, `type`, `state`, `url` | confirmed (bots) | UD presence |
+| `details`, `state` and the timer show for a user op 3 without an application id | UNCONFIRMED (live check) | - |
+| With an application id and no image, Discord shows the app's icon | UNCONFIRMED for a third-party session | Discord docs (Social SDK) |
+| Invisible users' activities are hidden from others | UNCONFIRMED, so Rustcord leaves its own out | - |
+| "Share my activity in servers" (8.29) covers every activity type | UNCONFIRMED | SETTINGS_NOTES |
+| Fallback if the icon does not show: `POST /applications/{id}/external-assets` and `large_image = "mp:" + path` | not built | UD application |
+
 **Checklist**
 - [ ] status picker (online/idle/dnd/invisible) → op 3 + PATCH settings
 - [ ] custom-status dialog (text ≤128, emoji, expiry: 30 min / 1 h / 4 h / today / never) → op 3 + PATCH

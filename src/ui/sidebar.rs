@@ -2070,7 +2070,8 @@ fn account_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect, panel: egui::Po
     let status = line.clone();
     // My activity (my presence's, or the game I share) once my status is known: its icon in
     // green and its name, then my custom status after a divider (cut first). Hovered: my username.
-    let activity = me.as_ref().and_then(|u| crate::activity::activity_of(cx.state, u.id)).map(std::borrow::Cow::into_owned);
+    // Rustcord's own presence says nothing here (it is always on): the status line stays.
+    let activity = me.as_ref().and_then(|u| crate::activity::activity_of(cx.state, u.id)).map(std::borrow::Cow::into_owned).filter(|a| !crate::activity::is_rustcord(a));
     let connecting = matches!(cx.state.conn, ConnState::Connecting | ConnState::Reconnecting { .. }) && !crate::config::offline_mode();
     let shown = activity.as_ref().filter(|_| cx.state.chat.my_status.is_some() && !connecting);
     let username = me.as_ref().filter(|_| hot && !cx.settings.streamer.hides_personal()).map(|u| (None, u.username.clone()));

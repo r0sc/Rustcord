@@ -127,6 +127,7 @@ pub struct Settings {
     /// Accessibility > Reduced motion: no UI animations; animated avatars and emoji only on hover.
     pub reduced_motion: bool,
     pub streamer: StreamerMode,
+    pub rustcord_presence: RustcordPresence,
     /// Keybinds the user changed: action name -> shortcut ("Ctrl+Shift+M"; "" = none).
     pub keybinds: std::collections::BTreeMap<String, String>,
     // Open at sign-in / start minimized are not kept here: the Windows / Linux / macOS settings
@@ -170,6 +171,23 @@ pub struct SoundSettings {
 impl Default for SoundSettings {
     fn default() -> Self {
         Self { enabled: true, volume: 70, off: Vec::new() }
+    }
+}
+
+/// Settings > Activity privacy > Rustcord presence (this device): "Playing Rustcord" next to my game.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RustcordPresence {
+    pub enabled: bool,
+    /// Optional: a Discord application whose icon becomes the picture.
+    pub application_id: Option<crate::model::Id>,
+    /// The one-time "Rustcord now shows as your activity" toast was shown (or not needed).
+    pub notice_seen: bool,
+}
+
+impl Default for RustcordPresence {
+    fn default() -> Self {
+        Self { enabled: true, application_id: None, notice_seen: false }
     }
 }
 
@@ -283,6 +301,7 @@ impl Default for Settings {
             role_colors: true,
             reduced_motion: false,
             streamer: StreamerMode::default(),
+            rustcord_presence: RustcordPresence::default(),
             keybinds: Default::default(),
             autostart_default_done: false,
             minimize_to_tray: true,
@@ -299,7 +318,11 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load() -> Self {
-        let mut s: Self = read_toml(&paths().settings_file()).unwrap_or_default();
+        let file = paths().settings_file();
+        let existed = file.exists();
+        let mut s: Self = read_toml(&file).unwrap_or_default();
+        // A fresh install needs no "this changed" notice; a 0.1.4 file (no such key) gets it once.
+        s.rustcord_presence.notice_seen |= !existed;
         s.keyword_alerts.normalize();
         s.publish();
         s
@@ -454,6 +477,17 @@ volume = 30
         assert_eq!((t.overlay.voice_corner, t.overlay.notification_corner, t.overlay.show_names), (Corner::TopRight, Corner::Off, Show::Speaking));
         let saved = toml::to_string_pretty(&t).unwrap();
         assert!(saved.contains("voice_corner = \"top_right\"") && saved.contains("show_names = \"speaking\""));
+    }
+
+    #[test]
+    fn rustcord_presence_defaults_on_and_round_trips() {
+        let old: Settings = toml::from_str("theme = \"Ember Dark\"
+").unwrap();
+        assert!(old.rustcord_presence.enabled && old.rustcord_presence.application_id.is_none() && !old.rustcord_presence.notice_seen);
+        let rustcord_presence = RustcordPresence { enabled: false, application_id: Some(crate::model::Id(123456789012345678)), notice_seen: true };
+        let s = Settings { rustcord_presence, ..Default::default() };
+        let back: Settings = toml::from_str(&toml::to_string_pretty(&s).unwrap()).unwrap();
+        assert_eq!(back.rustcord_presence, s.rustcord_presence);
     }
 
     #[test]

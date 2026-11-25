@@ -2264,9 +2264,9 @@ fn handle_activity(cmd: crate::activity::ActivityCommand, session: &mut Option<S
     use crate::activity::{ActivityCommand as C, ActivityEvent};
     match cmd {
         // Without a session there is no presence to change; the UI sends it again after login.
-        C::SetGame(game) => {
+        C::SetActivities { game, app } => {
             if let Some(s) = session {
-                s.gateway.send(GatewayCommand::SetGame(game));
+                s.gateway.send(GatewayCommand::SetActivities { game, app });
             }
         }
         C::FetchApps(ids) => {
