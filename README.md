@@ -88,12 +88,16 @@ What's in it so far:
 - Gateway with heartbeat, zombie detection, resume, reconnect backoff, zlib-stream compression.
 - REST rate limiting per bucket + global, honouring `retry_after`.
 - Server list with icons, channel list per server, DM list, member list.
-- Rustcord's own app sounds, made in code: message and mention pings, call rings, voice join/leave, mute, deafen, push to talk and streams; each one can be switched off, with one volume.
-- Keyword alerts (a notification and the mention look for your words, even in muted channels) and quiet hours with a pause from the tray or the account menu; both local to this device.
+- Rustcord's own app sounds, made in code: message and mention pings, call rings, voice
+  join/leave, mute, deafen, push to talk and streams; each one can be switched off, with one
+  volume.
+- Keyword alerts (a notification and the mention look for your words, even in muted channels)
+  and quiet hours with a pause from the tray or the account menu; both local to this device.
 - Message history with lazy loading while scrolling up; markdown (bold, italic, underline,
   strike, code, code blocks, links, spoilers, quotes, headings, lists, timestamps), mentions,
   custom and unicode emoji, image/GIF attachments, basic embeds, stickers, forwarded messages.
-- Send, edit and delete own messages, reply (with or without ping), reactions, polls (vote, remove your vote, see who voted, create one), forward a message to one channel.
+- Send, edit and delete own messages, reply (with or without ping), reactions, polls (vote, remove your vote, see who voted, create one), forward a message to
+  one channel.
 - Videos and pictures stay in the app, like on Discord: video uploads, video embeds and GIFV
   play inline (MP4 with H.264 and AAC, decoded by Rustcord itself), and images, GIFs and videos
   open in a viewer with zoom, pan, arrows, Save, Copy image and Copy link. The browser opens only
