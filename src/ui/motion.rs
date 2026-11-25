@@ -34,6 +34,24 @@ pub fn animation_time(reduced: bool) -> f32 {
     if reduced { 0.0 } else { FAST * scale() }
 }
 
+/// Windows' "Animation effects" switch is off (Settings > Accessibility > Visual effects): counts
+/// as Reduced motion. Read once per start; always false elsewhere.
+pub fn os_reduced() -> bool {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW};
+        static S: OnceLock<bool> = OnceLock::new();
+        *S.get_or_init(|| {
+            let mut on: i32 = 1;
+            // SAFETY: the call writes one BOOL through the pointer, which outlives it.
+            let ok = unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&raw mut on).cast(), 0) };
+            ok != 0 && on == 0
+        })
+    }
+    #[cfg(not(windows))]
+    false
+}
+
 /// `s` seconds, or 0 with reduced motion.
 pub fn secs(ctx: &Context, s: f32) -> f32 {
     if ctx.global_style().animation_time > 0.0 { s * scale() } else { 0.0 }
@@ -437,5 +455,10 @@ mod tests {
             out.textures_delta.clear();
         }
         assert_eq!(rects[0].center(), rects[2].center());
+    }
+
+    #[test]
+    fn the_os_setting_reads_without_panicking() {
+        let _ = os_reduced();
     }
 }

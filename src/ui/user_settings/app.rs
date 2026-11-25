@@ -76,7 +76,7 @@ pub(super) fn accessibility(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     });
 
     section(ui, cx.theme, "Motion");
-    if switch_row(ui, cx.theme, "Reduced motion", Some("No UI animations; animated avatars, emoji and effects only while hovered."), &mut s.reduced_motion) {
+    if switch_row(ui, cx.theme, "Reduced motion", Some(if cfg!(windows) { "No UI animations; animated avatars, emoji and effects only while hovered. Also on while Windows' Animation effects are off." } else { "No UI animations; animated avatars, emoji and effects only while hovered." }), &mut s.reduced_motion) {
         changed = true;
         if s.reduced_motion {
             s.animate_others = AnimateMode::Hover;
@@ -228,7 +228,7 @@ pub(super) fn advanced(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
 /// Applies the settings that act every frame. Saves when a key changed one.
 pub(in crate::ui) fn frame(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let mut save = sync_zoom(ctx, cx);
-    let want = crate::ui::motion::animation_time(cx.settings.reduced_motion);
+    let want = crate::ui::motion::animation_time(cx.settings.reduced_motion || crate::ui::motion::os_reduced());
     if ctx.global_style().animation_time != want {
         // egui's programmatic scroll animation (100-300 ms) would still move under Reduced motion.
         ctx.all_styles_mut(|s| {
