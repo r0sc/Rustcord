@@ -581,6 +581,21 @@ pub fn title_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         let slot = Rect::from_center_size(pos2(rect.right() - 8.0 - 14.0, rect.center().y), Vec2::splat(28.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(slot), |ui| super::inbox::button(ui, cx, &pal));
     }
+    // The island takes the place of the label while I am in a call (cross-fade, §8).
+    let island = call_island(ui, cx, rect);
+    if island >= 1.0 {
+        return;
+    }
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+        if island > 0.0 {
+            ui.multiply_opacity(1.0 - island);
+        }
+        location(ui, cx, rect);
+    });
+}
+
+/// The current location (server, DM or home), centred in `rect`: a 16 px icon and its name.
+fn location(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect) {
     let c = cx.theme.colors.clone();
     let muted = c.text_muted.to_color32();
     let guild = cx.state.selected_guild.and_then(|g| cx.state.guilds.iter().position(|x| x.id == g));
@@ -601,6 +616,145 @@ pub fn title_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         (None, None) => logo_mark(ui.painter(), icon, SMALL_MARK, c.accent.to_color32(), c.accent_text.to_color32()),
     }
     ui.painter().galley(pos2(icon.right() + 8.0, rect.center().y - g.size().y / 2.0), g, muted);
+}
+
+/// What the island shows, kept while it fades out after the call ended.
+#[derive(Clone)]
+struct IslandInfo {
+    connected: bool,
+    muted: bool,
+    channel: Id,
+    place: String,
+    server: Option<String>,
+}
+
+/// Call island (docs/DESIGN.md §8): a pill centred in the title bar while I am in a voice or DM
+/// call, over the location label: state, channel, server, mute and disconnect. Returns its
+/// opacity (0 when it is not shown), which the label fades against.
+fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
+    let ctx = ui.ctx().clone();
+    let key = egui::Id::unique("rc_call_island");
+    let in_call = cx.state.voice.channel_id;
+    let t = super::motion::anim(&ctx, key, in_call.is_some(), super::motion::BASE, super::motion::BASE * super::motion::OUT);
+    let info = match in_call {
+        Some(ch) => {
+            let guild = cx.state.channels.get(&ch).and_then(|x| x.guild_id).and_then(|g| cx.state.guild(g)).map(|g| g.name.clone());
+            let info = IslandInfo { connected: cx.state.voice.connected, muted: cx.view.self_mute || cx.view.self_deaf, channel: ch, place: cx.state.channel_name(ch), server: guild };
+            ctx.data_mut(|d| d.insert_temp(key, info.clone()));
+            info
+        }
+        None => match ctx.data(|d| d.get_temp::<IslandInfo>(key)).filter(|_| t > 0.0) {
+            Some(info) => info,
+            None => {
+                ctx.data_mut(|d| d.remove::<IslandInfo>(key));
+                return 0.0;
+            }
+        },
+    };
+    let max_w = 420f32.min(row.width() - 240.0);
+    if max_w < 160.0 {
+        return 0.0;
+    }
+    let tk = cx.theme.tokens();
+    let c = &cx.theme.colors;
+    let (text, muted, danger) = (c.text.to_color32(), c.text_muted.to_color32(), c.danger.to_color32());
+    let live = in_call.is_some();
+    let (word, word_color) = if info.connected { ("Voice connected", tk.positive_text) } else { ("Connecting…", crate::theme::readable_on(tk.attention, tk.raised)) };
+    let word_text = crate::plugins::sidebar::call_timer(&ctx, cx.state, word);
+    let word_g = one_line(ui, word_text, super::semibold(13.0), word_color, f32::INFINITY);
+    let chan_full = one_line(ui, info.place.clone(), super::semibold(14.0), text, f32::INFINITY);
+    let server_full = info.server.as_ref().map(|s| one_line(ui, s.clone(), FontId::proportional(12.0), muted, f32::INFINITY));
+    // 12 pad, dot, 8, word, 8, channel [6, server], 10, two 24 px buttons 4 apart, 2 pad.
+    let fixed = 12.0 + 8.0 + 8.0 + word_g.size().x + 8.0 + 10.0 + 52.0 + 2.0;
+    let room = max_w - fixed;
+    let server_w = server_full.as_ref().map_or(0.0, |g| 6.0 + g.size().x);
+    let show_server = chan_full.size().x + server_w <= room;
+    let chan_w = chan_full.size().x.min(room.max(0.0));
+    let width = (fixed + chan_w + if show_server { server_w } else { 0.0 }).max(160.0);
+
+    let pill = Rect::from_center_size(row.center(), vec2(width, 28.0));
+    let scale = egui::lerp(0.92..=1.0, t);
+    let to_gap = pill.right() - 2.0 - 52.0;
+    let unmute = Rect::from_min_size(pos2(to_gap, pill.center().y - 12.0), Vec2::splat(24.0));
+    let hang = unmute.translate(vec2(28.0, 0.0));
+    let place = Rect::from_min_max(pill.min, pos2(unmute.left() - 4.0, pill.max.y));
+    let pal = super::messages::Pal::new(cx.theme);
+    let mut action = None;
+    ui.with_visual_transform(super::motion::about(pill.center(), scale), |ui| {
+        ui.multiply_opacity(t);
+        let p = ui.painter().clone();
+        let stroke = if tk.mode == crate::theme::Mode::HighContrast { Stroke::new(1.5, muted) } else { Stroke::new(1.0, tk.rule) };
+        p.rect_filled(pill, 14, tk.raised);
+        p.rect_stroke(pill, 14, stroke, egui::StrokeKind::Inside);
+        super::messages::sheen(&p, pill, 14.0, &tk);
+
+        // The text part is one button: select the call's channel.
+        let go = ui.interact(place, ui.make_persistent_id("call_island_place"), Sense::click());
+        if go.hovered() && live {
+            p.rect_filled(place, CornerRadius { nw: 14, sw: 14, ne: 4, se: 4 }, tk.hover);
+        }
+        let mid = pill.center().y;
+        p.circle_filled(pos2(pill.left() + 12.0 + 4.0, mid), 4.0, if info.connected { tk.positive } else { tk.attention });
+        let mut x = pill.left() + 12.0 + 8.0 + 8.0;
+        p.galley(pos2(x, mid - word_g.size().y / 2.0), word_g.clone(), word_color);
+        x += word_g.size().x + 8.0;
+        let chan = if chan_w < chan_full.size().x { one_line(ui, info.place.clone(), super::semibold(14.0), text, chan_w) } else { chan_full.clone() };
+        p.galley(pos2(x, mid - chan.size().y / 2.0), chan.clone(), text);
+        if let (true, Some(g)) = (show_server, &server_full) {
+            p.galley(pos2(x + chan.size().x + 6.0, mid - g.size().y / 2.0), g.clone(), muted);
+        }
+        if live {
+            let name = match &info.server {
+                Some(s) => format!("{}, {}, {s}", word, info.place),
+                None => format!("{}, {}", word, info.place),
+            };
+            go.widget_info(|| WidgetInfo::labeled(Role::Button, true, &name));
+            if go.has_focus() {
+                super::messages::focus_ring(ui, &pal, place, 14.0);
+            }
+            if go.on_hover_text(format!("Open {}", info.place)).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                action = Some(false);
+            }
+        }
+
+        // Mute and disconnect: 24 px round buttons, 16 px icons.
+        let mic = ui.interact(unmute, ui.make_persistent_id("call_island_mute"), Sense::click());
+        let r = super::motion::pressed(&mic, unmute);
+        let (fill, fg) = if info.muted { (danger.gamma_multiply(0.12), danger) } else { (if mic.hovered() { tk.hover } else { Color32::TRANSPARENT }, text) };
+        p.circle_filled(r.center(), r.width() / 2.0, fill);
+        icons::paint(&p, if info.muted { Icon::MicOff } else { Icon::Mic }, Rect::from_center_size(r.center(), Vec2::splat(16.0)), fg, tk.raised.blend(fill));
+        let tip = if info.muted { "Unmute" } else { "Mute" };
+        mic.widget_info(|| WidgetInfo::labeled(Role::Button, true, tip));
+        if mic.has_focus() {
+            super::messages::focus_ring(ui, &pal, unmute, 12.0);
+        }
+        if live && mic.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            action = Some(true);
+        }
+
+        let end = ui.interact(hang, ui.make_persistent_id("call_island_end"), Sense::click());
+        let r = super::motion::pressed(&end, hang);
+        let hot = end.hovered() || end.has_focus();
+        let (fill, fg) = if hot { (tk.danger_fill, tk.danger_label) } else { (Color32::TRANSPARENT, danger) };
+        p.circle_filled(r.center(), r.width() / 2.0, fill);
+        icons::paint(&p, Icon::Hangup, Rect::from_center_size(r.center(), Vec2::splat(16.0)), fg, tk.raised.blend(fill));
+        end.widget_info(|| WidgetInfo::labeled(Role::Button, true, "Disconnect"));
+        if end.has_focus() {
+            super::messages::focus_ring(ui, &pal, hang, 12.0);
+        }
+        if live && end.on_hover_text("Disconnect").on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            cx.cmd.send(Command::LeaveVoice);
+        }
+    });
+    match action {
+        Some(false) => {
+            cx.state.select_channel(info.channel);
+            cx.view.settings_open = false;
+        }
+        Some(true) => super::call::toggle_mute(cx, true),
+        None => {}
+    }
+    t
 }
 
 /// Channel-list card: the sidebar colour with a 12 px top-left corner over the server-bar

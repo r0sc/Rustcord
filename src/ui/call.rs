@@ -679,7 +679,7 @@ pub(super) fn toggle_share(cx: &mut UiCx<'_>) {
 }
 
 /// Microphone (`mic`) or headphones clicked: like the user panel's buttons.
-fn toggle_mute(cx: &mut UiCx<'_>, mic: bool) {
+pub(super) fn toggle_mute(cx: &mut UiCx<'_>, mic: bool) {
     let (mute, deaf) = (cx.view.self_mute, cx.view.self_deaf);
     let (m, d) = toggle_voice(mute, deaf, mic);
     (cx.view.self_mute, cx.view.self_deaf) = (m, d);
