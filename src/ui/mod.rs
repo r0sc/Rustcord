@@ -163,6 +163,13 @@ pub struct ViewState {
     pub(crate) conn_since: Instant,
     /// Themes listed on the settings page; loaded when it opens, dropped when it closes.
     pub(crate) settings_themes: Option<Vec<Theme>>,
+    /// The blurred, frozen picture of the app behind the settings panel (§7.2); dropped when
+    /// settings close or the theme changes.
+    pub(crate) settings_backdrop: Option<egui::TextureHandle>,
+    /// The picture was asked for in this opening of settings (reset when they close).
+    pub(crate) backdrop_asked: bool,
+    /// Where the screenshot callback leaves the small blurred picture for the next frame.
+    pub(crate) backdrop_slot: Arc<std::sync::Mutex<Option<egui::ColorImage>>>,
     /// DMs closed in the sidebar (channel -> its last message then); local only, a newer
     /// message or opening the DM lists it again.
     pub hidden_dms: HashMap<Id, Option<Id>>,
@@ -295,6 +302,9 @@ impl Default for ViewState {
             pending_acks: HashMap::new(),
             conn_since: Instant::now(),
             settings_themes: None,
+            settings_backdrop: None,
+            backdrop_asked: false,
+            backdrop_slot: Arc::default(),
             hidden_dms: HashMap::new(),
             dm_filter: String::new(),
             self_mute: false,
@@ -991,6 +1001,9 @@ impl eframe::App for RustcordApp {
         if self.view.theme_dirty {
             self.view.theme_dirty = false;
             self.theme_applier.apply(&ctx, &self.theme);
+            // The picture shows the old colours: the panel floats over the plain frame colour.
+            self.view.settings_backdrop = None;
+            drop(self.view.backdrop_slot.lock().map(|mut s| s.take()));
         }
 
         let mut cx = UiCx {
@@ -1192,27 +1205,52 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
     let (channels_w, max_w) = channel_list_width(width, right, cx.view.channel_list_w);
     let edge = sidebar::line(&c);
     frame_stats::time("title", || title_bar(ui, cx, up));
-    // Full-screen layers: they fade in and settle 0.98 -> 1 over LARGE (§7); closing is instant.
-    let shown = motion::anim(ui.ctx(), egui::Id::unique("rc_settings_layer"), cx.view.chat_hidden(), motion::LARGE, 0.0);
-    if cx.view.chat_hidden() {
+    // The settings panel fades in and settles 0.98 -> 1 over LARGE (§7); closing is instant.
+    let hidden = cx.view.chat_hidden();
+    let shown = motion::anim(ui.ctx(), egui::Id::unique("rc_settings_layer"), hidden, motion::LARGE, 0.0);
+    if hidden {
         pickers::close_if_open(ui.ctx(), cx);
         cx.view.inbox_open = false;
-        let page = egui::Frame::new().fill(fill.chat.to_color32());
-        // The wrapper stays at rest too: skipping it would change the widget ids under it.
-        let layer = |ui: &mut egui::Ui, add: &mut dyn FnMut(&mut egui::Ui)| {
-            let o = ui.max_rect().center();
-            ui.with_visual_transform(motion::about(o, egui::lerp(0.98..=1.0, shown)), |ui| {
-                ui.multiply_opacity(shown);
-                add(ui);
-            });
-        };
-        match cx.view.server_settings.filter(|_| !cx.view.settings_open) {
-            Some((g, p)) => egui::CentralPanel::default().frame(page).show(ui, |ui| layer(ui, &mut |ui| server_settings::show(ui, cx, g, p))),
-            None => egui::CentralPanel::default().frame(page).show(ui, |ui| layer(ui, &mut |ui| user_settings::show(ui, cx))),
-        };
-        return;
+        if !cx.view.backdrop_asked {
+            // One frame draws the app as usual (below) and takes its picture; no read ack comes
+            // of it (the auto-ack gate in `RustcordApp::sync` stays on `chat_hidden`).
+            cx.view.backdrop_asked = true;
+            capture_backdrop(ui.ctx(), cx.view.backdrop_slot.clone());
+        } else {
+            if cx.view.settings_backdrop.is_none()
+                && let Some(img) = cx.view.backdrop_slot.lock().ok().and_then(|mut s| s.take())
+            {
+                cx.view.settings_backdrop = Some(ui.ctx().load_texture("rc_settings_backdrop", img, egui::TextureOptions::LINEAR));
+            }
+            let scrim = cx.theme.tokens().scrim;
+            let picture = cx.view.settings_backdrop.as_ref().map(|t| t.id());
+            let page = egui::Frame::new().fill(fill.frame.to_color32());
+            // The wrapper stays at rest too: skipping it would change the widget ids under it.
+            let layer = |ui: &mut egui::Ui, add: &mut dyn FnMut(&mut egui::Ui)| {
+                let rect = ui.max_rect();
+                if let Some(id) = picture {
+                    // The part of the picture under the title bar; it is there at once, the scrim fades in over it.
+                    let top = TITLE_BAR_H / (rect.height() + TITLE_BAR_H);
+                    ui.painter().image(id, rect, egui::Rect::from_min_max(egui::pos2(0.0, top), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+                }
+                ui.painter().rect_filled(rect, 0.0, scrim.gamma_multiply(shown));
+                ui.with_visual_transform(motion::about(rect.center(), egui::lerp(0.98..=1.0, shown)), |ui| {
+                    ui.multiply_opacity(shown);
+                    add(ui);
+                });
+            };
+            match cx.view.server_settings.filter(|_| !cx.view.settings_open) {
+                Some((g, p)) => egui::CentralPanel::default().frame(page).show(ui, |ui| layer(ui, &mut |ui| server_settings::show(ui, cx, g, p))),
+                None => egui::CentralPanel::default().frame(page).show(ui, |ui| layer(ui, &mut |ui| user_settings::show(ui, cx))),
+            };
+            return;
+        }
+    } else {
+        cx.view.settings_backdrop = None;
+        cx.view.backdrop_asked = false;
+        drop(cx.view.backdrop_slot.lock().map(|mut s| s.take()));
+        cx.view.settings_themes = None;
     }
-    cx.view.settings_themes = None;
     let _t = frame_stats::scope("rail");
     egui::Panel::left("guild_bar")
         .exact_size(GUILD_BAR_W)
@@ -1346,7 +1384,8 @@ fn member_list_shown(settings: &Settings, state: &AppState, width: f32) -> bool 
 /// wide; 0 when there is none (settings, Friends page, narrow window). Search results size
 /// themselves (search.rs).
 fn right_column_w(view: &ViewState, settings: &Settings, state: &AppState, width: f32) -> f32 {
-    if view.chat_hidden() || friends::is_open(state) {
+    // On the one frame that is drawn for the settings picture (`backdrop_asked` still false) the app shows as usual.
+    if (view.chat_hidden() && view.backdrop_asked) || friends::is_open(state) {
         0.0
     } else if call::is_open(state) && !dm_call::in_chat(state) {
         call::chat_w(view, width)
@@ -1519,15 +1558,64 @@ pub fn dialog_footer<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R)
     add(&mut row)
 }
 
-/// Nav column width of the settings layers (192 px content + 26 px padding).
-const LAYER_NAV_W: f32 = 218.0;
-/// Page column of the settings layers.
-const LAYER_PAGE_W: f32 = 740.0;
+/// Asks for one picture of the frame being drawn, shrinks it to 1/8 and blurs it (§7.2); the next frame
+/// finds it in `slot`. The full-size copies are gone when the callback returns.
+fn capture_backdrop(ctx: &egui::Context, slot: Arc<std::sync::Mutex<Option<egui::ColorImage>>>) {
+    let ctx2 = ctx.clone();
+    ctx.request_screenshot(move |img| {
+        let [w, h] = img.size;
+        let rgba: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
+        if let Some(big) = image::RgbaImage::from_raw(w as u32, h as u32, rgba) {
+            let small = image::imageops::thumbnail(&big, (w as u32 / 8).max(1), (h as u32 / 8).max(1));
+            let small = image::imageops::blur(&small, 2.5);
+            let size = [small.width() as usize, small.height() as usize];
+            if let Ok(mut s) = slot.lock() {
+                *s = Some(egui::ColorImage::from_rgba_unmultiplied(size, small.as_raw()));
+            }
+        }
+        ctx2.request_repaint();
+    });
+}
 
-/// Full-screen settings layer (user and server settings, FEATURES_NOTES §4.9): `nav` in a
-/// column right-aligned in the left ~30 % (sidebar colour), `page` in a ≤ 740 px scrolling
-/// column, a round × ("Esc") in a 60 px tools column right of it. True when it should close: the ×, or Esc while no
-/// popup, profile card or dialog is above it. `salt` keeps the two layers' scroll states apart.
+/// Settings panel: widest it gets, and its nav column (208 px in windows narrower than `NARROW_W`).
+const PANEL_MAX_W: f32 = 1180.0;
+const PANEL_NAV_W: f32 = 248.0;
+const PANEL_NAV_W_NARROW: f32 = 208.0;
+/// Page column of the settings panel.
+const LAYER_PAGE_W: f32 = 740.0;
+const NARROW_W: f32 = 960.0;
+
+/// Fade at the top and bottom of a scrolled settings column, in the column's own colour (flat,
+/// opaque in every theme). `x0` / `x1` keep it off the panel's rounded corners.
+fn scroll_fades<R>(ui: &egui::Ui, out: &egui::scroll_area::ScrollAreaOutput<R>, area: egui::Rect, (x0, x1): (f32, f32), color: egui::Color32) {
+    use egui::{Rect, pos2};
+    let fade = 20.0;
+    let top = out.state.clamped_offset().y;
+    let below = out.content_size.y - out.inner_rect.height() - top;
+    for (t, rect, is_top) in [
+        (top, Rect::from_min_max(pos2(x0, area.top()), pos2(x1, area.top() + fade)), true),
+        (below, Rect::from_min_max(pos2(x0, area.bottom() - fade), pos2(x1, area.bottom())), false),
+    ] {
+        if t <= 0.0 {
+            continue;
+        }
+        let mut mesh = egui::Mesh::default();
+        mesh.add_colored_rect(rect, color);
+        for v in &mut mesh.vertices {
+            // Full at the column's edge (once scrolled `fade` px), nothing `fade` px in.
+            let edge = (if is_top { rect.bottom() - v.pos.y } else { v.pos.y - rect.top() }) / fade;
+            v.color = color.gamma_multiply(((t / fade).min(1.0) * edge).clamp(0.0, 1.0));
+        }
+        ui.painter().add(mesh);
+    }
+}
+
+/// Settings layer (user and server settings, FEATURES_NOTES §4.9, DESIGN §7): a floating panel
+/// (at most 1180 wide, inset from the window, radius 2.5r, E3) over the frozen picture
+/// `main_layout` draws: `nav` in the left column (sidebar colour), `page` in a ≤ 740 px scrolling
+/// column, a ghost × at the panel's top right. True when it should close: the ×, or Esc while no
+/// popup, profile card or dialog is above it; a click on the dim does nothing. `salt` keeps the
+/// two layers' scroll states apart.
 pub fn settings_layer(
     ui: &mut egui::Ui,
     cx: &mut UiCx<'_>,
@@ -1535,80 +1623,60 @@ pub fn settings_layer(
     nav: impl FnOnce(&mut egui::Ui, &mut UiCx<'_>),
     page: impl FnOnce(&mut egui::Ui, &mut UiCx<'_>),
 ) -> bool {
-    use egui::{Margin, Rect, ScrollArea, UiBuilder, pos2, vec2};
-    let c = cx.theme.colors.clone();
+    use egui::{CornerRadius, Margin, Rect, ScrollArea, Stroke, UiBuilder, pos2, vec2};
+    let pal = messages::Pal::new(cx.theme);
+    let (sidebar, background) = (cx.theme.colors.sidebar.to_color32(), cx.theme.colors.background.to_color32());
     let full = ui.max_rect();
-    let left = Rect::from_min_max(full.min, pos2(full.left() + (full.width() * 0.3).max(LAYER_NAV_W + 8.0), full.bottom()));
-    ui.painter().rect_filled(left, 0.0, cx.theme.panel_fills().card.to_color32());
-    let nav_col = Rect::from_min_max(pos2(left.right() - LAYER_NAV_W, full.top()), left.right_bottom());
-    let out = ui.scope_builder(UiBuilder::new().max_rect(nav_col), |ui| {
-        // egui's own fade would cover only the nav column, in the window's colour.
+    let narrow = full.width() < NARROW_W;
+    let (side, top) = if narrow { (12.0, 12.0) } else { (24.0, 16.0) };
+    let avail = Rect::from_min_max(full.min + vec2(side, top), full.max - vec2(side, side));
+    let half = avail.width().min(PANEL_MAX_W) / 2.0;
+    let panel = Rect::from_min_max(pos2(avail.center().x - half, avail.top()), pos2(avail.center().x + half, avail.bottom()));
+    let r = pal.modal_radius();
+    let nav_rect = Rect::from_min_max(panel.min, pos2(panel.left() + if narrow { PANEL_NAV_W_NARROW } else { PANEL_NAV_W }, panel.bottom()));
+    let page_rect = Rect::from_min_max(pos2(nav_rect.right(), panel.top()), panel.max);
+    let p = ui.painter().clone();
+    p.add(ui.visuals().window_shadow.as_shape(panel, r));
+    p.rect_filled(nav_rect, CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, sidebar);
+    p.rect_filled(page_rect, CornerRadius { ne: r, se: r, nw: 0, sw: 0 }, background);
+
+    let nav_out = ui.scope_builder(UiBuilder::new().max_rect(nav_rect), |ui| {
         ui.spacing_mut().scroll.fade.strength = 0.0;
         ScrollArea::vertical().id_salt((salt, "nav")).auto_shrink(false).show(ui, |ui| {
-            egui::Frame::new().inner_margin(Margin { left: 20, right: 6, top: 60, bottom: 60 }).show(ui, |ui| {
+            egui::Frame::new().inner_margin(Margin { left: 12, right: 12, top: 16, bottom: 24 }).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().item_spacing.y = 2.0;
                 nav(ui, cx);
             });
         })
     });
-    // Scroll fades across the whole sidebar, ramping to the colour it shows: its fill over the
-    // page's, for a gradient theme over the window gradient (sampled per vertex).
-    let fills = cx.theme.panel_fills();
-    let (chat, card, fade) = (fills.chat.to_color32(), fills.card.to_color32(), 20.0);
-    let below = out.inner.content_size.y - out.inner.inner_rect.height() - out.inner.state.clamped_offset().y;
-    for (t, rect, top) in [
-        (out.inner.state.clamped_offset().y, Rect::from_min_max(left.min, pos2(left.right(), left.top() + fade)), true),
-        (below, Rect::from_min_max(pos2(left.left(), left.bottom() - fade), left.max), false),
-    ] {
-        if t <= 0.0 {
-            continue;
-        }
-        let mut mesh = match &cx.theme.gradient {
-            Some(g) => g.mesh(ui.ctx().viewport_rect(), &[rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom()]),
-            None => {
-                let mut m = egui::Mesh::default();
-                m.add_colored_rect(rect, egui::Color32::BLACK);
-                m
-            }
-        };
-        for v in &mut mesh.vertices {
-            // Full at the sidebar's edge (once scrolled `fade` px), nothing `fade` px in.
-            let edge = (if top { rect.bottom() - v.pos.y } else { v.pos.y - rect.top() }) / fade;
-            v.color = v.color.blend(chat).blend(card).gamma_multiply(((t / fade).min(1.0) * edge).clamp(0.0, 1.0));
-        }
-        ui.painter().add(mesh);
-    }
-    let right = Rect::from_min_max(pos2(left.right(), full.top()), full.max);
-    let col_w = (right.width() - 40.0 - 60.0).clamp(160.0, LAYER_PAGE_W);
-    ui.scope_builder(UiBuilder::new().max_rect(right), |ui| {
+    let col_w = (page_rect.width() - 80.0).clamp(160.0, LAYER_PAGE_W);
+    let pad = ((page_rect.width() - col_w) / 2.0).max(40.0);
+    let page_out = ui.scope_builder(UiBuilder::new().max_rect(page_rect), |ui| {
+        ui.spacing_mut().scroll.fade.strength = 0.0;
         ScrollArea::vertical().id_salt((salt, "page")).auto_shrink(false).show(ui, |ui| {
-            egui::Frame::new().inner_margin(Margin { left: 40, right: 0, top: 60, bottom: 80 }).show(ui, |ui| {
+            egui::Frame::new().inner_margin(Margin { left: pad as i8, right: 0, top: 40, bottom: 64 }).show(ui, |ui| {
                 ui.set_width(col_w);
                 page(ui, cx);
             });
-        });
+        })
     });
-    // Round × (36, `edge` ring) centred in the tools column, 60 px from the top.
-    let x = Rect::from_center_size(pos2(right.left() + 40.0 + col_w + 30.0, full.top() + 78.0), vec2(36.0, 36.0));
-    let resp = ui.interact(x, ui.make_persistent_id((salt, "close")), egui::Sense::click());
-    let pal = messages::Pal::new(cx.theme);
-    let hot = resp.hovered() || resp.has_focus();
-    let color = if hot { c.text } else { c.text_muted }.to_color32();
-    if resp.hovered() {
-        ui.painter().circle_filled(x.center(), 18.0, pal.tk.hover);
-    }
-    ui.painter().circle_stroke(x.center(), 17.5, egui::Stroke::new(1.0, if hot { color } else { pal.tk.edge }));
-    icons::paint(ui.painter(), icons::Icon::Close, Rect::from_center_size(x.center(), vec2(20.0, 20.0)), color, egui::Color32::TRANSPARENT);
-    if resp.has_focus() {
-        messages::focus_ring(ui, &pal, x, 18.0);
-    }
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Close settings"));
+    let rf = f32::from(r);
+    scroll_fades(ui, &nav_out.inner, nav_rect, (nav_rect.left() + rf, nav_rect.right()), sidebar);
+    scroll_fades(ui, &page_out.inner, page_rect, (page_rect.left(), page_rect.right() - rf), background);
+    // Edges over the content: the outline (heavier in high contrast), the nav / page line, the lit top edge.
+    let outline = if super::theme::is_high_contrast(&cx.theme.colors) { Stroke::new(1.5, pal.muted) } else { Stroke::new(1.0, pal.tk.rule) };
+    p.rect_stroke(panel, r, outline, egui::StrokeKind::Inside);
+    p.vline(nav_rect.right() - 0.5, panel.y_range(), Stroke::new(1.0, pal.tk.rule));
+    messages::sheen(&p, panel, rf, &pal.tk);
+
+    let x = Rect::from_min_size(pos2(panel.right() - 48.0, panel.top() + 16.0), vec2(32.0, 32.0));
+    let close = messages::vector_button(&mut ui.new_child(UiBuilder::new().id_salt((salt, "close")).max_rect(x)), &pal, icons::Icon::Close, "Close settings (Esc)", 32.0, false, pal.text);
     let esc = ui.input(|i| i.key_pressed(egui::Key::Escape))
         && !egui::Popup::is_any_open(ui.ctx())
         && cx.view.profile_card.is_none()
         && !cx.view.dialog_open();
-    resp.on_hover_text("Close settings (Esc)").on_hover_cursor(egui::CursorIcon::PointingHand).clicked() || esc
+    close.clicked() || esc
 }
 
 /// Heading over a group of nav rows ("User settings"): the label role, muted, as written.
@@ -1827,6 +1895,7 @@ mod tests {
         assert_eq!(right_column_w(&view, &settings, &state, 1180.0), THREAD_PANEL_W);
         assert_eq!(right_column_w(&view, &settings, &state, 900.0), 0.0);
         view.settings_open = true;
+        view.backdrop_asked = true;
         assert_eq!(right_column_w(&view, &settings, &state, 1180.0), 0.0);
     }
 
