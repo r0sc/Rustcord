@@ -13,6 +13,7 @@ pub mod composer;
 pub mod cosmetics;
 pub mod dm_call;
 pub mod forum;
+pub mod forward;
 pub mod frame_stats;
 pub mod friends;
 pub mod guild_card;

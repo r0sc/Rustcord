@@ -1134,6 +1134,7 @@ Other values that exist: 35, 40–42, 47, 48, 50–55, 58–62, 64, 66, 68. Remo
 - If the key is absent: show "Message could not be loaded". **UNCONFIRMED** wording.
 
 **Forward (`message_reference.type == 1`):** the outer message has `type` 0 and empty `content`. Render `message_snapshots[0].message` with a "Forwarded" label.
+Rustcord parses a snapshot into a `Message` (`MessageSnapshot { message }`): the missing `id`, `author` and `channel_id` stay at their defaults, and the view borrows the forward's own id and author. Only the first snapshot is shown. A forward without a snapshot reads "This forwarded message can't be shown."
 
 ---
 

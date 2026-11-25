@@ -369,6 +369,7 @@ The rest are drawn on the same rules from these shapes:
 - `Edit`: a pencil at 45° with a tip triangle.
 - `Trash`: lid bar, handle and tapered can with two slits.
 - `Reply`: a curved arrow left.
+- `Forward`: the `Reply` strokes mirrored (a curved arrow right).
 - `Copy`: two offset sheets (existing).
 - `Link`: two rounded links (existing).
 - `IdCard`: card outline, a disc and two bars, no letters.
@@ -686,6 +687,13 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 - Mine: `chip` fill with a 1 px `link` border.
 
 **Embeds:** `surface`, a 4 px left bar in the embed colour, radius control.
+
+**Forwarded:**
+- The forwarded message sits in a frame with the quote bar (3 px wide, radius 2, `text_muted`
+  at 45 %), 12 px from the left.
+- First line: `Forward` 14 and "Forwarded", meta italic `text_muted`. Then its text, media, and
+  an origin line: "#channel" in meta `link` (a click jumps to the message), 8 px, the time in
+  meta `text_muted`. No middle dot.
 
 **Code:** `code_background`, mono B−1, radius control.
 

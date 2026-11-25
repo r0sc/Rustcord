@@ -802,6 +802,7 @@ struct HoverRow {
     rect: Rect,
     own: bool,
     system: bool,
+    editable: bool,
     content: String,
 }
 
@@ -1114,6 +1115,8 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>
     ONCE.call_once(|| {
         // Media (viewer.rs): `media`, `viewer`, `viewer-zoom`, `viewer-video`, `player`, `play`.
         super::viewer::demo(ctx, cx, ch, demo);
+        // Forwards (ui/forward.rs): `forward`.
+        super::forward::demo(cx, ch, demo);
         if demo("emoji") {
             ctx.data_mut(|d| d.insert_temp(composer::emoji_picker_id(), 0u64));
         }
@@ -1704,6 +1707,7 @@ fn message_block(
         rect,
         own: lc.me == Some(msg.author.id),
         system: system.is_some() || stub,
+        editable: msg.can_edit(),
         content: msg.content.clone(),
     })
 }
@@ -1925,7 +1929,7 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
     ui.spacing_mut().item_spacing.y = 4.0;
     // Settings > Chat: media posted as links (6.10), embeds (6.12), reactions (6.13).
     let view = &cx.state.account.settings;
-    let (links, embeds, reacts) = (view.chat_shows(10), view.chat_shows(12), view.chat_shows(13));
+    let (links, reacts) = (view.chat_shows(10), view.chat_shows(13));
     let show_content = !msg.content.is_empty() && !(links && content_is_media_link(msg));
     let note = placeholder(msg);
     // MessageLogger: earlier versions above, a deleted message greyed.
@@ -1949,6 +1953,21 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
             }
         });
     }
+    forwarded(ui, cx, lc, msg);
+    media_parts(ui, cx, lc, msg);
+    // Plugins (MessageLinkEmbeds): previews of linked messages; a click jumps there.
+    if let Some((ch, mid)) = crate::plugins::link_embeds::show(ui, cx, msg) {
+        jump_to(ui.ctx(), cx, ch, mid);
+    }
+    if reacts {
+        reactions(ui, cx, lc, memo, msg, hovered);
+    }
+}
+
+/// Attachments, stickers and embeds, filtered by Settings > Chat.
+fn media_parts(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message) {
+    let view = &cx.state.account.settings;
+    let (links, embeds) = (view.chat_shows(10), view.chat_shows(12));
     attachments(ui, cx, lc, msg);
     stickers(ui, cx, lc, msg);
     if msg.flags & SUPPRESS_EMBEDS == 0 {
@@ -1957,13 +1976,51 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
             embed(ui, cx, lc, msg, e, i);
         }
     }
-    // Plugins (MessageLinkEmbeds): previews of linked messages; a click jumps there.
-    if let Some((ch, mid)) = crate::plugins::link_embeds::show(ui, cx, msg) {
-        jump_to(ui.ctx(), cx, ch, mid);
-    }
-    if reacts {
-        reactions(ui, cx, lc, memo, msg, hovered);
-    }
+}
+
+/// A forward: the forwarded message in a quote frame (label, text, media, origin and time).
+fn forwarded(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message) {
+    let Some(snap) = msg.message_snapshots.first() else { return };
+    let pal = lc.pal;
+    let bg = row_bg(cx, &pal, msg);
+    // The copy has no id or author: the forward's, so spoilers, media and the lightbox key on it;
+    // the forward's own content is always empty.
+    let inner = Message { id: msg.id, channel_id: msg.channel_id, guild_id: msg.guild_id, author: msg.author.clone(), member: msg.member.clone(), ..snap.message.clone() };
+    let frame = Frame::new().inner_margin(Margin { left: 12, ..Margin::ZERO }).show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = 4.0;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            vector_icon(ui, Icon::Forward, 14.0, pal.muted, bg);
+            ui.label(RichText::new("Forwarded").size(pal.meta()).italics().color(pal.muted));
+        });
+        if !inner.content.is_empty() {
+            let opts = MdOpts { guild_id: lc.guild_id, mentions: &inner.mentions, id_salt: msg.id, color: None, highlight: &[], bg: Some(bg) };
+            markdown::render(ui, cx, &inner.content, &opts);
+        }
+        media_parts(ui, cx, lc, &inner);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let origin = msg.message_reference.as_ref().filter(|r| r.kind == 1).and_then(|r| Some((r.channel_id?, r.message_id?)));
+            if let Some((ch, mid)) = origin.filter(|(ch, _)| cx.state.channels.contains_key(ch)) {
+                let name = cx.state.channel_name(ch);
+                let name = if cx.state.channels[&ch].is_dm_like() { name } else { format!("#{name}") };
+                let r = ui
+                    .add(egui::Label::new(RichText::new(&name).size(pal.meta()).color(pal.link)).sense(Sense::click()))
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .on_hover_text("Jump to message");
+                r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, format!("Jump to message in {name}")));
+                if r.clicked() {
+                    jump_to(ui.ctx(), cx, ch, mid);
+                }
+            }
+            let time = time_labels(ui.ctx(), &inner.timestamp);
+            if !time.header.is_empty() {
+                ui.label(RichText::new(&time.header).size(pal.meta()).color(pal.muted));
+            }
+        });
+    });
+    let r = frame.response.rect;
+    ui.painter().rect_filled(Rect::from_min_max(r.min, pos2(r.left() + 3.0, r.bottom())), 2, pal.muted.gamma_multiply(0.45));
 }
 
 fn edit_box(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &Message) {
@@ -2604,7 +2661,7 @@ fn hover_toolbar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
                 memo.menu = (!open).then_some(MsgMenu { id: h.id, anchor: more.rect, from_button: true, new: true });
                 ui.ctx().request_repaint();
             }
-            if h.own && !h.system && icon_button(ui, &pal, "✏", "Edit", SIDE, false, pal.text).clicked() {
+            if h.own && !h.system && h.editable && icon_button(ui, &pal, "✏", "Edit", SIDE, false, pal.text).clicked() {
                 start_edit(cx, lc.ch, h.id, &h.content);
                 ui.ctx().request_repaint();
             }
@@ -2684,6 +2741,7 @@ fn message_menu(ui: &egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo) {
     let plugin_msg = msg.clone();
     let system = !normal_kind(msg.kind);
     let own = lc.me == Some(msg.author.id);
+    let can_edit = msg.can_edit();
     let content = msg.content.clone();
     let (mid, pinned, flags) = (msg.id, msg.pinned, msg.flags);
     let embeds = !msg.embeds.is_empty() && flags & SUPPRESS_EMBEDS == 0;
@@ -2747,7 +2805,7 @@ fn message_menu(ui: &egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo) {
                     react(&ctx, cx, lc.ch, mid, e, false);
                 }
             }
-            if own && !system && menu_item(ui, "Edit message", MenuIcon::Glyph("✏"), pal.text) {
+            if own && !system && can_edit && menu_item(ui, "Edit message", MenuIcon::Glyph("✏"), pal.text) {
                 start_edit(cx, lc.ch, mid, &content);
             }
             if lc.can_send && !system && menu_item(ui, "Reply", MenuIcon::Glyph("↩"), pal.text) {
@@ -2995,6 +3053,7 @@ fn fingerprint(m: &Message, layout: impl Hash) -> u64 {
     layout.hash(&mut h);
     (&m.content, &m.edited_timestamp, m.kind, m.flags).hash(&mut h);
     (m.attachments.len(), m.embeds.len(), m.sticker_items.len(), m.referenced_message.is_some()).hash(&mut h);
+    m.message_snapshots.first().map(|s| (s.message.content.len(), s.message.attachments.len(), s.message.embeds.len())).hash(&mut h);
     for r in &m.reactions {
         (&r.emoji, r.count, r.me).hash(&mut h);
     }
@@ -3090,6 +3149,10 @@ fn system_icon(kind: u8) -> Option<Icon> {
 }
 
 fn reply_preview(m: &Message) -> String {
+    if let Some(s) = m.message_snapshots.first().filter(|_| m.content.trim().is_empty()) {
+        let inner = reply_preview(&s.message);
+        return if inner.is_empty() { "Forwarded message".into() } else { inner };
+    }
     // Masked over the whole text first: a spoiler may span several lines.
     match mask_spoilers(&m.content).lines().map(str::trim).find(|l| !l.is_empty()) {
         Some(line) => truncate_chars(line, 120),
@@ -3179,11 +3242,11 @@ fn content_is_media_link(m: &Message) -> bool {
 }
 
 fn placeholder(m: &Message) -> Option<&'static str> {
-    if !m.content.is_empty() || !m.attachments.is_empty() || !m.embeds.is_empty() || !m.sticker_items.is_empty() {
+    if !m.content.is_empty() || !m.attachments.is_empty() || !m.embeds.is_empty() || !m.sticker_items.is_empty() || !m.message_snapshots.is_empty() {
         return None;
     }
     if m.message_reference.as_ref().is_some_and(|r| r.kind == 1) {
-        Some("Forwarded message (not shown by this client)")
+        Some("This forwarded message can't be shown.")
     } else if m.flags & IS_COMPONENTS_V2 != 0 {
         Some("This message uses components this client can't show.")
     } else {
@@ -3347,7 +3410,7 @@ fn local_format(iso: &str, fmt: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::MessageReference;
+    use crate::model::{MessageReference, MessageSnapshot};
 
     /// 2026-01-15 12:00:00 UTC.
     const NOON: u64 = 1_768_478_400_000;
@@ -3481,6 +3544,19 @@ mod tests {
         m.content.clear();
         m.attachments.push(Attachment::default());
         assert_eq!(reply_preview(&m), "Click to see attachment");
+    }
+
+    #[test]
+    fn forwards_preview_and_placeholder() {
+        let mut m = msg(NOON, 1);
+        m.message_reference = Some(MessageReference { kind: 1, ..Default::default() });
+        assert_eq!(placeholder(&m), Some("This forwarded message can't be shown."));
+        assert_eq!(reply_preview(&m), "");
+        m.message_snapshots = vec![MessageSnapshot::default()];
+        assert_eq!(placeholder(&m), None);
+        assert_eq!(reply_preview(&m), "Forwarded message");
+        m.message_snapshots[0].message.content = "inner".into();
+        assert_eq!(reply_preview(&m), "inner");
     }
 
     #[test]

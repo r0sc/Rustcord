@@ -1626,6 +1626,11 @@ fn notification_body(msg: &Message) -> String {
             format!("Sent a sticker: {}", s.name)
         } else if let Some(e) = msg.embeds.first() {
             e.title.clone().or_else(|| e.description.clone()).unwrap_or_default()
+        } else if let Some(s) = msg.message_snapshots.first() {
+            match notification_body(&s.message) {
+                inner if inner.is_empty() => "Forwarded a message".into(),
+                inner => format!("Forwarded: {inner}"),
+            }
         } else {
             String::new()
         };
@@ -2117,6 +2122,9 @@ mod tests {
         assert_eq!(create(&mut s, attachment_only, None).unwrap().body, "Sent an attachment");
         let long = Message { content: "x".repeat(500), ..Default::default() };
         assert_eq!(notification_body(&long).chars().count(), 201);
+        let snap = |content: &str| Message { message_snapshots: vec![MessageSnapshot { message: Message { content: content.into(), ..Default::default() } }], ..Default::default() };
+        assert_eq!(notification_body(&snap("look")), "Forwarded: look");
+        assert_eq!(notification_body(&snap("")), "Forwarded a message");
     }
 
     #[test]

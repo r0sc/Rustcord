@@ -1154,7 +1154,7 @@ fn edit_last(cx: &mut UiCx<'_>, ch: Id) {
         .state
         .messages
         .get(&ch)
-        .and_then(|c| c.msgs.iter().rev().find(|m| Some(m.author.id) == me && matches!(m.kind, 0 | 19)));
+        .and_then(|c| c.msgs.iter().rev().find(|m| Some(m.author.id) == me && m.can_edit()));
     if let Some(m) = last {
         cx.view.edit_text = m.content.clone();
         cx.view.editing = Some((ch, m.id));

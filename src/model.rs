@@ -847,9 +847,25 @@ pub struct Message {
     pub nonce: Option<serde_json::Value>,
     #[serde(deserialize_with = "null_default")]
     pub pinned: bool,
+    /// A forward carries the forwarded message here (one snapshot is used).
+    #[serde(deserialize_with = "null_default", skip_serializing_if = "Vec::is_empty")]
+    pub message_snapshots: Vec<MessageSnapshot>,
+}
+
+/// A forwarded message. Its fields are a subset of `Message`; the missing id/author/channel_id
+/// stay at their defaults.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MessageSnapshot {
+    pub message: Message,
 }
 
 impl Message {
+    /// Its author may edit its text: not a forward.
+    pub fn can_edit(&self) -> bool {
+        matches!(self.kind, 0 | 19) && self.message_snapshots.is_empty()
+    }
+
     pub fn nonce_str(&self) -> Option<String> {
         match &self.nonce {
             Some(serde_json::Value::String(s)) => Some(s.clone()),
@@ -2086,5 +2102,28 @@ mod tests {
         assert!(!a(Some("image/gif"), "x.mp4").is_video(), "the content type wins");
         assert!(a(None, "Clip.MOV").is_video() && a(None, "a.webm").is_video() && a(None, "a.m4v").is_video());
         assert!(!a(None, "a.mp3").is_video());
+    }
+
+    #[test]
+    fn forward_with_a_snapshot_without_id_or_author() {
+        let m: Message = serde_json::from_str(
+            r#"{"id":"5","channel_id":"2","type":0,"content":"","flags":16384,"message_reference":{"type":1,"message_id":"4","channel_id":"3"},
+            "message_snapshots":[{"message":{"content":"hello","timestamp":"2026-01-01T10:00:00+00:00","type":0,"attachments":[{"id":"9","filename":"a.png"}]}}]}"#,
+        )
+        .unwrap();
+        let s = &m.message_snapshots[0].message;
+        assert_eq!((s.content.as_str(), s.id, s.author.id, s.attachments.len()), ("hello", Id(0), Id(0), 1));
+        assert!(!m.can_edit());
+        // A plain message carries no snapshot key into the cache.
+        assert!(!serde_json::to_string(&Message::default()).unwrap().contains("message_snapshots"));
+    }
+
+    #[test]
+    fn only_text_and_replies_can_be_edited() {
+        let m = |kind| Message { kind, ..Default::default() };
+        assert!(m(0).can_edit() && m(19).can_edit());
+        assert!(!m(7).can_edit() && !m(20).can_edit());
+        let fwd = Message { message_snapshots: vec![MessageSnapshot::default()], ..Default::default() };
+        assert!(!fwd.can_edit());
     }
 }

@@ -61,6 +61,7 @@ pub(crate) enum Icon {
     Edit,
     Trash,
     Reply,
+    Forward,
     Copy,
     Link,
     External,
@@ -143,12 +144,12 @@ pub(crate) enum Badge {
 
 impl Icon {
     /// Every icon, in declaration order (the icon sheet hook, tests).
-    pub(crate) const ALL: [Icon; 102] = {
+    pub(crate) const ALL: [Icon; 103] = {
         use Icon::*;
         [
             Text, Voice, Announcement, Stage, Forum, Media, Thread, Rules, Directory, Playing, Listening, Streaming, Watching, Competing, Mic, MicOff, Headphones,
             Deafened, Camera, CameraOff, Screen, Hangup, Phone, Gear, Person, PersonAdd, PersonRemove, Members, At, IdCard, Close, Plus, Minus, Check, Search, Edit,
-            Trash, Reply, Copy, Link, External, Leave, Block, Shield, Ban, Refresh, Reset, Sort, Grip, More, Inbox, Pin, Message, Bell, BellOff, Archive, Envelope,
+            Trash, Reply, Forward, Copy, Link, External, Leave, Block, Shield, Ban, Refresh, Reset, Sort, Grip, More, Inbox, Pin, Message, Bell, BellOff, Archive, Envelope,
             SplitView, File, Attach, Hourglass, Key, Desktop, Card, Video, Eye, EyeOff, Lock, Unlock, Boost, Clock, Star, Globe, Info, Quest, Orb, Gift, Verified, Partnered, BoostTier1, BoostTier2, BoostTier3, Play, Pause, Download, VoiceOff, Expand, Collapse, ArrowLeft, ArrowRight, ChevronUp,
             ChevronDown,
             ChevronLeft, ChevronRight, Smile, Leaf, Food, Ball, Car, Bulb, Heart, Flag,
@@ -804,6 +805,12 @@ fn draw(k: &mut Pen, icon: Icon, locked: bool) {
             let mut pts = vec![(4.0, 10.0)];
             pts.extend(arc(13.0, 17.5, 7.5, -90.0, 0.0));
             k.line(&pts);
+        }
+        Forward => {
+            k.line(&mirror(&[(9.0, 4.5), (3.5, 10.0), (9.0, 15.5)]));
+            let mut pts = vec![(4.0, 10.0)];
+            pts.extend(arc(13.0, 17.5, 7.5, -90.0, 0.0));
+            k.line(&mirror(&pts));
         }
         Copy => {
             let mut back = vec![(6.5, 15.0)];
