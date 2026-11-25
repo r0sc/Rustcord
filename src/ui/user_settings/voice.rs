@@ -1,5 +1,5 @@
 //! Voice & Video: input / output device (`ListVoiceDevices` when the page opens, ⟳ to list
-//! again), input mode (voice activity with its threshold over my live level, or push-to-talk
+//! again), input volume, input mode (voice activity with its threshold over my live level, or push-to-talk
 //! with a captured key), mute / deafen, and the camera (`VideoCommand::ListCameras`; the pick
 //! is what the call UI starts; its preview while it is on in a call). Commands go to the local voice task, no request is sent. The
 //! choices are kept in `Settings` (this device) and re-sent at startup (`restore`).
@@ -43,6 +43,7 @@ fn input_mode(s: &Settings) -> InputMode {
 
 /// At startup: hands the saved devices and input mode to the voice task (local, no request).
 pub(in crate::ui) fn restore(s: &Settings, cmd: &CommandSender) {
+    crate::voice::audio::set_input_volume(s.voice_input_volume);
     if s.voice_input.is_some() || s.voice_output.is_some() {
         cmd.send(Command::SetVoiceDevices { input: s.voice_input.clone(), output: s.voice_output.clone() });
     }
@@ -102,6 +103,15 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut crate::ui::UiCx<'_>) -> bool {
     }
     if devices {
         cx.cmd.send(Command::SetVoiceDevices { input: s.voice_input.clone(), output: s.voice_output.clone() });
+        f.dirty = true;
+    }
+
+    ui.add_space(16.0);
+    field_label(ui, &pal, "Input volume");
+    ui.spacing_mut().slider_width = (col - 64.0).max(120.0);
+    if ui.add(egui::Slider::new(&mut s.voice_input_volume, 0..=crate::voice::audio::MAX_INPUT_VOLUME).suffix(" %")).changed() {
+        // Live, also in a call: the audio thread reads it for every frame.
+        crate::voice::audio::set_input_volume(s.voice_input_volume);
         f.dirty = true;
     }
 

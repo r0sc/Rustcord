@@ -96,11 +96,12 @@ pub struct Settings {
     pub client_build_number: Option<u64>,
     pub system_locale: Option<String>,
     /// Voice & Video (this device): cpal device names (None = system default), the voice
-    /// activity threshold (dBFS), the push-to-talk key (Windows VK, 0 = none) and whether
+    /// activity threshold (dBFS), the input volume (percent, 0-200, 100 = unchanged), the push-to-talk key (Windows VK, 0 = none) and whether
     /// push-to-talk is on, the camera (`CameraInfo::id`, None = the first one) for `StartCamera`.
     pub voice_input: Option<String>,
     pub voice_output: Option<String>,
     pub voice_threshold_db: f32,
+    pub voice_input_volume: u16,
     pub push_to_talk: bool,
     pub push_to_talk_key: u16,
     pub camera: Option<String>,
@@ -241,6 +242,7 @@ impl Default for Settings {
             voice_input: None,
             voice_output: None,
             voice_threshold_db: -50.0,
+            voice_input_volume: 100,
             push_to_talk: false,
             push_to_talk_key: 0,
             camera: None,
@@ -350,15 +352,18 @@ mod tests {
             voice_input: Some("Mic (USB)".into()),
             push_to_talk: true,
             push_to_talk_key: 0x05,
+            voice_input_volume: 150,
             favorite_gifs: vec![crate::model::GifItem { url: "https://x/1".into(), ..Default::default() }],
             ..Default::default()
         };
         let back: Settings = toml::from_str(&toml::to_string_pretty(&s).unwrap()).unwrap();
         assert_eq!((back.voice_input.as_deref(), back.push_to_talk, back.push_to_talk_key), (Some("Mic (USB)"), true, 5));
         assert_eq!((back.voice_output, back.voice_threshold_db, back.favorite_gifs.len()), (None, -50.0, 1));
+        assert_eq!(back.voice_input_volume, 150);
         // Older files lack the settings pages' fields: their defaults apply.
         let old: Settings = toml::from_str("theme = \"Ember Dark\"\n[streamer]\nenabled = true\n").unwrap();
         assert_eq!((old.zoom, old.flash_taskbar, old.streamer.enabled, old.streamer.hide_personal_info), (1.0, true, true, true));
+        assert_eq!(old.voice_input_volume, 100);
         assert!(old.streamer.hides_invites() && !old.streamer.hide_from_capture && !old.autostart_default_done);
         // Updates install automatically unless switched off; older files: on.
         assert!(old.auto_update && back.auto_update);

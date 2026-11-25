@@ -1,7 +1,7 @@
 //! Pure audio logic (no devices, no threads): level, voice gate, silence trailer, speaking
 //! indicator, jitter buffer, resampling, mixing and the Opus settings.
 
-use super::{CHANNELS, FRAME_SAMPLES, JITTER_PACKETS, SAMPLE_RATE};
+use super::{CHANNELS, FRAME_SAMPLES, JITTER_PACKETS, MAX_INPUT_VOLUME, SAMPLE_RATE};
 use opus_rs::{Application, OpusEncoder};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -18,6 +18,28 @@ const MAX_LOST: u8 = 5;
 const SPEAKING_HOLD: Duration = Duration::from_millis(250);
 /// Encoder output buffer (opus-rs caps packets at 1276 bytes).
 const MAX_PACKET: usize = 1276;
+
+/// Above this a boosted sample bends toward full scale instead of clipping (-6 dBFS).
+const KNEE: f32 = 0.5;
+
+/// Input volume (percent) as a gain: the square of the fraction, so 200 % is +12 dB, 50 % -12 dB, 100 % exactly 1.
+pub fn volume_gain(percent: u16) -> f32 {
+    let v = f32::from(percent.min(MAX_INPUT_VOLUME)) / 100.0;
+    v * v
+}
+
+/// Applies the input gain; above 1 a soft limiter (tanh past KNEE) keeps every sample within +-1. Gain 1: untouched.
+pub fn apply_volume(samples: &mut [f32], gain: f32) {
+    if gain == 1.0 {
+        return;
+    }
+    for s in samples {
+        *s *= gain;
+        if gain > 1.0 && s.abs() > KNEE {
+            *s = s.signum() * (KNEE + (1.0 - KNEE) * ((s.abs() - KNEE) / (1.0 - KNEE)).tanh());
+        }
+    }
+}
 
 /// dBFS of a block of samples, floored at -100.
 pub fn db(samples: &[f32]) -> f32 {
@@ -282,6 +304,43 @@ mod tests {
     use super::*;
     use crate::voice::audio::SILENCE_FRAME;
     use opus_rs::OpusDecoder;
+
+    #[test]
+    fn input_volume_gain() {
+        assert_eq!([0, 50, 100, 200, 999].map(volume_gain), [0.0, 0.25, 1.0, 4.0, 4.0]);
+        assert!((20.0 * volume_gain(200).log10() - 12.04).abs() < 0.01);
+    }
+
+    #[test]
+    fn full_volume_is_bit_exact() {
+        let src: Vec<f32> = (0..960).map(|i| (i as f32 * 0.37).sin() * 1.3).collect();
+        let mut out = src.clone();
+        apply_volume(&mut out, volume_gain(100));
+        assert_eq!(src.iter().map(|s| s.to_bits()).collect::<Vec<_>>(), out.iter().map(|s| s.to_bits()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn boost_never_exceeds_full_scale() {
+        let xs: Vec<f32> = (-2000..=2000).map(|i| i as f32 * 0.001).collect();
+        let mut ys = xs.clone();
+        apply_volume(&mut ys, 4.0);
+        assert!(ys.iter().all(|y| y.abs() <= 1.0));
+        assert!(ys.windows(2).all(|w| w[0] <= w[1]));
+        for (x, y) in xs.iter().zip(&ys) {
+            if (x * 4.0).abs() <= KNEE {
+                assert_eq!(*y, x * 4.0);
+            }
+        }
+        let mut k = [(KNEE + 1e-4) / 4.0];
+        apply_volume(&mut k, 4.0);
+        assert!((k[0] - KNEE).abs() < 1e-3);
+        let mut big = [1e6, -1e6, f32::MAX];
+        apply_volume(&mut big, 4.0);
+        assert!(big.iter().all(|y| y.abs() <= 1.0));
+        let mut q = [0.8];
+        apply_volume(&mut q, volume_gain(50));
+        assert!((q[0] - 0.2).abs() < 1e-6);
+    }
 
     #[test]
     fn level_in_db() {

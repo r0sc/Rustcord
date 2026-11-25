@@ -64,7 +64,7 @@ pub fn with_sub(current: &str, top: u32, sub: u32, put: impl FnOnce(&mut Vec<u8>
 | Data & Privacy | Only the local "Send read receipts" |
 | Appearance | Theme, member list, gradients |
 | Notifications | Desktop notifications, plus per-server levels |
-| `config::Settings` | `theme`, `desktop_notifications`, `send_read_acks`, `show_member_list`, `animate_others`, voice in/out/threshold/PTT/key, `camera`, `frequent_emoji`, `favorite_gifs` |
+| `config::Settings` | `theme`, `desktop_notifications`, `send_read_acks`, `show_member_list`, `animate_others`, voice in/out/threshold/`voice_input_volume`/PTT/key, `camera`, `frequent_emoji`, `favorite_gifs` |
 
 **Target sidebar** (2026 names):
 

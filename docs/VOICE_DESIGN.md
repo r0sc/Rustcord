@@ -15,7 +15,7 @@ voice task: both dispatches in → transport::ConnectInfo → audio::Audio::star
 transport::run ── wss://{endpoint}/?v=9 (JSON + binary DAVE ops ⇄ dave::Dave)
                ── UDP: send  Captured::Frame → Dave::encrypt_opus → RTP → AEAD → socket
                        recv  socket → AEAD → RTP → SSRC→user → Dave::decrypt → Playback::push
-audio thread  ── cpal capture → VAD/PTT → Opus encode → Captured (bounded) ; Playback → jitter → Opus decode → mix → cpal
+audio thread  ── cpal capture → input volume (soft limit above 100 %) → level / VAD/PTT → Opus encode → Captured (bounded) ; Playback → jitter → Opus decode → mix → cpal
 VoiceEvents (EventSink) ──BackendEvent::Voice──► UI: AppState::apply_voice → AppState::voice (+ toast)
 ```
 The voice token only travels gateway → voice task → transport (`auth::Secret`, redacted Debug);

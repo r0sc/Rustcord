@@ -1,5 +1,5 @@
 //! Audio engine: cpal capture and playback, Opus (opus-rs) encode/decode, per-SSRC jitter
-//! buffers, mixing, mute/deafen, voice activity and push-to-talk.
+//! buffers, mixing, mute/deafen, input volume, voice activity and push-to-talk.
 //!
 //! OWNERSHIP: audio engineer. Keep the pub items' signatures (mod.rs and transport.rs use
 //! them); add private helpers freely. Spec: VOICE_NOTES §2.8 (send), §2.9 (receive).
@@ -175,6 +175,17 @@ pub fn set_ptt_held(held: bool) {
     PTT_HELD.store(held, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Input volume slider maximum (percent; Settings > Voice & Video).
+pub const MAX_INPUT_VOLUME: u16 = 200;
+
+/// Input gain as f32 bits, read for every captured frame so a change applies at once (also mid-call).
+static INPUT_GAIN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1.0f32.to_bits());
+
+/// Microphone volume in percent (clamped to `MAX_INPUT_VOLUME`), from now on.
+pub fn set_input_volume(percent: u16) {
+    INPUT_GAIN.store(dsp::volume_gain(percent).to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
 /// One remote SSRC.
 struct Remote {
     user_id: Id,
@@ -299,11 +310,13 @@ impl Engine {
         {
             self.ptt_until = Some(now + PTT_RELEASE);
         }
+        let gain = f32::from_bits(INPUT_GAIN.load(std::sync::atomic::Ordering::Relaxed));
         let mut frame = [0.0; FRAME_SAMPLES];
         let mut used = 0;
         while self.pending.len() - used >= FRAME_SAMPLES {
             frame.copy_from_slice(&self.pending[used..used + FRAME_SAMPLES]);
             used += FRAME_SAMPLES;
+            dsp::apply_volume(&mut frame, gain);
             self.on_frame(&frame, now);
         }
         self.pending.drain(..used);
