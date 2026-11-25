@@ -64,7 +64,7 @@ pub(super) fn open_and_join(cx: &mut UiCx<'_>, ch: Id, video: bool) {
 }
 
 fn header_shown(state: &AppState, ch: Id) -> bool {
-    state.channels.get(&ch).is_some_and(Channel::is_dm_like) && state.voice.channel_id != Some(ch)
+    state.channels.get(&ch).is_some_and(Channel::is_dm_like) && state.voice.channel_id != Some(ch) && !state.is_message_request(ch)
 }
 
 /// Width of `header_buttons` in the chat header of `ch`.

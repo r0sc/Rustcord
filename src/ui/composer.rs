@@ -165,11 +165,15 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
         if !panel {
             pickers::close_if_open(&ctx, cx);
         }
-        card.inner_margin(input_margin).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.add(Label::new(RichText::new("You can't send messages here").color(pal.muted)).selectable(false))
-                .on_hover_text("You don't have permission to send messages in this channel.");
-        });
+        if cx.state.is_message_request(ch) {
+            super::requests::bar(ui, cx, &pal, ch);
+        } else {
+            card.inner_margin(input_margin).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.add(Label::new(RichText::new("You can't send messages here").color(pal.muted)).selectable(false))
+                    .on_hover_text("You don't have permission to send messages in this channel.");
+            });
+        }
         typing_line(ui, cx, &pal, ch, 0);
         return;
     }

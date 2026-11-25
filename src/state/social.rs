@@ -1008,6 +1008,7 @@ mod tests {
         assert_eq!(s.dm_unread_count(), 1, "requests are not on the Home badge");
         assert_eq!(s.request_counts(), (1, 1));
         assert!(!s.unread_channels().contains(&Id(201)));
+        assert!(!s.can_send(Id(201)) && !s.can_react(Id(201)) && s.can_view(Id(201)) && s.can_send(DM));
         let from = |id, channel, author| Message { id: Id(id), channel_id: channel, author: user(author, "x"), ..Default::default() };
         assert!(s.apply_gateway(GatewayEvent::MessageCreate(Box::new(from(90, Id(201), THIRD))), None).is_none());
         assert!(s.apply_gateway(GatewayEvent::MessageCreate(Box::new(from(91, DM, OTHER))), None).is_some());
@@ -1032,7 +1033,7 @@ mod tests {
         assert!(s.begin_request_action(&[Id(201)]) && !s.begin_request_action(&[Id(201)]) && !s.begin_request_action(&[]));
         assert!(s.apply_social(done(&[201], true, Ok(()))).is_none());
         let c = &s.channels[&Id(201)];
-        assert!(!c.is_message_request && !c.is_spam && s.social.request_busy.is_empty());
+        assert!(!c.is_message_request && !c.is_spam && s.social.request_busy.is_empty() && s.can_send(Id(201)));
         assert!(!s.is_message_request(Id(201)));
         s.select_channel(Id(202));
         assert!(s.begin_request_action(&[Id(202)]));

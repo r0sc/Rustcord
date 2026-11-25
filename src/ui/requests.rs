@@ -62,14 +62,14 @@ fn fetch(cx: &mut UiCx<'_>) {
     }
 }
 
-fn accept(cx: &mut UiCx<'_>, channel_id: Id) {
+pub(super) fn accept(cx: &mut UiCx<'_>, channel_id: Id) {
     if cx.state.begin_request_action(&[channel_id]) {
         cx.cmd.send(Command::Social(SocialCommand::AcceptMessageRequest { channel_id }));
     }
 }
 
 /// One Ignore needs no question (as Discord and the Friends page).
-fn ignore(cx: &mut UiCx<'_>, channel_id: Id) {
+pub(super) fn ignore(cx: &mut UiCx<'_>, channel_id: Id) {
     if cx.state.begin_request_action(&[channel_id]) {
         cx.cmd.send(Command::Social(SocialCommand::RejectMessageRequests { channel_ids: vec![channel_id] }));
     }
@@ -242,16 +242,12 @@ fn request_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, id: Id) {
         tick_resp.on_hover_text("You can ignore up to 50 at once.");
     }
 
-    // 3. Right to left: Ignore, then Accept (36 px circles, 10 px apart).
-    let mut right = row.right() - 10.0;
-    for (action, tip, label) in [
-        (Action::Remove, "Ignore", format!("Ignore {name}'s message request")),
-        (Action::Accept, "Accept", format!("Accept {name}'s message request")),
-    ] {
-        let rect = Rect::from_center_size(pos2(right - 18.0, row.center().y), Vec2::splat(36.0));
-        right -= 46.0;
+    // 3. Accept left of Ignore (36 px circles, 10 px apart), registered left to right.
+    let right = row.right() - 10.0 - 92.0;
+    for (action, tip, slot) in [(Action::Accept, "Accept", 1.0), (Action::Remove, "Ignore", 0.0)] {
+        let rect = Rect::from_center_size(pos2(row.right() - 10.0 - 18.0 - 46.0 * slot, row.center().y), Vec2::splat(36.0));
         let b = friends::round_button(ui, cx, pal, (id, rect), action, tip, hot);
-        b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
+        b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{tip} {name}'s message request")));
         if b.clicked() {
             if action == Action::Accept { accept(cx, id) } else { ignore(cx, id) }
         }
@@ -279,6 +275,46 @@ fn request_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, id: Id) {
         ui.painter().galley(pos2(left, top + (name_h - g.size().y) / 2.0), g, pal.muted);
     }
     ui.painter().galley(pos2(text_left, sub_y), sub_g, pal.muted);
+}
+
+/// In place of the composer under a request's DM: who it is from, Ignore and Accept (the
+/// view's one primary). Both are disabled while an answer is on its way.
+pub(super) fn bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id) {
+    let name = cx.state.channel_name(ch);
+    let spam = cx.state.channels.get(&ch).is_some_and(|c| c.is_spam);
+    let busy = cx.state.social.request_busy.contains(&ch);
+    let frame = Frame::new().fill(pal.surface).corner_radius(pal.card_radius()).inner_margin(Margin { left: 16, right: 12, top: 12, bottom: 12 });
+    frame.show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        let narrow = ui.available_width() < 480.0;
+        let hint = if spam { "Filed as spam. Be careful with links and files." } else { "Accept to reply. Ignoring deletes the request." };
+        let text = |ui: &mut egui::Ui| {
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.add(egui::Label::new(RichText::new(format!("Message request from {name}")).font(FontId::new(pal.body(), crate::theme::medium_family())).color(pal.text)).truncate());
+                ui.add(egui::Label::new(RichText::new(hint).font(FontId::proportional(pal.meta())).color(pal.muted)).truncate());
+            });
+        };
+        let buttons = |ui: &mut egui::Ui, cx: &mut UiCx<'_>| {
+            ui.spacing_mut().item_spacing.x = 12.0;
+            if messages::button(ui, pal, Btn::Primary, "Accept", !busy).clicked() {
+                accept(cx, ch);
+            }
+            if messages::button(ui, pal, Btn::Secondary, "Ignore", !busy).clicked() {
+                ignore(cx, ch);
+            }
+        };
+        if narrow {
+            text(ui);
+            ui.add_space(8.0);
+            ui.allocate_ui_with_layout(vec2(ui.available_width(), 32.0), Layout::right_to_left(Align::Center), |ui| buttons(ui, cx));
+        } else {
+            ui.horizontal(|ui| {
+                text(ui);
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| buttons(ui, cx));
+            });
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------

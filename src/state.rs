@@ -730,7 +730,8 @@ impl AppState {
     pub fn channel_permissions(&self, channel_id: Id) -> u64 {
         let Some(ch) = self.channels.get(&channel_id) else { return 0 };
         if ch.is_dm_like() {
-            return perm::ALL;
+            // Read-only until accepted (§2.4).
+            return if ch.is_message_request || ch.is_spam { perm::VIEW_CHANNEL | perm::READ_MESSAGE_HISTORY } else { perm::ALL };
         }
         let Some(guild) = ch.guild_id.and_then(|g| self.guild(g)) else { return 0 };
         self.perms_in(guild, self.base_permissions(guild), ch)
