@@ -117,9 +117,9 @@ fn visuals(theme: &Theme) -> egui::Visuals {
     };
     v.window_shadow = shadow(16, 48, 0.5, 0.18);
     v.popup_shadow = shadow(8, 24, 0.45, 0.14);
-    v.text_cursor.stroke = Stroke::new(2.0, c.accent.to_color32());
+    v.text_cursor.stroke = Stroke::new(2.0, tk.accent_ink);
 
-    // Selected text in temper blue; the stroke is also the label colour of selected buttons and
+    // Selected text in a purple tint; the stroke is also the label colour of selected buttons and
     // the border of a focused text field (recoloured to `focus` by ui::text_field_focus_ring).
     v.selection.bg_fill = tk.selection;
     v.selection.stroke = Stroke::new(2.0, text);

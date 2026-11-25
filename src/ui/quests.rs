@@ -1284,7 +1284,7 @@ mod tests {
         assert!(matches!(view.modal, Some(Modal::QuestVideo { quest_id: Id(103) })));
         // Watch on the playing quest: the modal only.
         view.modal = None;
-        let (mut images, mut theme) = (super::super::images::ImageCache::new(cmd.clone()), crate::theme::Theme::ember_dark());
+        let (mut images, mut theme) = (super::super::images::ImageCache::new(cmd.clone()), crate::theme::Theme::nightshade());
         let (mut settings, mut overrides) = (Default::default(), Default::default());
         let ctx = egui::Context::default();
         let mut cx = UiCx { state: &mut state, view: &mut view, images: &mut images, theme: &mut theme, settings: &mut settings, cmd: &cmd, overrides: &mut overrides };
@@ -1306,7 +1306,7 @@ mod tests {
             state.conn = ConnState::Connected;
             let (mut view, mut images) = (ViewState::default(), super::super::images::ImageCache::new(cmd.clone()));
             assert!(demo(&mut state, &mut view, token), "{token}");
-            let mut theme = crate::theme::Theme::ember_dark();
+            let mut theme = crate::theme::Theme::nightshade();
             let (mut settings, mut overrides) = (Default::default(), Default::default());
             let ctx = egui::Context::default();
             for _ in 0..3 {

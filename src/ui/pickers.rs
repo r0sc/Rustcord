@@ -1009,7 +1009,7 @@ mod tests {
         let mut state = AppState::from_snapshot(snapshot);
         let ch = state.selected_channel.unwrap();
         let (mut view, mut images) = (crate::ui::ViewState::default(), images::ImageCache::new(cmd.clone()));
-        let mut theme = crate::theme::Theme::ember_dark();
+        let mut theme = crate::theme::Theme::nightshade();
         let (mut settings, mut overrides) = (Default::default(), Default::default());
         let ctx = egui::Context::default();
         open(&ctx, tab);
@@ -1102,7 +1102,7 @@ mod tests {
         #[cfg(windows)]
         {
             // Segoe UI Emoji joins ZWJ sequences but has no flags; keycaps start with a text digit.
-            crate::theme::ThemeApplier::default().apply(&ctx, &crate::theme::Theme::ember_dark());
+            crate::theme::ThemeApplier::default().apply(&ctx, &crate::theme::Theme::nightshade());
             ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
             assert!(["👍🏽", "👨‍👩‍👧", "🦀", "🥺", "🏳️‍🌈", "👩🏽‍💻"].iter().all(|s| drawable(&ctx, s)));
             assert!(!drawable(&ctx, "1️⃣") && !drawable(&ctx, "🇩🇪"));

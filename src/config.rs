@@ -259,7 +259,7 @@ pub const MAX_FAVORITE_GIFS: usize = 100;
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme: "Ember Dark".into(),
+            theme: "Nightshade".into(),
             desktop_notifications: true,
             send_read_acks: true,
             show_member_list: true,
@@ -395,6 +395,7 @@ mod tests {
         let old: Settings = toml::from_str("theme = \"Ember Dark\"\n[streamer]\nenabled = true\n").unwrap();
         assert_eq!((old.zoom, old.flash_taskbar, old.streamer.enabled, old.streamer.hide_personal_info), (1.0, true, true, true));
         assert_eq!(old.voice_input_volume, 100);
+        assert_eq!(crate::theme::Theme::find(&old.theme).name, "Nightshade");
         assert!(old.streamer.hides_invites() && !old.streamer.hide_from_capture && !old.autostart_default_done);
         // Updates install automatically unless switched off; older files: on.
         assert!(old.auto_update && back.auto_update);

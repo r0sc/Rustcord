@@ -852,7 +852,7 @@ mod tests {
     #[test]
     fn rules_only_between_rows_of_a_group() {
         let ctx = egui::Context::default();
-        let theme = crate::theme::Theme::ember_dark();
+        let theme = crate::theme::Theme::nightshade();
         crate::theme::ThemeApplier::default().apply(&ctx, &theme);
         let mut rules = 0;
         // The theme's fonts are in from the second pass.

@@ -1194,7 +1194,7 @@ mod tests {
 
     #[test]
     fn gold_tag_reaches_4_5_on_cream() {
-        // MoreUserTags' OWNER chip on Paper Light's darkest surface (`plugins/people.rs` paint_chip).
+        // MoreUserTags' OWNER chip on Lilac's darkest surface (`plugins/people.rs` paint_chip).
         let gold = Color32::from_rgb(0xF0, 0xB2, 0x32);
         let bg = Color32::from_rgb(0xED, 0xE6, 0xDC).blend(gold.gamma_multiply(0.18));
         assert!(contrast(reach(gold, &[bg], Color32::BLACK, 4.5), bg) >= 4.5);

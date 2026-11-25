@@ -383,14 +383,14 @@ mod tests {
         const W: f32 = 394.0;
         let ctx = egui::Context::default();
         let mut applier = crate::theme::ThemeApplier::default();
-        let (mut state, mut view, mut settings, mut theme) = (Default::default(), ViewState::default(), Default::default(), Theme::ember_dark());
+        let (mut state, mut view, mut settings, mut theme) = (Default::default(), ViewState::default(), Default::default(), Theme::nightshade());
         let mut overrides = Default::default();
         let cmd = crate::backend::CommandSender(tokio::sync::mpsc::unbounded_channel().0);
         let mut images = crate::ui::images::ImageCache::new(cmd.clone());
         let mut cx = UiCx { state: &mut state, view: &mut view, images: &mut images, theme: &mut theme, settings: &mut settings, cmd: &cmd, overrides: &mut overrides };
         let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(W, 2000.0))), ..Default::default() };
         // The gradient rows (5 colour buttons, two more sliders) too.
-        for (size, name) in [(14.5, "Ember Dark"), (24.0, "Ember Dark"), (24.0, "Chroma Glow")] {
+        for (size, name) in [(14.5, "Nightshade"), (24.0, "Nightshade"), (24.0, "Chroma Glow")] {
             *cx.theme = Theme::find(name);
             cx.theme.font.size = size;
             applier.apply(&ctx, cx.theme);
@@ -413,7 +413,7 @@ mod tests {
         // held pointer and made the size oscillate.
         let ctx = egui::Context::default();
         let mut applier = crate::theme::ThemeApplier::default();
-        let (mut state, mut view, mut settings, mut theme) = (Default::default(), ViewState::default(), Default::default(), Theme::ember_dark());
+        let (mut state, mut view, mut settings, mut theme) = (Default::default(), ViewState::default(), Default::default(), Theme::nightshade());
         let mut overrides = Default::default();
         let cmd = crate::backend::CommandSender(tokio::sync::mpsc::unbounded_channel().0);
         let mut images = crate::ui::images::ImageCache::new(cmd.clone());
@@ -466,8 +466,8 @@ mod tests {
 
     #[test]
     fn save_name_defaults() {
-        assert_eq!(default_save_name(&Theme::ember_dark()), "Ember Dark custom");
-        let mine = Theme { name: "Mine".into(), ..Theme::ember_dark() };
+        assert_eq!(default_save_name(&Theme::nightshade()), "Nightshade custom");
+        let mine = Theme { name: "Mine".into(), ..Theme::nightshade() };
         assert_eq!(default_save_name(&mine), "Mine");
     }
 }

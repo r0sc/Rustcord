@@ -1,6 +1,6 @@
 //! Colour tokens derived from a theme's colours (docs/DESIGN.md §2.2). `ThemeColors` stays the
 //! TOML contract; everything else is computed here, so custom themes get every token, and the
-//! state colours (green on, straw idle, purple live) stay fixed per mode, as in Discord.
+//! state colours (green online, amber idle, pink live) stay fixed per mode, as in Discord.
 
 use super::apply::{is_high_contrast, luminance, mix};
 use super::{Rgba, ThemeColors};
@@ -35,7 +35,7 @@ impl Mode {
     }
 }
 
-/// Every hue has one job (§1): ember is `ThemeColors::accent`, the rest live here.
+/// Every hue has one job (§1): purple is `ThemeColors::accent`, the rest live here.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tokens {
     pub mode: Mode,
@@ -49,9 +49,18 @@ pub struct Tokens {
     pub rule: Color32,
     /// Component boundaries (>= 3:1): input border, switch-off track, checkbox and radio rings.
     pub edge: Color32,
-    /// Keyboard focus ring.
+    /// The purple primary (`ThemeColors::accent`) for helpers that only have `Tokens`: on-state fills.
+    pub accent: Color32,
+    /// Knob and check drawn on `accent`.
+    pub on_accent: Color32,
+    /// Purple as text, glyph, ring or bar: readable (4.5:1) on a chip inside a mention row and on
+    /// the floats, hue kept.
+    pub accent_ink: Color32,
+    /// Keyboard focus ring (`accent_ink`).
     pub focus: Color32,
-    /// Online, voice connected, speaking, switches and checkboxes on, my activity icon.
+    /// The lit top edge of raised layers (dark themes only).
+    pub sheen: Color32,
+    /// Online, voice connected, speaking, my activity icon.
     pub positive: Color32,
     /// Green text ("Voice connected").
     pub positive_text: Color32,
@@ -60,9 +69,9 @@ pub struct Tokens {
     /// Join / Accept call buttons, with `positive_label` on them.
     pub positive_fill: Color32,
     pub positive_label: Color32,
-    /// Messages that mention me (bar), idle status.
+    /// Idle, "Connecting…", warnings (amber).
     pub attention: Color32,
-    /// Streaming status.
+    /// Streaming status (pink).
     pub live: Color32,
     /// Destructive buttons, count badges, "New" and "Live" tags, danger menu hover, with
     /// `danger_label` on them.
@@ -72,7 +81,7 @@ pub struct Tokens {
     pub chip: Color32,
     /// Selected text.
     pub selection: Color32,
-    /// Heat bar: cold end, body, white-hot core (flat accent on light and high contrast).
+    /// Rail pill colours: a flat accent until the rail commit removes it.
     pub heat: [Color32; 3],
     /// Behind modals.
     pub scrim: Color32,
@@ -84,7 +93,7 @@ pub struct Tokens {
     pub media_hover: Color32,
 }
 
-/// Straw (`attention`) of the dark and light modes, for gradient themes' mention tint.
+/// Amber (`attention`) of the dark and light modes, for gradient themes' mention tint.
 pub(super) const ATTENTION: (Rgba, Rgba) = (Rgba::rgb(0xeb, 0xc1, 0x66), Rgba::rgb(0xa8, 0x6b, 0x00));
 
 impl Tokens {
@@ -103,17 +112,28 @@ impl Tokens {
         let at = |col: Rgba, a: f32| col.to_color32().gamma_multiply(a);
         let hc = mode == Mode::HighContrast;
         let accent = c.accent.to_color32();
+        let raised = if mode == Mode::Light { hex(0xffffff) } else { c.surface.to_color32() };
+        // Purple as text: readable on a chip inside a mention row, the most saturated place it
+        // sits, and on the floats. readable_on keeps the hue.
+        let chip_a = k(0.16, 0.12, 0.22);
+        let chip = |under: Color32| under.blend(accent.gamma_multiply(chip_a));
+        let row = c.background.to_color32().blend(c.mention_highlight.to_color32()); // opaque for gradient themes too
+        let accent_ink = readable_on(readable_on(accent, chip(row)), raised);
         Self {
             mode,
-            raised: if mode == Mode::Light { hex(0xffffff) } else { c.surface.to_color32() },
+            raised,
             hover: at(c.text, k(0.06, 0.06, 0.12)),
             selected: at(c.text, mode.selected_alpha()),
             rule: if hc { at(c.text_muted, 0.45) } else { at(c.text, k(0.10, 0.12, 0.0)) },
             edge: mix(c.background, c.text_muted, if hc { 0.8 } else { 0.75 }),
-            focus: if hc { accent } else { c.link.to_color32() },
+            accent,
+            on_accent: c.accent_text.to_color32(),
+            accent_ink,
+            focus: accent_ink,
+            sheen: if mode == Mode::Dark { Color32::from_white_alpha(15) } else { Color32::TRANSPARENT },
             positive: pick(0x50c76a, 0x1d8b3d, 0x4fe07a),
             positive_text: pick(0x50c76a, 0x00792b, 0x4fe07a),
-            on_positive: pick(0x151a1e, 0xffffff, 0x000000),
+            on_positive: pick(0x08070b, 0xffffff, 0x000000),
             positive_fill: pick(0x25803f, 0x25803f, 0x4fe07a),
             positive_label: pick(0xffffff, 0xffffff, 0x000000),
             attention: match mode {
@@ -121,13 +141,13 @@ impl Tokens {
                 Mode::Light => ATTENTION.1.to_color32(),
                 Mode::HighContrast => hex(0xffd400),
             },
-            live: pick(0xa682e1, 0x7a4aba, 0xc9a2ff),
+            live: pick(0xf062c0, 0xb0237f, 0xff8ad8),
             danger_fill: pick(0xcc3d3f, 0xcc2827, 0xff5c5c),
             danger_label: pick(0xffffff, 0xffffff, 0x000000),
-            chip: at(c.link, k(0.16, 0.12, 0.22)),
-            selection: at(c.link, k(0.35, 0.22, 0.35)),
-            heat: if mode == Mode::Dark { [hex(0xa42d15), accent, hex(0xfeeec1)] } else { [accent; 3] },
-            scrim: Color32::from_black_alpha((255.0 * k(0.6, 0.4, 0.8)).round() as u8),
+            chip: at(c.accent, chip_a),
+            selection: at(c.accent, k(0.40, 0.24, 0.40)),
+            heat: [accent; 3],
+            scrim: Color32::from_black_alpha((255.0 * k(0.64, 0.4, 0.8)).round() as u8),
             media_scrim: Color32::from_black_alpha(if hc { 242 } else { 224 }),
             on_media: Color32::from_white_alpha(235),
             on_media_muted: Color32::from_white_alpha(163),
@@ -194,20 +214,28 @@ mod tests {
             assert!(ratio(tk.danger_label, tk.danger_fill) >= 4.5 && ratio(tk.positive_label, tk.positive_fill) >= 4.5, "{} fills", t.name);
             assert!(ratio(c.danger.to_color32(), tk.raised) >= 4.5, "{} danger on menus", t.name);
             assert!(ratio(tk.focus, c.sidebar.to_color32()) >= 3.0, "{} focus", t.name);
+            // The purple primary: its label (also hovered), the fill on the pane, purple as text.
+            let acc = c.accent.to_color32();
+            assert!(ratio(tk.on_accent, acc) >= 4.5, "{} accent label", t.name);
+            assert!(ratio(c.accent_text.to_color32(), acc.lerp_to_gamma(Color32::WHITE, 0.06)) >= 4.5, "{} accent label hovered", t.name);
+            assert!(ratio(acc, bg) >= 3.0, "{} accent on the pane", t.name);
+            let row = bg.blend(c.mention_highlight.to_color32());
+            assert!(ratio(tk.accent_ink, row.blend(tk.chip)) >= 4.5, "{} accent_ink on a chip in a mention row", t.name);
+            assert!(ratio(tk.accent_ink, tk.raised) >= 4.5, "{} accent_ink on floats", t.name);
         }
-        // The spec's value for Ember Dark's edge (mix of background and muted text).
-        assert_eq!(Tokens::new(&Theme::ember_dark().colors).edge, Color32::from_rgb(0x89, 0x91, 0x98));
+        // The spec's value for Nightshade's edge (mix of background and muted text).
+        assert_eq!(Tokens::new(&Theme::nightshade().colors).edge, Color32::from_rgb(0x83, 0x80, 0x8f));
     }
 
     #[test]
     fn readable_on_reaches_4_5_keeping_hue() {
-        let (ember, white, black) = (Color32::from_rgb(0xe8, 0x74, 0x3b), Color32::WHITE, Color32::BLACK);
+        let (orange, white, black) = (Color32::from_rgb(0xe8, 0x74, 0x3b), Color32::WHITE, Color32::BLACK);
         // Readable colours pass through untouched, alpha included.
-        assert_eq!(readable_on(ember, black), ember);
+        assert_eq!(readable_on(orange, black), orange);
         let faded = Color32::from_rgba_unmultiplied(0x10, 0x20, 0x30, 128);
         assert_eq!(readable_on(faded, white), faded);
         for bg in [white, Color32::from_rgb(0xf2, 0xf3, 0xf5), Color32::from_rgb(0x31, 0x33, 0x38), Color32::from_rgb(0x80, 0x80, 0x80)] {
-            for fg in [ember, Color32::from_rgb(0x1a, 0xbc, 0x9c), Color32::from_rgb(0x20, 0x20, 0x60), Color32::from_rgb(0x99, 0xaa, 0xb5)] {
+            for fg in [orange, Color32::from_rgb(0x1a, 0xbc, 0x9c), Color32::from_rgb(0x20, 0x20, 0x60), Color32::from_rgb(0x99, 0xaa, 0xb5)] {
                 let out = readable_on(fg, bg);
                 assert!(ratio(out, bg) >= 4.5, "{fg:?} on {bg:?} -> {out:?}");
                 // Only as far as needed: a step back toward fg drops below 4.5.
@@ -218,7 +246,7 @@ mod tests {
             }
         }
         // Darkened toward black on a light pane: same channel ratios (hue kept).
-        let dark = readable_on(ember, white);
-        assert!(dark.r() < ember.r() && (f32::from(dark.g()) / f32::from(dark.r()) - 0x74 as f32 / 0xe8 as f32).abs() < 0.02);
+        let dark = readable_on(orange, white);
+        assert!(dark.r() < orange.r() && (f32::from(dark.g()) / f32::from(dark.r()) - 0x74 as f32 / 0xe8 as f32).abs() < 0.02);
     }
 }

@@ -176,7 +176,7 @@ pub struct PanelFills {
 
 impl Default for ThemeColors {
     fn default() -> Self {
-        Theme::ember_dark().colors
+        Theme::nightshade().colors
     }
 }
 impl Default for ThemeFont {
@@ -191,33 +191,32 @@ impl Default for ThemeLayout {
 }
 impl Default for Theme {
     fn default() -> Self {
-        Self::ember_dark()
+        Self::nightshade()
     }
 }
 
 impl Theme {
-    /// Built-in dark theme (default): blued steel panes, ember only where something needs you
-    /// (docs/DESIGN.md §1-2).
-    pub fn ember_dark() -> Self {
+    /// Built-in dark theme (default): near-black violet-tinted panes, one purple for what is
+    /// yours and the main action (docs/DESIGN.md §1-2).
+    pub fn nightshade() -> Self {
         Self {
-            name: "Ember Dark".into(),
+            name: "Nightshade".into(),
             dark: true,
             colors: ThemeColors {
-                background: Rgba::rgb(0x23, 0x28, 0x2c),
-                sidebar: Rgba::rgb(0x1c, 0x21, 0x25),
-                guild_bar: Rgba::rgb(0x15, 0x1a, 0x1e),
-                surface: Rgba::rgb(0x2c, 0x32, 0x36),
-                // Forge-lit warm white on cold steel.
-                text: Rgba::rgb(0xec, 0xe9, 0xe4),
-                text_muted: Rgba::rgb(0xab, 0xb4, 0xbc),
-                // The logo's ember (assets/logo.svg), kept clear of `danger` in hue.
-                accent: Rgba::rgb(0xf6, 0x88, 0x42),
-                accent_text: Rgba::rgb(0x21, 0x11, 0x0a),
-                message_hover: Rgba::rgb(0x26, 0x2b, 0x30),
-                mention_highlight: Rgba::rgb(0x37, 0x37, 0x32),
-                link: Rgba::rgb(0x81, 0xbf, 0xeb),
-                danger: Rgba::rgb(0xfc, 0x6d, 0x6e),
-                code_background: Rgba::rgb(0x18, 0x1d, 0x21),
+                background: Rgba::rgb(0x12, 0x11, 0x18),
+                sidebar: Rgba::rgb(0x0e, 0x0d, 0x13),
+                guild_bar: Rgba::rgb(0x08, 0x07, 0x0b),
+                surface: Rgba::rgb(0x1c, 0x1a, 0x24),
+                text: Rgba::rgb(0xf0, 0xee, 0xf6),
+                text_muted: Rgba::rgb(0xa8, 0xa5, 0xb6),
+                // The primary purple (hue 278), clear of Discord blurple and Twitch.
+                accent: Rgba::rgb(0xa4, 0x2b, 0xea),
+                accent_text: Rgba::rgb(0xff, 0xff, 0xff),
+                message_hover: Rgba::rgb(0x17, 0x16, 0x1e),
+                mention_highlight: Rgba::rgb(0x24, 0x14, 0x31),
+                link: Rgba::rgb(0x6c, 0xb4, 0xff),
+                danger: Rgba::rgb(0xfc, 0x6d, 0x72),
+                code_background: Rgba::rgb(0x0a, 0x09, 0x0e),
             },
             font: ThemeFont::default(),
             layout: ThemeLayout::default(),
@@ -225,24 +224,24 @@ impl Theme {
         }
     }
 
-    fn paper_light() -> Self {
+    fn lilac() -> Self {
         Self {
-            name: "Paper Light".into(),
+            name: "Lilac".into(),
             dark: false,
             colors: ThemeColors {
-                background: Rgba::rgb(0xf9, 0xfb, 0xfd),
-                sidebar: Rgba::rgb(0xea, 0xee, 0xf2),
-                guild_bar: Rgba::rgb(0xda, 0xe0, 0xe6),
-                surface: Rgba::rgb(0xe5, 0xea, 0xef),
-                text: Rgba::rgb(0x1b, 0x21, 0x27),
-                text_muted: Rgba::rgb(0x52, 0x5e, 0x68),
-                accent: Rgba::rgb(0xbc, 0x46, 0x02),
+                background: Rgba::rgb(0xfb, 0xfa, 0xfd),
+                sidebar: Rgba::rgb(0xf0, 0xee, 0xf5),
+                guild_bar: Rgba::rgb(0xe7, 0xe5, 0xee),
+                surface: Rgba::rgb(0xeb, 0xe8, 0xf2),
+                text: Rgba::rgb(0x17, 0x15, 0x1d),
+                text_muted: Rgba::rgb(0x5b, 0x58, 0x69),
+                accent: Rgba::rgb(0x8e, 0x15, 0xd5),
                 accent_text: Rgba::rgb(0xff, 0xff, 0xff),
-                message_hover: Rgba::rgb(0xf0, 0xf3, 0xf6),
-                mention_highlight: Rgba::rgb(0xee, 0xe7, 0xda),
-                link: Rgba::rgb(0x00, 0x68, 0xa7),
-                danger: Rgba::rgb(0xcc, 0x28, 0x27),
-                code_background: Rgba::rgb(0xec, 0xf0, 0xf3),
+                message_hover: Rgba::rgb(0xf4, 0xf2, 0xf8),
+                mention_highlight: Rgba::rgb(0xf0, 0xe3, 0xf9),
+                link: Rgba::rgb(0x0a, 0x63, 0xc6),
+                danger: Rgba::rgb(0xc4, 0x28, 0x38),
+                code_background: Rgba::rgb(0xf2, 0xf0, 0xf6),
             },
             font: ThemeFont::default(),
             layout: ThemeLayout::default(),
@@ -261,10 +260,10 @@ impl Theme {
                 surface: Rgba::rgb(0x16, 0x16, 0x16),
                 text: Rgba::rgb(0xff, 0xff, 0xff),
                 text_muted: Rgba::rgb(0xd6, 0xd6, 0xd6),
-                accent: Rgba::rgb(0xff, 0xd4, 0x00),
+                accent: Rgba::rgb(0xdd, 0xa3, 0xff),
                 accent_text: Rgba::rgb(0x00, 0x00, 0x00),
                 message_hover: Rgba::rgb(0x22, 0x22, 0x22),
-                mention_highlight: Rgba::rgb(0x3a, 0x33, 0x00),
+                mention_highlight: Rgba::rgb(0x34, 0x29, 0x3b),
                 link: Rgba::rgb(0x66, 0xe0, 0xff),
                 danger: Rgba::rgb(0xff, 0x5c, 0x5c),
                 code_background: Rgba::rgb(0x1c, 0x1c, 0x1c),
@@ -277,7 +276,7 @@ impl Theme {
 
     /// The built-ins: dark, light, high-contrast, then the gradient themes in picker order.
     pub fn builtins() -> Vec<Theme> {
-        let mut all = vec![Self::ember_dark(), Self::paper_light(), Self::high_contrast()];
+        let mut all = vec![Self::nightshade(), Self::lilac(), Self::high_contrast()];
         all.extend(gradient::presets());
         all
     }
@@ -295,11 +294,13 @@ impl Theme {
             return t;
         }
         // Settings may also hold a file stem (see `config::Settings::theme`).
-        load_user_themes(&themes_dir())
-            .into_iter()
-            .find(|(stem, t)| t.name == name || stem == name)
-            .map(|(_, t)| t)
-            .unwrap_or_default()
+        let user = load_user_themes(&themes_dir()).into_iter().find(|(stem, t)| t.name == name || stem == name);
+        if let Some((_, t)) = user {
+            return t;
+        }
+        // The old built-in names last, so a user theme really called "Ember Dark" still wins.
+        let name = renamed(name);
+        Self::builtins().into_iter().find(|t| t.name == name).unwrap_or_default()
     }
 
     /// The derived colour tokens (tokens.rs, docs/DESIGN.md §2.2).
@@ -349,6 +350,15 @@ impl Theme {
         }
         crate::config::write_toml(&path, &theme)?;
         Ok(path)
+    }
+}
+
+/// Built-in names before the 0.2 redesign, for settings files that still name them.
+pub fn renamed(name: &str) -> &str {
+    match name {
+        "Ember Dark" => "Nightshade",
+        "Paper Light" => "Lilac",
+        n => n,
     }
 }
 
@@ -526,16 +536,22 @@ mod tests {
     }
 
     #[test]
-    fn builtin_names_are_unique_and_default_is_ember() {
+    fn builtin_names_are_unique_and_default_is_nightshade() {
         let names: Vec<String> = Theme::builtins().into_iter().map(|t| t.name).collect();
-        assert_eq!(names[..3], ["Ember Dark", "Paper Light", "High Contrast"]);
+        assert_eq!(names[..3], ["Nightshade", "Lilac", "High Contrast"]);
         assert_eq!(names.len(), 3 + 23);
         assert!(names.iter().enumerate().all(|(i, n)| !names[..i].contains(n)));
-        assert_eq!(Theme::default().name, "Ember Dark");
+        assert_eq!(Theme::default().name, "Nightshade");
         let c = Theme::default().colors;
-        assert!(apply::contrast_ratio(c.accent_text, c.accent) >= 4.5 && apply::contrast_ratio(c.accent, c.background) >= 4.5);
+        assert!(apply::contrast_ratio(c.accent_text, c.accent) >= 4.5 && apply::contrast_ratio(c.accent, c.background) >= 3.0);
         assert!(Theme::builtins()[3..].iter().all(|t| t.gradient.is_some()));
         assert_eq!(Theme::find("Sunset").gradient.unwrap().stops.len(), 2);
+    }
+
+    #[test]
+    fn old_theme_names_still_load() {
+        assert_eq!(Theme::find("Ember Dark").name, "Nightshade");
+        assert_eq!(Theme::find("Paper Light").name, "Lilac");
     }
 
     #[test]
@@ -545,7 +561,7 @@ mod tests {
         assert!(text.contains("[gradient]") && text.contains("[[gradient.stops]]"), "{text}");
         assert_eq!(parse_theme(&text).unwrap(), t);
         // Flat themes write no gradient table.
-        assert!(!toml::to_string_pretty(&Theme::ember_dark()).unwrap().contains("gradient"));
+        assert!(!toml::to_string_pretty(&Theme::nightshade()).unwrap().contains("gradient"));
         let g = t.gradient.as_mut().unwrap();
         g.stops.push(g.stops[0]); // 6 stops
         assert!(parse_theme(&toml::to_string_pretty(&t).unwrap()).is_err());
@@ -564,9 +580,9 @@ angle = 90").is_err()); // no stops
 
     #[test]
     fn invalid_color_is_rejected() {
-        let good = toml::to_string_pretty(&Theme::ember_dark()).unwrap();
+        let good = toml::to_string_pretty(&Theme::nightshade()).unwrap();
         for bad in ["\"#12345\"", "\"red\"", "\"#gg0000\"", "\"#1234567\""] {
-            let text = good.replacen("background = \"#23282c\"", &format!("background = {bad}"), 1);
+            let text = good.replacen("background = \"#121118\"", &format!("background = {bad}"), 1);
             assert_ne!(text, good);
             assert!(parse_theme(&text).is_err(), "{bad} accepted");
         }
@@ -585,18 +601,18 @@ angle = 90").is_err()); // no stops
     fn import_renames_builtin_collision_and_copies_into_dir() {
         let dir = temp_dir("import");
         let src = dir.join("incoming.toml");
-        let mut theme = Theme::ember_dark();
+        let mut theme = Theme::nightshade();
         theme.colors.accent = Rgba::rgb(1, 2, 3);
         theme.export_to(&src).unwrap();
 
         let themes = dir.join("themes");
         let imported = import_into(&src, &themes).unwrap();
-        assert_eq!(imported.name, "Ember Dark (custom)");
+        assert_eq!(imported.name, "Nightshade (custom)");
         assert_eq!(imported.colors.accent, Rgba::rgb(1, 2, 3));
 
         let loaded = load_user_themes(&themes);
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].0, "Ember Dark (custom)");
+        assert_eq!(loaded[0].0, "Nightshade (custom)");
         assert_eq!(loaded[0].1, imported);
 
         // Invalid files are rejected and never copied.
@@ -606,7 +622,7 @@ angle = 90").is_err()); // no stops
         assert_eq!(load_user_themes(&themes).len(), 1);
 
         // A different theme with a taken name gets a free name; an identical one is not duplicated.
-        let mut x = Theme { name: "X".into(), ..Theme::ember_dark() };
+        let mut x = Theme { name: "X".into(), ..Theme::nightshade() };
         x.export_to(&src).unwrap();
         assert_eq!(import_into(&src, &themes).unwrap().name, "X");
         assert_eq!(import_into(&src, &themes).unwrap().name, "X");
@@ -615,18 +631,18 @@ angle = 90").is_err()); // no stops
         assert_eq!(import_into(&src, &themes).unwrap().name, "X (2)");
         theme.colors.accent = Rgba::rgb(4, 5, 6);
         theme.export_to(&src).unwrap();
-        assert_eq!(import_into(&src, &themes).unwrap().name, "Ember Dark (custom) (2)");
+        assert_eq!(import_into(&src, &themes).unwrap().name, "Nightshade (custom) (2)");
         let names: Vec<String> = load_user_themes(&themes).into_iter().map(|(_, t)| t.name).collect();
-        assert_eq!(names, ["Ember Dark (custom) (2)", "Ember Dark (custom)", "X (2)", "X"]);
+        assert_eq!(names, ["Nightshade (custom) (2)", "Nightshade (custom)", "X (2)", "X"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn save_refuses_builtin_names_and_foreign_files() {
         let dir = temp_dir("save");
-        assert!(Theme::ember_dark().save_into(&dir).is_err());
+        assert!(Theme::nightshade().save_into(&dir).is_err());
 
-        let mut a = Theme::ember_dark();
+        let mut a = Theme::nightshade();
         a.name = "a/b".into();
         a.save_into(&dir).unwrap();
         let mut b = a.clone();
@@ -638,9 +654,9 @@ angle = 90").is_err()); // no stops
 
         // A file that doesn't parse is never overwritten.
         std::fs::write(dir.join("Typo.toml"), "name = \"Typo\"\ndark = maybe").unwrap();
-        assert!(Theme { name: "Typo".into(), ..Theme::ember_dark() }.save_into(&dir).is_err());
+        assert!(Theme { name: "Typo".into(), ..Theme::nightshade() }.save_into(&dir).is_err());
         // A hand-written theme is saved into its own file, whatever its stem.
-        let m = Theme { name: "Midnight".into(), ..Theme::ember_dark() };
+        let m = Theme { name: "Midnight".into(), ..Theme::nightshade() };
         crate::config::write_toml(&dir.join("Dark.toml"), &m).unwrap();
         assert_eq!(m.save_into(&dir).unwrap(), dir.join("Dark.toml"));
         assert!(!dir.join("Midnight.toml").exists());
@@ -649,7 +665,7 @@ angle = 90").is_err()); // no stops
 
     #[test]
     fn sanitize_file_names() {
-        assert_eq!(sanitize_file_name("Ember Dark (custom)"), "Ember Dark (custom)");
+        assert_eq!(sanitize_file_name("Nightshade (custom)"), "Nightshade (custom)");
         assert_eq!(sanitize_file_name("../..\\evil:name*?"), "______evil_name__");
         assert_eq!(sanitize_file_name("  ...  "), "___");
         assert_eq!(sanitize_file_name("   "), "theme");

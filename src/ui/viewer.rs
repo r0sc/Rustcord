@@ -1171,7 +1171,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let cmd = crate::backend::CommandSender(tx);
         let ctx = egui::Context::default();
-        let mut theme = crate::theme::Theme::ember_dark();
+        let mut theme = crate::theme::Theme::nightshade();
         crate::theme::ThemeApplier::default().apply(&ctx, &theme);
         let mut state = crate::state::AppState::from_snapshot(snapshot);
         let mut view = crate::ui::ViewState::default();

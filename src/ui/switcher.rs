@@ -600,7 +600,7 @@ mod tests {
                 state,
                 view: Default::default(),
                 images: super::super::images::ImageCache::new(cmd.clone()),
-                theme: crate::theme::Theme::ember_dark(),
+                theme: crate::theme::Theme::nightshade(),
                 settings: Default::default(),
                 cmd,
                 overrides: Default::default(),

@@ -3630,7 +3630,7 @@ mod tests {
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             let cmd = crate::backend::CommandSender(tx);
             let ctx = egui::Context::default();
-            let theme = Theme::ember_dark();
+            let theme = Theme::nightshade();
             crate::theme::ThemeApplier::default().apply(&ctx, &theme);
             Self {
                 ctx,

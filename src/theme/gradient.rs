@@ -57,7 +57,7 @@ fn rgb_hex(rgb: u32) -> Rgba {
 impl Theme {
     /// A gradient theme on Rustcord's dark or light base, its colours derived from the gradient.
     pub fn from_gradient(name: &str, dark: bool, gradient: ThemeGradient) -> Theme {
-        let base = if dark { Theme::ember_dark() } else { Theme::paper_light() };
+        let base = if dark { Theme::nightshade() } else { Theme::lilac() };
         let mut theme = Theme { name: name.into(), gradient: Some(gradient), ..base };
         theme.retint();
         theme
@@ -65,11 +65,11 @@ impl Theme {
 
     /// Re-derives the colours of a gradient theme from its gradient and dark/light base (§13.3,
     /// §13.4C): surfaces and text tinted in OKLab, the panel tokens the gradient's average under
-    /// the panel overlay, hover / mention (straw) translucent so the gradient shows through.
+    /// the panel overlay, hover / mention (purple) translucent so the gradient shows through.
     /// Accent and danger stay. No-op for flat themes.
     pub fn retint(&mut self) {
         let Some(g) = &self.gradient else { return };
-        let base = if self.dark { Theme::ember_dark() } else { Theme::paper_light() }.colors;
+        let base = if self.dark { Theme::nightshade() } else { Theme::lilac() }.colors;
         let (tint, text) = base_and_text(g, self.dark);
         // Base colour at 50 % and text colour at 38 % of `mix`: w = amt / (100 + amt).
         let (w_base, w_text) = (1.0 / 3.0, 38.0 / 138.0);
@@ -89,8 +89,8 @@ impl Theme {
             text_muted: oklab_mix(base.text_muted, text, w_text),
             link: oklab_mix(base.link, text, w_text),
             message_hover: with_alpha(oklab_mix(base.text, text, w_text), 0x0f),
-            // Straw, like the flat themes' mention row (ember is kept for brand and action).
-            mention_highlight: with_alpha(if self.dark { super::tokens::ATTENTION.0 } else { super::tokens::ATTENTION.1 }, 0x21),
+            // A 13 % purple, like the flat themes' mention row.
+            mention_highlight: with_alpha(base.accent, 0x21),
             ..base
         };
         // Very dark gradients would pass as high contrast (strong borders everywhere).
@@ -483,13 +483,13 @@ mod tests {
             }
         }
         // Flat themes: plain `readable_on`.
-        let flat = Theme::paper_light();
+        let flat = Theme::lilac();
         assert_eq!(flat.readable_on_pane(names[0], flat.colors.sidebar.to_color32()), super::super::readable_on(names[0], flat.colors.sidebar.to_color32()));
     }
 
     #[test]
     fn flat_themes_keep_their_fills() {
-        let t = Theme::ember_dark();
+        let t = Theme::nightshade();
         let f = t.panel_fills();
         assert_eq!((f.frame, f.card, f.chat, f.side), (t.colors.guild_bar, t.colors.sidebar, t.colors.background, t.colors.sidebar));
         let mut copy = t.clone();
