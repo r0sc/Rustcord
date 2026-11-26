@@ -266,6 +266,24 @@ impl RpcState {
         cmd.send(crate::backend::Command::RpcRequest(req));
     }
 
+    /// The "Join" of an invite message of `author` for game `app` (§4.3): `live` is the author's
+    /// current activity, which must still be of that game with a session, else the invite is stale.
+    pub fn invite_button(&self, online: bool, author: Id, app: Id, live: Option<&Card>) -> JoinButton {
+        let live = live.filter(|a| a.rich.as_deref().is_some_and(|r| r.application_id == Some(app) && r.session_id.is_some()));
+        let Some(a) = live else {
+            return JoinButton { label: "Join", enabled: false, hover: Some(if online { "This invite has expired." } else { "You're offline." }.into()) };
+        };
+        self.join_button("Join", online, author, a)
+    }
+
+    /// A click on that button: its one request (the join, with the invite's channel and message), none when disabled.
+    pub fn invite_click(&self, cmd: &CommandSender, online: bool, author: Id, app: Id, live: Option<&Card>, invite: (Id, Id)) {
+        let session_id = live.and_then(|a| a.rich.as_deref()?.session_id.clone());
+        if let (true, Some(session_id)) = (self.invite_button(online, author, app, live).enabled, session_id) {
+            cmd.send(crate::backend::Command::RpcRequest(RpcRequest::Join { user: author, session_id, app, invite: Some(invite) }));
+        }
+    }
+
     /// What survives a logout: the server's state, not the session's games.
     pub fn after_logout(self) -> Self {
         Self {
@@ -792,6 +810,37 @@ mod tests {
         }
         assert!(!RpcState::default().join_button("Ask to Join", true, Id(4), &a).enabled, "no gateway session yet");
         assert!(s.after_logout().join_button("Ask to Join", true, Id(2), &a).hover.is_some(), "a new login starts fresh");
+    }
+
+    #[test]
+    fn an_invite_joins_only_while_the_host_is_still_in_the_activity() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let cmd = CommandSender(tx);
+        let mut s = RpcState { on: true, ..Default::default() };
+        let live = card(Some(Id(8)), Some("sess"), Some("p1"));
+        let b = |s: &RpcState, online, live: Option<&Card>| {
+            let b = s.invite_button(online, Id(2), Id(8), live);
+            (b.label, b.enabled, b.hover)
+        };
+        let off = |h: &str| ("Join", false, Some(h.to_owned()));
+        assert_eq!(b(&s, false, Some(&live)), off("You're offline."));
+        assert_eq!(b(&s, true, None), off("This invite has expired."), "no activity any more");
+        for gone in [card(Some(Id(9)), Some("sess"), None), card(Some(Id(8)), None, None), card(None, Some("sess"), None)] {
+            assert_eq!(b(&s, true, Some(&gone)), off("This invite has expired."));
+        }
+        assert_eq!(b(&s, true, Some(&live)), off("Start Halo to join."));
+        s.apply(RpcEvent::Connected { conn: 1, app: Id(8) });
+        s.apply(RpcEvent::Subscribed { conn: 1, events: vec!["ACTIVITY_JOIN"] });
+        assert_eq!(b(&s, true, Some(&live)), ("Join", true, None));
+        s.on = false;
+        assert_eq!(b(&s, true, Some(&live)), off("Turn on \"Let games show their activity\" in Settings to join."));
+        s.on = true;
+        // Only a click sends, once, with the invite's channel and message and the host's session.
+        s.invite_click(&cmd, true, Id(2), Id(8), None, (Id(3), Id(4)));
+        s.invite_click(&cmd, false, Id(2), Id(8), Some(&live), (Id(3), Id(4)));
+        assert!(sent_cmds(&mut rx).is_empty());
+        s.invite_click(&cmd, true, Id(2), Id(8), Some(&live), (Id(3), Id(4)));
+        assert_eq!(sent_cmds(&mut rx), [r#"RpcRequest(Join { user: 2, session_id: "sess", app: 8, invite: Some((3, 4)) })"#]);
     }
 
     #[tokio::test]

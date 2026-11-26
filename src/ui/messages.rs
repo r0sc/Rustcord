@@ -2039,6 +2039,7 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
     if let Some(p) = &msg.poll {
         super::polls::card(ui, cx, &pal, lc.ch, lc.guild_id, msg.id, p);
     }
+    invite(ui, cx, lc, msg);
     forwarded(ui, cx, lc, msg);
     media_parts(ui, cx, lc, msg);
     // Plugins (MessageLinkEmbeds): previews of linked messages; a click jumps there.
@@ -2048,6 +2049,58 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
     if reacts {
         reactions(ui, cx, lc, memo, msg, hovered);
     }
+}
+
+/// A rich-presence invite (`activity.type` 1): a card with the game's picture, who invited me and a
+/// "Join" button (`RpcState::invite_button`); a join request (5): one muted line. Only a click sends.
+fn invite(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message) {
+    let Some(kind) = msg.activity.as_ref().map(|a| a.kind).filter(|k| matches!(k, 1 | 5)) else { return };
+    let pal = lc.pal;
+    let me = cx.state.me.as_ref().map(|m| m.id);
+    let mine = me == Some(msg.author.id);
+    let from = if mine { "You".to_owned() } else { cx.state.member_display_name(lc.guild_id, &msg.author, msg.member.as_ref()) };
+    if kind == 5 {
+        let game = msg.app_name().map(str::to_owned).or_else(|| me.and_then(|me| crate::activity::activity_of(cx.state, me)).map(|a| a.name.clone()));
+        let text = if mine { format!("You asked to join {}", game.as_deref().unwrap_or("a game")) } else { format!("{from} asked to join your {}", game.as_deref().unwrap_or("game")) };
+        ui.label(RichText::new(text).size(pal.meta()).italics().color(pal.muted));
+        return;
+    }
+    let Some(app) = msg.app_id() else { return };
+    let live = crate::activity::activity_of(cx.state, msg.author.id).map(std::borrow::Cow::into_owned);
+    let game = msg.app_name().map(str::to_owned).or_else(|| live.as_ref().filter(|a| a.rich.as_ref().is_some_and(|r| r.application_id == Some(app))).map(|a| a.name.clone())).unwrap_or_else(|| "a game".into());
+    // The picture is the application's own icon (an invite carries no presence images).
+    let art = crate::model::Activity { kind: 0, name: game.clone(), rich: Some(Box::new(crate::model::RichPresence { application_id: Some(app), ..Default::default() })) };
+    let tex = crate::activity::art_url(ui.ctx(), cx.state, &art, 128).and_then(|u| cx.images.get(ui.ctx(), &u, 128, false));
+    let verb = if mine { "invited people to join" } else { "invited you to join" };
+    Frame::new().fill(pal.surface).corner_radius(pal.card_radius()).inner_margin(Margin::same(12)).show(ui, |ui| {
+        ui.set_max_width(ui.available_width().min(440.0));
+        ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing = vec2(12.0, 8.0);
+            let (rect, _) = ui.allocate_exact_size(Vec2::splat(48.0), Sense::hover());
+            match tex {
+                Some(t) => Image::from_texture(t).corner_radius(pal.radius).paint_at(ui, rect),
+                None => {
+                    ui.painter().rect_filled(rect, pal.radius, pal.tk.hover);
+                    icons::paint(ui.painter(), icons::activity(0), Rect::from_center_size(rect.center(), Vec2::splat(24.0)), pal.muted, pal.surface.blend(pal.tk.hover));
+                }
+            }
+            ui.vertical(|ui| {
+                ui.label(RichText::new(format!("{from} {verb} {game}")).size(pal.ui()).color(pal.text));
+                if mine {
+                    return;
+                }
+                let online = crate::activity::online(cx.state);
+                let b = cx.state.rpc.invite_button(online, msg.author.id, app, live.as_ref());
+                let mut r = button(ui, &pal, Btn::Secondary, b.label, b.enabled);
+                if let Some(h) = &b.hover {
+                    r = r.on_disabled_hover_text(h);
+                }
+                if r.clicked() {
+                    cx.state.rpc.invite_click(cx.cmd, online, msg.author.id, app, live.as_ref(), (msg.channel_id, msg.id));
+                }
+            });
+        });
+    });
 }
 
 /// Attachments, stickers and embeds, filtered by Settings > Chat.
@@ -3150,6 +3203,7 @@ fn fingerprint(m: &Message, layout: impl Hash) -> u64 {
     m.message_snapshots.first().map(|s| (s.message.content.len(), s.message.attachments.len(), s.message.embeds.len())).hash(&mut h);
     // A vote of mine flips the card between its views; the answers and the end change its height.
     m.poll.as_ref().map(|p| (p.answers.len(), p.results.as_ref().map(|r| (r.is_finalized, r.answer_counts.iter().any(|c| c.me_voted))))).hash(&mut h);
+    m.activity.as_ref().map(|a| a.kind).hash(&mut h);
     for r in &m.reactions {
         (&r.emoji, r.count, r.me).hash(&mut h);
     }
@@ -3750,6 +3804,71 @@ mod tests {
         fn memo(&self) -> Memo {
             self.ctx.data(|d| d.get_temp(memo_id())).unwrap_or_default()
         }
+    }
+
+    /// An invite message in the open channel from a host who plays game 8 in session "sess".
+    fn invite_harness(me_host: bool) -> (Harness, Id, Id) {
+        let mut h = Harness::new();
+        let ch = h.state.selected_channel.unwrap();
+        let me = h.state.me.as_ref().unwrap().id;
+        let host = if me_host { me } else { Id(777) };
+        let msg = Message { id: Id(9_999_999_999_999_999), channel_id: ch, author: User { id: host, username: "host".into(), ..Default::default() }, activity: serde_json::from_str(r#"{"type":1,"party_id":"p"}"#).unwrap(), application: serde_json::from_str(r#"{"id":"8","name":"Halo"}"#).unwrap(), ..Default::default() };
+        let id = msg.id;
+        h.state.messages.get_mut(&ch).unwrap().msgs.push(msg);
+        let rich = crate::model::RichPresence { application_id: Some(Id(8)), session_id: Some("sess".into()), ..Default::default() };
+        h.state.chat.presences.insert(Id(777), crate::model::UserPresence { activity: Some(crate::model::Activity { kind: 0, name: "Halo".into(), rich: Some(Box::new(rich)) }), ..Default::default() });
+        h.state.conn = ConnState::Connected;
+        h.state.rpc.sync(true, None, &h.cmd);
+        h.state.rpc.apply(crate::rpc::RpcEvent::Connected { conn: 1, app: Id(8) });
+        h.state.rpc.apply(crate::rpc::RpcEvent::Subscribed { conn: 1, events: vec!["ACTIVITY_JOIN"] });
+        h.view.scroll_to_bottom = true;
+        while h._rx.try_recv().is_ok() {}
+        (h, ch, id)
+    }
+
+    fn sent_requests(h: &mut Harness) -> Vec<String> {
+        std::iter::from_fn(|| h._rx.try_recv().ok()).filter(|c| !matches!(c, Command::LoadImage { .. })).map(|c| format!("{c:?}")).collect()
+    }
+
+    #[test]
+    fn an_invite_card_sends_one_join_on_a_click_and_nothing_on_draw() {
+        let (mut h, ch, id) = invite_harness(false);
+        for _ in 0..3 {
+            h.frame();
+        }
+        let out = h.frame_with(Vec::new());
+        let join = out.shapes.iter().find_map(|s| match &s.shape {
+            Shape::Text(t) if t.galley.text() == "Join" => Some(t.visual_bounding_rect().center()),
+            _ => None,
+        });
+        let texts = h.texts();
+        assert!(texts.iter().any(|t| t == "host invited you to join Halo"), "{texts:?}");
+        let pos = join.expect("a Join button");
+        let hover = |h: &mut Harness| h.frame_with(vec![egui::Event::PointerMoved(pos)]);
+        hover(&mut h);
+        hover(&mut h);
+        assert!(sent_requests(&mut h).is_empty(), "draw and hover send nothing");
+        let btn = |pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        h.frame_with(vec![btn(true)]);
+        h.frame_with(vec![btn(false)]);
+        assert_eq!(sent_requests(&mut h), [format!("RpcRequest(Join {{ user: 777, session_id: \"sess\", app: 8, invite: Some(({}, {})) }})", ch.0, id.0)]);
+        h.frame();
+        assert!(sent_requests(&mut h).is_empty());
+    }
+
+    #[test]
+    fn my_own_invite_has_no_button_and_a_join_request_is_one_line() {
+        let (mut h, ch, _) = invite_harness(true);
+        h.frame();
+        h.frame();
+        let texts = h.texts();
+        assert!(texts.iter().any(|t| t == "You invited people to join Halo") && !texts.iter().any(|t| t == "Join"), "{texts:?}");
+        let m = h.state.messages.get_mut(&ch).unwrap().msgs.last_mut().unwrap();
+        m.activity.as_mut().unwrap().kind = 5;
+        h.frame();
+        let texts = h.texts();
+        assert!(texts.iter().any(|t| t == "You asked to join Halo"), "{texts:?}");
+        assert!(sent_requests(&mut h).is_empty());
     }
 
     #[test]

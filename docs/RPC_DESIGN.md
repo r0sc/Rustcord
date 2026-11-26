@@ -2,7 +2,7 @@
 
 Status: **approved** (§11: build it, the setting defaults to on, no host side). Built: the pipe and a
 game's own rich presence in op 3 (§2, §3, §5, §8.5) with the image proxy (§3.4), and Join / Ask to
-Join on activity cards (§4.1, §4.2). Still to come: invite messages (§4.3).
+Join on activity cards (§4.1, §4.2) and invite messages (§4.3): v1 is built.
 
 Games and apps on this computer (discord-rpc, the Game SDK, pypresence, music players, …) look
 for a local pipe named `discord-ipc-N`, speak a small JSON protocol over it, and use it for two

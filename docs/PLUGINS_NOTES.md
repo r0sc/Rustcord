@@ -246,7 +246,7 @@ Verified Rustcord hooks that already exist (by symbol; line numbers drift):
 | WebContextMenus | — | — | C | Web |
 | WebKeybinds | — | — | C | Web |
 | WebPWA | — | — | C | Web |
-| WebRichPresence (`arRPC.web`) | arRPC bridge | — | C | A native RPC server is a separate project |
+| WebRichPresence (`arRPC.web`) | arRPC bridge | — | C | Built in: the local game connection, see docs/RPC_DESIGN.md |
 | WebScreenShare | Screen-share options | — | C | Browser only |
 | WebScreenShareFixes | Chromium bitrate cap | — | C | Browser only |
 | WhoReacted | Reactor avatars on reactions | Chat | A | S16 |

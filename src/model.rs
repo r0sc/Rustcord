@@ -854,6 +854,46 @@ pub struct Message {
     /// Boxed: a poll is rare, and every cached message carries the slot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub poll: Option<Box<Poll>>,
+    /// A rich-presence invite or join request (docs/RPC_DESIGN.md §4.3).
+    #[serde(deserialize_with = "lenient", skip_serializing_if = "Option::is_none")]
+    pub activity: Option<MessageActivity>,
+    #[serde(deserialize_with = "lenient", skip_serializing_if = "Option::is_none")]
+    pub application_id: Option<Id>,
+    #[serde(deserialize_with = "lenient", skip_serializing_if = "Option::is_none")]
+    pub application: Option<MessageApplication>,
+}
+
+/// `activity` of a message: 1 JOIN (an invite), 3 LISTEN, 5 JOIN_REQUEST.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MessageActivity {
+    #[serde(rename = "type", deserialize_with = "null_default")]
+    pub kind: u8,
+    pub party_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MessageApplication {
+    pub id: Option<Id>,
+    pub name: Option<String>,
+}
+
+/// A field whose wrong shape is None instead of a failed message.
+fn lenient<'de, D: Deserializer<'de>, T: serde::de::DeserializeOwned>(d: D) -> Result<Option<T>, D::Error> {
+    Ok(serde_json::from_value(serde_json::Value::deserialize(d)?).ok())
+}
+
+impl Message {
+    /// The game of an invite: `application_id`, else `application.id`.
+    pub fn app_id(&self) -> Option<Id> {
+        self.application_id.or(self.application.as_ref().and_then(|a| a.id)).filter(|i| i.0 != 0)
+    }
+
+    /// The application's name when the payload carries it.
+    pub fn app_name(&self) -> Option<&str> {
+        self.application.as_ref().and_then(|a| a.name.as_deref()).filter(|n| !n.is_empty())
+    }
 }
 
 /// A poll's question or answer text, with an optional emoji.
@@ -2214,6 +2254,22 @@ mod tests {
         assert!(!m.can_edit());
         // A plain message carries no snapshot key into the cache.
         assert!(!serde_json::to_string(&Message::default()).unwrap().contains("message_snapshots"));
+    }
+
+    #[test]
+    fn invites_parse_leniently() {
+        let m = |extra: &str| serde_json::from_str::<Message>(&format!(r#"{{"id":"5","content":"x",{extra}}}"#)).unwrap();
+        let a = m(r#""activity":{"type":1,"party_id":"p-1"},"application_id":"77""#);
+        assert_eq!((a.activity.as_ref().map(|x| (x.kind, x.party_id.as_deref())), a.app_id(), a.app_name()), (Some((1, Some("p-1"))), Some(Id(77)), None));
+        let b = m(r#""activity":{"type":1},"application":{"id":"78","name":"Halo"}"#);
+        assert_eq!((b.app_id(), b.app_name()), (Some(Id(78)), Some("Halo")));
+        let c = m(r#""activity":{"type":5,"party_id":"p"},"application_id":"77","application":{"id":"1"}"#);
+        assert_eq!((c.activity.as_ref().map(|x| x.kind), c.app_id()), (Some(5), Some(Id(77))), "the message's own id wins");
+        for bad in [r#""activity":"x""#, r#""activity":7"#, r#""activity":null"#, r#""application":"x","application_id":{}"#] {
+            let g = m(bad);
+            assert!(g.activity.is_none() && g.app_id().is_none() && g.content == "x", "{bad}");
+        }
+        assert!(!serde_json::to_string(&Message::default()).unwrap().contains("activity"));
     }
 
     #[test]
