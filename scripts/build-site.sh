@@ -30,7 +30,7 @@ cp assets/logo-small.svg _site/favicon.svg
 cp assets/icons/rustcord-32.png _site/icon-32.png
 cp assets/icons/rustcord-256.png _site/icon-256.png
 
-# Only warnings, like the old Pages job.
+# Size checks only warn, they never fail the build.
 wc -c _site/shots/*
 for f in _site/shots/*.webp; do
 	case "$f" in *-960.webp) continue ;; esac

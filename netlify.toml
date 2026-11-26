@@ -1,4 +1,4 @@
-# Netlify builds the website (site/) on every push to main: https://rustcord.netlify.app/
+# Netlify builds the website (site/) on every push to main: https://getrustcord.netlify.app/
 [build]
   command = "sh scripts/build-site.sh"
   publish = "_site"
