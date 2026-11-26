@@ -720,7 +720,7 @@ t   = dot(p − centre, d)/len + 0.5          // clamp to the first/last stop ou
    ```
    client_theme: Option<ClientTheme{ preset: Option<u32>, custom: Option<{colors: Vec<String>, angle: i32, base_mix: u8}>, base: "light"|"darker"|"dark"|"midnight" }>
    ```
-   The base selects the existing built-in (`paper_light` for L, `ember_dark` for D) before tinting. `Theme` stays the source of the tokens.
+   The base selects the existing built-in (`lilac` for L, `nightshade` for D) before tinting. `Theme` stays the source of the tokens.
 2. **Gradient:** on resize or theme change, CPU-render a texture of about W/4 × H/4 with the §13.4A maths. Paint it once with `ctx.layer_painter(Background)` over the whole screen rect. Bilinear upscaling of a linear gradient is visually lossless and costs about 60 KB of RAM.
 3. **Panel fills:** `Color32::from_black_alpha((α*255) as u8)` (dark) or `from_white_alpha` (light) at that panel's level, instead of the opaque `ThemeColors` fill. egui blends in gamma space, as CSS does.
 4. **Opaque tokens:** `oklab_mix` (about 20 lines: sRGB → linear → OKLab → lerp → back). Run it once per theme change in `ThemeApplier`, not per frame.

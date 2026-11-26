@@ -743,7 +743,7 @@ GUILD_CREATE/UPDATE/DELETE, CHANNEL_CREATE/UPDATE/DELETE, GUILD_ROLE_*, GUILD_ME
 
 # Part 4. Layout reference (web client, desktop width, late 2026)
 
-Numbers come from the production BUNDLE (CSS chunks + `web.f25377cf5b911919.js`, fetched 2026-11-11) at **default density, 100 % zoom, 1 rem = 16 px** — VERIFIED unless marked UNCONFIRMED. Class names are `name_HASH` and change per build; match on values. Colours are given by role only: Rustcord keeps its own palette/branding (ember theme, `docs/ARCHITECTURE.md`). The live layout is the **2025-03-25 "refresh"** (smaller squircle icons, floating user panel, resizable sidebar, title bar); the 2025-12-08 patch redesigned User Settings. The user's account may be in experiments such as `refresh-fast-follow-avatars` (44 px icons). Bundle copies: `<local scratch, not in repo>` (`all.css`).
+Numbers come from the production BUNDLE (CSS chunks + `web.f25377cf5b911919.js`, fetched 2026-11-11) at **default density, 100 % zoom, 1 rem = 16 px** — VERIFIED unless marked UNCONFIRMED. Class names are `name_HASH` and change per build; match on values. Colours are given by role only: Rustcord keeps its own palette/branding (Nightshade theme, `docs/ARCHITECTURE.md`). The live layout is the **2025-03-25 "refresh"** (smaller squircle icons, floating user panel, resizable sidebar, title bar); the 2025-12-08 patch redesigned User Settings. The user's account may be in experiments such as `refresh-fast-follow-avatars` (44 px icons). Bundle copies: `<local scratch, not in repo>` (`all.css`).
 
 ## 4.0 Skeleton and tokens
 

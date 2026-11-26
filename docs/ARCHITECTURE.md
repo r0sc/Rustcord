@@ -176,8 +176,9 @@ contract change is unavoidable, make the smallest additive change and report it.
 ## Visual direction
 Binding spec: `docs/DESIGN.md` (palette, derived tokens in `theme/tokens.rs`, type roles and
 radius tiers on `ui::messages::Pal`, shared components next to `messages::icon_button`).
-Original look, not a copy of Discord: blued-steel panes with ember only for the brand, the heat
-bar and one primary action (`theme::Theme::ember_dark`). Layout and interaction follow Discord's web client as of its
+Original look, not a copy of Discord: near-black panes and floating rounded layers, one purple only for what is
+yours and the main action, and the speech corner on the selected server and in the logo
+(`theme::Theme::nightshade`). Layout and interaction follow Discord's web client as of its
 2025 refresh (title bar, 40 px squircle server icons whose colours change on hover/selection,
 channel-list card, floating user panel; `ui/sidebar.rs`, `docs/FEATURES_NOTES.md` Part 4), with
 Rustcord's own logo (home button) and theme colors. Never use Discord's logo, wordmark, or blurple as a brand color, and never
@@ -335,7 +336,7 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   48 px, then the channel icon matrix plain / private / age-restricted / rules at 20 px, over the
   whole window), `focus:<n>` (ui/mod.rs `raw_input_hook`: drops the focus, then presses Tab n
   times, one per frame from frame 14, so the screenshot shows the focus ring where it lands; a
-  negative n presses Shift+Tab, starting from the last control drawn. In the Ember fixture at
+  negative n presses Shift+Tab, starting from the last control drawn. In the Nightshade fixture at
   1180x760: 1 the inbox button, 6 the first server tile, 13 the first channel row; with
   `RUSTCORD_OPEN=server-menu` 11 its first item; with `settings:windows` 4 the settings search,
   -3 the first switch; with `modal:create-channel` 6 its name field. More than 16 presses need a

@@ -547,7 +547,7 @@ overlay off removes it.
    `<home>/config/settings.toml` `[overlay]` variants:
    - `show_names = "speaking"`, `show_users = "speaking"`, `large_avatars = false`
    - both corners `"top_right"` (stacking)
-   - Paper Light and High Contrast themes (toast card)
+   - Lilac and High Contrast themes (toast card)
 4. Idle and RAM:
    - Start `RUSTCORD_OVERLAY_DEMO=1` without a screenshot, via `Start-Process -PassThru`.
    - Read `TotalProcessorTime` at 5 s and 15 s: the delta must be < 50 ms.

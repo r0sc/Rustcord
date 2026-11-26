@@ -1,202 +1,234 @@
 # Rustcord design spec
 
-Binding for all UI work. It replaces the "Visual direction" paragraph of `docs/ARCHITECTURE.md`
-(warm ember dark). Layout stays Discord web 1:1 (rail, channel card, chat, member list, floating
-user panel, settings layers, menus, popouts). The look is Rustcord's own.
+Binding for all UI work. It replaces the "Visual direction" paragraph of `docs/ARCHITECTURE.md`.
+Layout stays Discord web 1:1 (rail, channel card, chat, member list, floating user panel,
+settings, menus, popouts). The look is Rustcord's own: **Nightshade**.
 
-Decision record (2026-11-13): two proposals were judged against the brief
-("Refined" and "Forged"; working files, not in the repo). Scores out of 5:
-
-| Criterion | A "Refined" | B "Forged" |
-|---|---|---|
-| Discord layout 1:1, users feel at home | 4: ember for switches, focus and mentions breaks the colours users know | 5: Discord's state colours kept: green means on, blue means link and focus, gold means it mentions you |
-| Modern, not generated | 3: neutral grey + one accent is still the shape of tell 2; adds a glow | 4: every hue has one job; signature is specific. Risk: teal slate + orange is a known pairing |
-| Own branding | 4 | 5: ember only for brand, heat and the one main action |
-| Calm for long sessions | 4 | 4 |
-| egui effort | 5: no schema change, integer type scale | 4: three new TOML keys, half-pixel sizes; icon set already rendered at 16/20/24 |
-| Contrast | 4 | 3: danger text on menus is 3.4:1 |
-
-**Base: B.** Taken from A: no new `ThemeColors` fields (tokens are derived in code), the integer
-type scale without letter-spacing, radius tiers derived from one setting, concentric menus,
-right-aligned group counts, modal motion. Revised by the judge:
-- neutral hue 220 → 245 (blued steel), which avoids the teal-and-orange pairing
-- dark floating layers = `surface`
-- danger lightened and moved toward pink-red, so it reaches 4.5:1 on menus and stays clear of ember
-- light idle darkened to 3:1
-- heat gradient only on dark themes
-- the activity art slot always shows something
-- app icons come from the existing `FetchGames` path
-- the heat-bar glow is removed (the accessory we drop)
+History: in 0.2 this look replaced the first one, which was blued steel with orange for the
+brand and a glowing bar on the rail. The old built-in names "Ember Dark" and "Paper Light" still
+load: `theme::renamed` maps them to Nightshade and Lilac. The new look takes the
+floating-layer idea from Illegalcord's interface and has its own purple, its own logo and its own
+signature, the speech corner.
 
 ---
 
 ## 1. Concept
 
-**The metal is cold; only what needs you is hot.** Panes are blued steel. Accent hues come
-from the colours steel shows as it is heated, and each hue has exactly one job:
+**Nightshade: near-black layers that float. One purple, and it always means you.**
 
-| Hue | Token | Its only job |
+| Hue | Token(s) | Its only jobs |
 |---|---|---|
-| ember | `accent` | brand mark, the heat bar, one primary button per view, text caret |
-| temper blue | `link` | links, mention and channel chips, keyboard focus ring, text selection |
-| straw | `attention` | messages that mention me (bar and tint), idle status |
-| red-hot | `danger` | destructive actions, count badges, "New" divider, Do not disturb, errors |
-| green | `positive` | online, voice connected, speaking, switches and checkboxes on, my activity icon |
-| temper purple | `live` | streaming status |
+| purple | `accent`, `accent_ink`, `chip`, `selection`, `mention_highlight` | the logo and home tile; the selected rail pill; one primary button per view; on-states (switch, checkbox, radio); focus ring, caret, selected text; mentions of me (row tint + bar), mention and channel chips, app tags; my reactions and poll picks; the icon of the selected settings nav row; progress bars |
+| blue | `link` | links, info callouts, the "jumped to" flash |
+| green | `positive*` | online, voice connected, speaking ring, Join / Accept call, "Update available", my activity icon |
+| amber | `attention` | idle, "Connecting…", warning callouts |
+| pink | `live` | streaming (dot with a play cut-out, streaming icon) |
+| red | `danger*` | destructive actions, count badges, "New", "Live" tag, Do not disturb, errors |
 
-Principles:
-1. **Discord's layout and rhythm, our material.** Identity comes from colour temperature, the
-   heat bar and the icon drawing. No control moves.
-2. **Structure is information.** Fill steps separate panes. A hairline appears only where two
-   equal fills meet or rows form a list. One container level. Radius grows with container size.
-3. **Colour always comes with a word or a shape.** A dot has its word in the tooltip; a switch
-   knob shows a check or a cross; a muted mic is slashed.
-4. **Quiet type.** One family. Hierarchy comes from weight before size. Sentence case, no tracking.
-5. **Motion only answers an action**, and `settings.reduced_motion` (config.rs:128, §7) turns it off.
-
-**Signature (the one bold element): the heat bar** (§10.1). The rail's selection pill glows like
-metal fresh from the forge. Nothing else in the chrome uses a gradient or a glow.
+Rules:
+1. **Discord's layout, our material.** No control in the main window moves or resizes.
+2. **Purple budget.** One big purple fill per view: the primary button. Everything else purple
+   is small (a 4 px pill, a 2 px ring or bar, an 18 px icon, a 40x24 switch, a caret) or soft (a
+   tint). Hover is never purple, except the home tile, which is the logo. List selection
+   (channels, DMs, members, settings nav fill) is never purple.
+3. **Colour plus a word or a shape.** Switches show a check or a cross. Status dots keep their
+   shapes. The island says "Voice connected" or "Connecting…".
+4. **Light comes from above.** Raised layers have a 1 px lit top edge on dark themes. The logo is
+   lit from the top left. No other gradients in the UI. No glows.
+5. **Calm by default, loud for exceptions.** Grey panes; colour means something happened.
+6. **Motion only answers an action** and always stops (0 % idle CPU).
 
 ---
 
+
 ## 2. Colour
 
-### 2.1 `ThemeColors` values (src/theme/mod.rs; no new fields)
+### 2.1 `ThemeColors` (the TOML contract: no field added, renamed or removed)
 
-| Field | Ember Dark | Paper Light | High Contrast (unchanged) | Used for |
+| Field | Nightshade (dark, default) | Lilac (light) | High Contrast | Used for |
 |---|---|---|---|---|
-| `guild_bar` | `#151a1e` | `#dae0e6` | `#000000` | frame: title bar, rail, behind the channel card |
-| `sidebar` | `#1c2125` | `#eaeef2` | `#000000` | channel card, member list, settings nav |
-| `background` | `#23282c` | `#f9fbfd` | `#0a0a0a` | chat, Friends, settings pages |
-| `message_hover` | `#262b30` | `#f0f3f6` | `#222222` | message hover |
-| `surface` | `#2c3236` | `#e5eaef` | `#161616` | composer, embeds, user panel; dark: floating layers |
-| `code_background` | `#181d21` | `#ecf0f3` | `#1c1c1c` | "well": code, text inputs, search, segmented track |
-| `text` | `#ece9e4` | `#1b2127` | `#ffffff` | text (dark: forge-lit warm white) |
-| `text_muted` | `#abb4bc` | `#525e68` | `#d6d6d6` | secondary text, icons at rest |
-| `accent` | `#f68842` | `#bc4602` | `#ffd400` | ember (§1) |
-| `accent_text` | `#21110a` | `#ffffff` | `#000000` | label on accent |
-| `link` | `#81bfeb` | `#0068a7` | `#66e0ff` | temper blue (§1) |
-| `danger` | `#fc6d6e` | `#cc2827` | `#ff5c5c` | red-hot text, icons, lines |
-| `mention_highlight` | `#373732` | `#eee7da` | `#3a3300` | row tint of messages that mention me |
+| `guild_bar` | `#08070B` | `#E7E5EE` | `#000000` | title bar, rail, behind the channel card, around the settings panel, login and update pages |
+| `sidebar` | `#0E0D13` | `#F0EEF5` | `#000000` | channel card, member list, settings nav |
+| `background` | `#121118` | `#FBFAFD` | `#0A0A0A` | chat, Friends, settings page side |
+| `message_hover` | `#17161E` | `#F4F2F8` | `#222222` | message row hover |
+| `surface` | `#1C1A24` | `#EBE8F2` | `#161616` | composer, user panel, embeds, rail tiles, island; dark: all floats (`raised` = `surface`) |
+| `code_background` | `#0A090E` | `#F2F0F6` | `#1C1C1C` | wells: inputs, code, search, segmented track |
+| `text` | `#F0EEF6` | `#17151D` | `#FFFFFF` | text |
+| `text_muted` | `#A8A5B6` | `#5B5869` | `#D6D6D6` | secondary text, icons at rest |
+| `accent` | `#A42BEA` | `#8E15D5` | `#DDA3FF` | the purple primary |
+| `accent_text` | `#FFFFFF` | `#FFFFFF` | `#000000` | label, knob and check on `accent` |
+| `link` | `#6CB4FF` | `#0A63C6` | `#66E0FF` | links |
+| `danger` | `#FC6D72` | `#C42838` | `#FF5C5C` | destructive text and icons, errors |
+| `mention_highlight` | `#241431` | `#F0E3F9` | `#34293B` | row tint of messages that mention me or match a keyword alert |
 
-Why there are no new fields: `ThemeColors` is `#[serde(default)]` from Ember Dark. A new
-non-optional field would give a light custom theme dark values, and state colours stay fixed per
-mode, as in Discord. Other theme changes:
-- `ThemeFont::default().size` 14.5 → **15**; High Contrast → **16**.
-- `ThemeLayout::default().corner_radius` 6 → **8**; High Contrast stays 4.
+`ThemeFont` and `ThemeLayout` defaults stay: size 15 (HC 16), `corner_radius` 8 (HC 4).
 
-### 2.2 Derived tokens: new `src/theme/tokens.rs`
+The purple: hue 278 (HSL) in all three presets. Discord blurple `#5865F2` is hue 235, CIELAB
+distance 37.6 (dark) / 36.7 (light): it reads purple, never blurple. Twitch `#9146FF` is 11.4 /
+14.0 away (same family, clearly not the same colour). White on `#A42BEA` is 5.11:1.
 
-`pub struct Tokens` built by `Tokens::new(c: &ThemeColors)`. Mode is HC if `is_high_contrast(c)`,
-else light if the relative luminance of `background` > 0.4, else dark. Build every constant as
-`Rgba` and convert with `to_color32` so the Saturation setting applies. `Pal` (ui/messages.rs:71)
-carries the tokens. `presence_color` (ui/mod.rs:1355) and `theme/apply.rs` read them.
+The neutrals: hue about 255, very low chroma (R one step above G, B a few steps above): a violet
+undertone you only see next to a pure grey. CIELAB L*: frame 2.1, sidebar 3.9, chat 5.4, hover
+7.7, surface 9.9, well 2.6. Illegalcord's own panes measure about L* 2-4 (nav `#070709`, page
+`#0C0C0E`), so this sits in the same place.
 
-| Token | Dark | Light | HC | Used for |
+### 2.2 `Tokens` (src/theme/tokens.rs): every field
+
+"x @ n %" = colour x at that opacity (translucent, works on gradient themes). Composite = over
+the pane in brackets.
+
+| Token | Nightshade | Lilac | High Contrast | Formula / job |
 |---|---|---|---|---|
-| `raised` | = `surface` | `#ffffff` | = `surface` | menus, popouts, modals, tooltips, pickers, autocomplete |
-| `hover` | `text` @ 6 % | `text` @ 6 % | `text` @ 12 % | row and button hover (translucent, so it works on gradients) |
-| `selected` | `text` @ 10 % | `text` @ 8 % | `text` @ 18 % | selected row, selected segment, toggled icon button |
-| `rule` | `text` @ 10 % | `text` @ 12 % | `text_muted` @ 45 % | hairlines (list rows, menu separators, float edges) |
-| `edge` | `#899198` | `#7c858d` | `#adadad` | component boundaries ≥ 3:1: input border, switch-off track. Formula: mix(background, text_muted, 0.75); HC 0.8 |
-| `focus` | = `link` | = `link` | = `accent` | focus ring |
-| `positive` | `#50c76a` | `#1d8b3d` | `#4fe07a` | §1: dots, icons, switch track |
-| `positive_text` | = `positive` | `#00792b` | = `positive` | green text ("Voice connected") |
-| `on_positive` | `#151a1e` | `#ffffff` | `#000000` | check and knob glyph drawn on `positive` (switch on, checkbox on) |
-| `positive_fill` | `#25803f`, white label | `#25803f`, white label | `#4fe07a`, black label | Join / Accept call buttons |
-| `attention` | `#ebc166` | `#a86b00` | `#ffd400` | §1 |
-| `live` | `#a682e1` | `#7a4aba` | `#c9a2ff` | §1 |
-| `danger_fill` | `#cc3d3f`, white label | `#cc2827`, white label | `#ff5c5c`, black label | destructive buttons, badges, "New" and "Live" tags, danger menu hover |
-| `chip` | `link` @ 16 % | `link` @ 12 % | `link` @ 22 % | mention and channel chips, app tags |
-| `selection` | `link` @ 35 % | `link` @ 22 % | `link` @ 35 % | selected text (replaces orange) |
-| `heat` | `[#a42d15, accent, #feeec1]` | `[accent; 3]` | `[accent; 3]` | heat bar: cold end, body, core |
-| `scrim` | black 60 % | black 40 % | black 80 % | behind modals |
-| `media_scrim` | black 88 % | black 88 % | black 95 % | the media lightbox backdrop (§10.3 Media) |
-| `on_media` | white 92 % | white 92 % | white 92 % | text and icons on media and on its black 56 % discs |
-| `on_media_muted` | white 64 % | white 64 % | white 64 % | secondary text on media (time, "2 of 3", "Esc") |
-| `media_hover` | white 14 % | white 14 % | white 14 % | hover of icon buttons and discs on media |
+| `mode` | Dark | Light | HighContrast | `Mode::of`, unchanged (muted/bg 7.79, 6.63, 13.62) |
+| `raised` | `#1C1A24` | `#FFFFFF` | `#161616` | unchanged rule: light = white, else `surface` |
+| `hover` | text @ 6 % (`#1F1E25` on chat) | text @ 6 % | text @ 12 % | unchanged |
+| `selected` | text @ 10 % (`#25242A` on sidebar) | text @ 8 % (`#DFDDE4` on sidebar) | text @ 18 % | unchanged |
+| `rule` | text @ 10 % (`#28272E` on chat) | text @ 12 % (`#E0DFE2`) | muted @ 45 % | unchanged |
+| `edge` | `#83808F` | `#83818E` | `#ADADAD` | unchanged: `mix(background, text_muted, 0.75)`, HC 0.8 |
+| **`accent`** | `#A42BEA` | `#8E15D5` | `#DDA3FF` | `c.accent.to_color32()`: on-state fills for helpers that only have `Tokens` (menus) |
+| **`on_accent`** | `#FFFFFF` | `#FFFFFF` | `#000000` | `c.accent_text.to_color32()`: knob and check on `accent` |
+| **`accent_ink`** | runtime ≈ `#BE67F0` | runtime ≈ `#8B15D0` | runtime ≈ `#DEA6FF` | purple as text, glyph, ring or bar. See formula below |
+| `focus` | = `accent_ink` | = `accent_ink` | = `accent_ink` | focus ring (was `link`; HC was `accent`) |
+| **`sheen`** | white @ 6 % (`Color32::from_white_alpha(15)`) | `TRANSPARENT` | `TRANSPARENT` | the lit top edge of raised layers (§6.2) |
+| `positive` | `#50C76A` | `#1D8B3D` | `#4FE07A` | unchanged |
+| `positive_text` | `#50C76A` | `#00792B` | `#4FE07A` | unchanged |
+| `positive_fill` / `positive_label` | `#25803F` / white | `#25803F` / white | `#4FE07A` / black | unchanged |
+| `attention` | `#EBC166` | `#A86B00` | `#FFD400` | unchanged values ("amber" in comments). Idle, "Connecting…", warnings. No longer the mention bar |
+| `live` | **`#F062C0`** | **`#B0237F`** | **`#FF8AD8`** | streaming (was purple). Hue 320: 53.8 ΔE from the accent, 48.0 from `danger` |
+| `danger_fill` / `danger_label` | `#CC3D3F` / white | `#CC2827` / white | `#FF5C5C` / black | unchanged |
+| `chip` | accent @ 16 % (`#29153A` on chat) | accent @ 12 % (`#EEDFF8`) | accent @ 22 % (`#382C40`) | **from `accent`** (was `link`) |
+| `selection` | accent @ 40 % (`#4C1B6C`) | accent @ 24 % (`#E1C3F3`) | accent @ 40 % (`#5E476C`) | **from `accent`** (was `link`) |
+| `scrim` | black @ **64 %** | black @ 40 % | black @ 80 % | dark 60 → 64 % (darker panes) |
+| `media_scrim`, `on_media`, `on_media_muted`, `media_hover` | unchanged | unchanged | unchanged | |
 
-Presence: online = `positive`, idle = `attention`, dnd = `danger`, offline = `text_muted`,
-streaming = `live`. The shapes stay: dot, crescent, bar, phone.
+`accent_ink` formula (tokens.rs, inside `Tokens::new`):
 
-### 2.3 Accent budget (enforced in review)
+```rust
+// Purple as text: readable (4.5:1) on a chip inside a mention row, the most saturated place it
+// sits, and on the floats. readable_on keeps the hue.
+let chip_a = k(0.16, 0.12, 0.22);
+let chip = |under: Color32| under.blend(accent.gamma_multiply(chip_a));
+let row = c.background.to_color32().blend(c.mention_highlight.to_color32()); // opaque for gradient themes too
+let accent_ink = readable_on(readable_on(accent, chip(row)), raised);
+```
 
-Ember may appear only on:
-- the logo mark
-- the heat bar
-- one primary button per view
-- the text caret
+`ATTENTION` (tokens.rs) stays for `attention`; comment it as amber.
 
-Never on:
-- list selection, server tiles, channel icons
-- menu items, switches, checkboxes, radios
-- hover borders, mention chips
-- secondary buttons, decoration
+### 2.3 Contrast (WCAG 2; text ≥ 4.5, components ≥ 3)
 
-### 2.4 Contrast (WCAG 2 formula, computed for every pair below)
-
-| Pair | Dark | Light | HC |
+| Pair | Nightshade | Lilac | High Contrast |
 |---|---|---|---|
-| text on chat / frame / raised | 12.3 / 14.5 / 10.7 | 15.7 / 12.2 / 16.2 | 19.8 / 21 / 18.1 |
-| muted on chat / sidebar / surface / selected | 7.1 / 7.7 / 6.2 / 5.9 | 6.4 / 5.7 / 5.5 / 4.9 | 13.6 / 14.5 / 12.5 / 9.3 |
-| accent on chat; accent_text on accent | 6.0; 7.4 | 5.0; 5.2 | 13.8; 14.7 |
-| link on chat / chip; focus on sidebar | 7.5 / 5.4; 8.2 | 5.7 / 4.8; 5.1 | 12.9 / 8.0; 14.7 |
-| danger on chat / raised | 5.4 / 4.7 | 5.2 / 5.4 | 6.5 / 6.0 |
-| label on danger_fill / positive_fill | 4.9 / 5.0 | 5.4 / 5.0 | 6.9 / 12.3 (black) |
-| switch / checkbox on: `positive` vs chat / surface (≥ 3); `on_positive` on it | 6.9 / 6.0; 8.1 | 4.2 / 3.6; 4.4 | ≥ 10; 12.3 |
-| edge on surface / chat (≥ 3) | 4.1 / 4.7 | 3.1 / 3.6 | 8.1 |
-| positive / attention dot on sidebar (≥ 3) | 7.5 / 9.6 | 3.7 / 3.8 | ≥ 12 |
-| pane steps (frame : sidebar : chat) | 1.08, 1.09 | 1.14, 1.12 | |
+| text on chat / frame / sidebar / surface / raised | 16.32 / 17.47 / 16.82 / 14.94 / 14.94 | 17.39 / 14.50 / 15.72 / 14.94 / 18.08 | 19.8 / 21.0 / 21.0 / 18.1 / 18.1 |
+| muted on chat / sidebar / surface / selected row | 7.79 / 8.03 / 7.13 / 6.39 | 6.63 / 6.00 / 5.70 / 5.12 | 13.62 / 14.45 / 12.45 / 9.34 |
+| `accent_text` on `accent`: rest / hover (+6 % white) / press (+12 % black) | 5.11 / 4.72 / 6.26 | 6.53 / 5.98 / 7.85 | 10.76 / 11.26 / 8.30 |
+| `accent` vs chat / sidebar / frame / surface (switch track, pill, radio) | 3.67 / 3.79 / 3.93 / 3.36 | 6.27 / 5.67 / 5.23 / 5.39 | 10.14 / 10.76 / 10.76 / 9.27 |
+| `accent_ink` on chat / sidebar / raised | 5.71 / 5.88 / 5.22 | 6.48 / 5.86 / 6.74 | 10.37 / 11.0 / 9.48 |
+| `accent_ink` on chip over chat / chip over mention row / chip over raised | 5.06 / 4.52 / 4.58 | 5.31 / 4.51 / 5.49 | 6.87 / 4.50 / 5.99 |
+| `accent_ink` on selected row (nav icon) / on mention row (bar) | 4.68 / 5.24 | 5.01 / 5.48 | 7.12 / 7.21 |
+| text on selection / on mention row; muted on mention row | 10.87 / 14.98; 7.15 | 11.45 / 14.69; 5.60 | 8.10 / 13.76; 9.47 |
+| link on chat / raised | 8.59 / 7.86 | 5.59 / 5.81 | 12.89 / 11.78 |
+| danger on chat / raised (test: ≥ 4.5 on menus) | 6.76 / 6.19 | 5.45 / 5.66 | 6.54 / 5.98 |
+| label on `danger_fill` / `positive_fill` | 4.88 / 4.96 | 5.38 / 4.96 | 6.94 / 12.28 |
+| `edge` vs chat / surface / well | 4.87 / 4.46 / 5.15 | 3.67 / 3.16 / 3.38 | 8.82 / 8.06 / 7.59 |
+| switch-off knob vs `edge` track (knob carries the ×) | 3.35 (text knob) | 3.82 (white knob) | 2.24, as today (track vs pane 8.8) |
+| dots on sidebar: positive / attention / live / danger | 8.95 / 11.38 / 6.64 / 6.97 | 3.79 / 3.83 / 5.38 / 4.92 | 12.28 / 14.67 / 9.88 / 6.94 |
+| `positive_text` on chat / surface | 8.68 / 7.95 | 5.36 / 4.60 | 11.57 / 10.58 |
+| pane steps frame:sidebar, sidebar:chat, chat:surface | 1.04, 1.03, 1.09 | 1.08, 1.11, 1.16 | 1.00, 1.06, 1.09 |
 
-The existing test `builtin_names_are_unique_and_default_is_ember` still holds.
-`is_high_contrast` stays false for Ember Dark and Paper Light (muted/background 7.1 and 6.4,
-both below 9).
+Notes:
+- The dark pane steps are tiny in WCAG terms (near-black squeezes the formula) but 1.5-2 L* each,
+  like Illegalcord. Hairlines carry the structure (§6.3).
+- The dark primary hover is the tight spot (4.72). Hover lightens by exactly 6 %; 8 % would drop
+  to 4.58. Do not lighten the dark accent without re-running the tests.
+- `accent` on the dark `surface` is 3.36 (a switch inside a modal): fine; the knob glyph also
+  carries the state.
+- The "Connecting…" word in the island and voice panel uses `readable_on(attention, fill)`:
+  plain amber on white is 4.40.
 
-### 2.5 Gradient and custom themes
+### 2.4 Gradient and custom themes
 
-`from_gradient`/`retint` (theme/gradient.rs:59-70) start from `ember_dark()`/`paper_light()`.
-They pick up the new text and surface tints automatically and keep ember and danger.
-Afterwards, re-run `presets_are_readable` and `flat_themes_keep_their_fills`.
+- `Theme::from_gradient` and `retint` (gradient.rs) start from `nightshade()` /
+  `lilac()`. The 23 gradient presets keep their names and get the purple through `..base`.
+- `retint` mention tint: `with_alpha(base.accent, 0x21)` instead of `ATTENTION` (13 % purple).
+- Custom TOML themes: unchanged contract. Missing colours now default to Nightshade
+  (`#[serde(default)]` → `ThemeColors::default()`). All tokens are derived, so custom themes get
+  `accent_ink`, `sheen` and friends.
+- Known limit: a few gradient presets with purple stops (Hexagon, Chroma Glow) may put the
+  switch track near 3:1 on parts of the gradient. Check them in the screenshots (§16); the knob
+  glyph carries the state either way.
 
-Custom TOML themes work unchanged. Tokens are derived from their colours; a file without
-`corner_radius` or `size` gets 8 / 15.
+### 2.5 Preset names and migration of saved values
+
+| Old | New |
+|---|---|
+| Ember Dark (default) | **Nightshade** (default) |
+| Paper Light | **Lilac** |
+| High Contrast | High Contrast |
+| 23 gradient presets | names unchanged |
+
+What users have saved:
+- `settings.toml` holds `theme = "Ember Dark"` (default), `"Paper Light"`, `"High Contrast"`, a
+  gradient name, or a user theme name / file stem (config.rs).
+- The themes folder may hold user files such as "Ember Dark (custom)" (import of a built-in
+  name) or "Ember Dark custom" (theme editor default save name). They are the user's own files.
+  They keep their names and their old colours, and keep loading by name.
+
+Migration (one place, `src/theme/mod.rs`):
+
+```rust
+/// Built-in names before the 0.2 redesign, for settings files that still name them.
+pub fn renamed(name: &str) -> &str {
+    match name {
+        "Ember Dark" => "Nightshade",
+        "Paper Light" => "Lilac",
+        n => n,
+    }
+}
+```
+
+`Theme::find(name)`: built-ins by `name` → user themes by name or stem → built-ins by
+`renamed(name)` → default. The rename is only a fallback, so a user theme that is really called
+"Ember Dark" (possible now that the name is free) still wins. `settings.toml` is not rewritten;
+it keeps the old string until the user picks a theme. Without this map a Lilac user would land on
+the dark default.
+
+Edge case (accepted): a user theme named exactly "Nightshade" or "Lilac" is now shadowed by the
+built-in (existing rule in `load_user_themes`: taken names are skipped).
 
 ---
 
 ## 3. Type
 
-**Fonts:**
-- gg sans (runtime download) with weights 400, 500, 600, 700.
-- Fallbacks are system fonts only, nothing bundled: Segoe UI for 400; **Segoe UI Semibold
-  (`seguisb.ttf`) for 600**, which today falls back to Bold (apply.rs:170 `build_fonts`); Segoe UI
-  Bold for 700. 500 falls back to 400.
-- The tofu fallback chain is already in theme/fonts.rs `FALLBACK` (it starts with seguisym.ttf).
+Font unchanged: gg sans fetched at runtime (`use_discord_font`), else Segoe UI / Semibold / Bold
+(Linux Noto/DejaVu, macOS Arial). Nothing bundled (no new font is bundled).
 
-B = `theme.font.size` (default 15). Every role scales with it. Add helpers on `Pal`:
-`badge() meta() label() ui() body() heading() title() display()`. They replace the `size - n`
-literals.
+B = `theme.font.size` (15; HC 16).
 
-| Role | Size | Weight | Line height | Used for |
+| Role | Size | Weight | Tracking | Used for |
 |---|---|---|---|---|
-| display | B+9 = 24 | 700 | 30 | login title, full-profile name, DM start name |
-| title | B+5 = 20 | 600 | 26 | settings page title, modal title, popout display name |
-| heading | B+1 = 16 | 600 | 22 | chat-header channel name, server header, settings section heading, activity name in cards |
-| body | B = 15 | 400; names 500 | messages 1.375 × B = 21 (`TextFormat::line_height`), rows 20 | messages, channel / DM / member names |
-| ui | B−1 = 14 | 500 buttons, tabs, menu items; 400 inputs | 20 | buttons, menus, inputs, tooltips |
-| label | B−2 = 13 | 600, `text_muted` | 18 | categories, member groups, settings nav groups, field labels, card labels |
-| meta | B−3 = 12 | 400 | 16 | timestamps, status and activity lines, hints, descriptions |
-| badge | B−4 = 11 | 700 | 14 | counts, "New", "Live" |
+| display | **B+13 = 28** (was B+9) | 700 | **−0.6 px** | login title, update screen title, full-profile name, DM start name |
+| title | B+5 = 20 | **700** (was 600) | **−0.3 px** | settings page title, modal title, profile popout name |
+| heading | B+1 = 16 | 600 | 0 | chat header, server header, settings section heading |
+| body | B = 15 | 400; names 500 | 0 | messages, rows, settings nav rows |
+| ui | B−1 = 14 | 500 controls, 400 inputs | 0 | buttons, menus, tooltips |
+| label | B−2 = 13 | 600, muted | 0 | categories, member groups, nav groups, island state word |
+| meta | B−3 = 12 | 400 | 0 | timestamps, hints, "Edit profile", island server name |
+| badge | B−4 = 11 | 700 | 0 | counts, "New", "Live" |
 
-Rules:
-- Sentence case everywhere.
-- No ALL CAPS and no letter-spacing.
-- Never more than three weights on one screen.
-- Only author and member names carry role colours. Headings never do.
-- egui `TextStyle` (apply.rs:30-36): Body = B, Button = B−1, Small = B−3, Monospace = B−1,
-  Heading = B+5 semibold.
+Two helpers on `Pal` (messages.rs), so tracking lives in one place:
+
+```rust
+/// Title role (B+5, 700, -0.3 px): settings page titles, modal titles, popout names.
+pub fn title_text(&self, text: &str) -> RichText {
+    RichText::new(text).font(FontId::new(self.title(), crate::theme::bold_family())).extra_letter_spacing(-0.3).color(self.text)
+}
+/// Display role (B+13, 700, -0.6 px): login and update titles, full-profile name.
+pub fn display_text(&self, text: &str) -> RichText { /* same with self.display(), -0.6 */ }
+```
+
+Rules: tracking only on display and title. Sentence case, no all caps, no coloured headings.
 
 ---
-
 ## 4. Spacing and sizes
 
 **Spacing scale:** 2, 4, 8, 12, 16, 24, 32, 48. No 10, 14 or 20.
@@ -221,66 +253,109 @@ Rules:
 
 **Messages:** avatar 40 at x 16, text column at x 72, 16 between groups.
 
+
+---
+
 ## 5. Radius
 
-r = `layout.corner_radius` (default 8). Tiers are derived; a theme with 0 stays square.
+| Tier | Helper | r = 8 | HC | Elements |
+|---|---|---|---|---|
+| chip | r / 2 | 4 | 2 | chips, tags, checkbox, inline code |
+| control | `pal.radius` | 8 | 4 | buttons, inputs, rows, settings nav rows, segments, embeds, call buttons |
+| card | `card_radius()` 1.5r | 12 | 6 | composer, user panel, menus, tooltips, autocomplete, hover toolbar, callouts |
+| float | **`float_radius()` 2r** | 16 | 8 | profile popout (+ its preview on My account), inbox, pins, emoji/GIF picker, toasts |
+| layer | **`modal_radius()` 2.5r (was 2r)** | 20 | 10 | modals and confirms, settings panel, quick switcher, login card, full profile, the drop overlay card |
+| full | | pill | pill | avatars, switches, badges, status dots, the island, the call dock |
+| fixed | | 12 | 12 | rail tiles (`ICON_R`) and the channel card corner (Discord's values) |
+| speech corner | | 2 | 2 | bottom-left corner of the selected rail tile (§10.1) |
 
-| Tier | Value (r = 8) | Elements |
-|---|---|---|
-| chip | r/2 = 4 | chips, tags, badges' rectangles, inline code, 20 px activity art, role chips |
-| control | r = 8 | buttons, inputs, row fills, menu items, tooltips, segmented items, embeds |
-| container | 1.5 r = 12 | channel card corner, user panel, composer, menus, popouts, pickers, activity containers |
-| modal | 2 r = 16 | modals, profile popout, login panel |
-| full | — | avatars, switches, status dots, count badges |
+Callers to switch (everything else keeps its helper):
+- `float_radius()`: profile.rs, user_settings/account.rs, inbox.rs, pins.rs,
+  pickers.rs. Toasts already use `corner_radius * 2.0` (= float).
+- `modal_radius()` callers stay (dialog mod.rs, login.rs, profile_modal.rs,
+  switcher.rs, composer.rs) and grow to 20 by the helper change.
+- apply.rs: `window_corner_radius = radius(2.5)`; `menu_corner_radius` stays `radius(1.5)` (egui
+  shares it between menus and tooltips; 16 would make one-line tooltips pills).
 
-- Nested radius = outer − inset, minimum 2. Example: a menu at 12 with 4 padding has items at 8.
-- `Pal::card_radius()` becomes `r * 3 / 2`; add `Pal::modal_radius()` = `2r`.
-- `PANEL_R` (sidebar.rs:1731) goes to the container tier.
-- Rail tiles keep their own morph (`ICON_R`).
+
+---
 
 ## 6. Elevation
 
-| Level | What | Fill | Edge | Shadow (`egui::Shadow`) |
+### 6.1 Levels (apply.rs `visuals` and our own floats)
+
+| Level | What | Fill | Edge | Sheen | Shadow (`egui::Shadow`) |
+|---|---|---|---|---|---|
+| E0 pane | title bar, rail, channel card, chat, member list | pane | `rule` where panes meet (§6.3) | no | none |
+| E1 card | composer, user panel, island, settings option groups | `surface` | 1 px `rule` (composer: none; HC `rule`) | yes | none |
+| E2 float | menus, tooltips, popouts, pickers, autocomplete, hover toolbar, toasts | `raised` | 1 px `rule` (HC 1.5 px muted) | our own floats only | dark `[0,12]` blur 32 black 55 %; light `[0,12]` blur 32 black 12 % |
+| E3 layer | modals, settings panel, quick switcher, login card, incoming call card | `raised` (settings: two pane fills) | 1 px `rule` (HC 1.5 px muted) | yes | dark `[0,24]` blur 64 black 65 %; light `[0,24]` blur 64 black 18 % |
+
+HC: no shadows, no sheen (as today: `Shadow::NONE`, the 1.5 px muted edge).
+
+### 6.2 The sheen (lit top edge)
+
+One helper in `src/ui/messages.rs`, next to `focus_ring`:
+
+```rust
+/// The lit top edge of a raised layer (`sheen`): 1 px, 1 px under the top edge (below a 1 px
+/// outline), from `radius` in on both ends. Nothing on light and high-contrast themes.
+pub(super) fn sheen(p: &egui::Painter, rect: Rect, radius: f32, tk: &crate::theme::Tokens) {
+    if tk.sheen.a() > 0 {
+        p.hline(rect.left() + radius..=rect.right() - radius, rect.top() + 1.5, Stroke::new(1.0, tk.sheen));
+    }
+}
+```
+
+Static paint, no frames. Where: user panel, composer, island, dialogs (`dialog_closable`: the
+frame's outer rect is `ui.min_rect().expand(24.0)` after the content), toasts, profile popout,
+inbox popout, settings panel, login card, call dock. Not on egui's own menus and tooltips (no
+hook): they get fill, rule and shadow only.
+
+### 6.3 Hairlines
+
+`rule`, 1 px. Where: the channel card corner line (exists), the chat header bottom (exists),
+**new: the left edge of the right column** (member list, thread panel, search results; one
+`vline` in `main_layout` like the channel list's at), float outlines, the settings
+panel outline and its nav | page divider, menu separators (inset 8), date separators. Nowhere
+else.
+
+---
+
+## 7. Motion (all through `src/ui/motion.rs`; ux-motion principle numbers in brackets)
+
+Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12, STAGGER 0.04.
+
+| What | In | Out | Helper | Principle |
 |---|---|---|---|---|
-| E0 | panes | frame / sidebar / chat | `rule` only where equal fills meet | none |
-| E1 | composer, embeds, user panel, Active now containers | `surface` | none (inputs: `edge`) | none |
-| E2 | menus, tooltips, popouts, pickers, autocomplete | `raised` | 1 px `rule` | offset [0,8], blur 24, black 45 % dark / 14 % light |
-| E3 | modals, confirms, login panel | `raised` + `scrim` | 1 px `rule` | offset [0,16], blur 48, black 50 % / 18 % |
+| Rail pill height + colour (white → purple) + speech corner 12 → 2 | FAST, cubic in-out, retargets mid-way | FAST | `value` (existing; one value drives all three) | 5, 7, 17 |
+| Rail and home tile morph (home: surface → purple) | FAST | FAST | existing `morph` | 8 |
+| Switch knob + track `edge` → `accent` | FAST slide, 15 % stretch | same | `slide` (existing) | 1, 5 |
+| Checkbox, radio, nav selection, hover colours, page switch, quick switcher | instant | instant | | 20 |
+| Settings panel (with backdrop and scrim) | LARGE: fade + 0.98 → 1 about the panel centre | instant | `anim(.., LARGE, 0.0)` + `about` (existing) | 8, 18 |
+| Backdrop picture | appears under the already fading scrim (ready by frame 2) | dropped at once | | 16 |
+| Call island appear / leave | BASE: fade + scale 0.92 → 1 about its centre; the label fades out | BASE x OUT fade; the label fades in | `anim(.., BASE, BASE * OUT)` | 5, 18 |
+| Menus, tooltips, popovers, pickers | FAST, grow 0.96 from the trigger | instant | `end_pass` (existing) | 11, 18, 20 |
+| Modals | BASE, grow from the click | BASE x OUT ghost | `modal` (existing) | 11, 18 |
+| Toasts | BASE, 8 px rise + fade | BASE x OUT | existing | 5, 18 |
+| Press (everything using `motion::pressed`) | instant: drawn at **97 %** about the centre, at least 1 px smaller per side | instant | change `pressed` + its test | 16, 20 (house ".97", no frames) |
+| My reaction | pop 1 → 1.12 → 1 over BASE | | `pop` (existing) | 9 |
+| Login error shake, update pill | LARGE | | existing | 9 |
 
-- HC: no shadows; floats get a 1.5 px `text_muted` border.
-- In-flow cards never get a shadow.
-- Set `popup_shadow` = E2 and `window_shadow` = E3 in apply.rs:90-91.
-
-## 7. Motion
-
-Every animation goes through `src/ui/motion.rs` (tokens and helpers) and follows the ux-motion
-skill (`~/.claude/skills/ux-motion/SKILL.md`, 20 principles). Motion answers an action, never
-loops on its own (spinners while loading excepted) and asks for frames only while it moves.
-
-| Token | Open | Close | Used for |
-|---|---|---|---|
-| `FAST` | 120 ms | instant | menus, context menus, submenus, tooltips, popovers, pickers: fade + grow 0.96 → 1 from their trigger (egui `animation_time` = `FAST`, `motion::end_pass`); switch knob (stretches 15 % mid-travel), segmented selection, category chevron, rail pill and tile morph; speaking rings fade out in `FAST` |
-| `BASE` | 200 ms | 100 ms | modals and confirms (`motion::modal`: scrim fade; panel fade + grow 0.96 → 1 from the click that opened it), the lightbox (media 0.92 → 1 from the click), toasts (fade + 8 px rise), my reaction's pop (1 → 1.12 → 1), quest cards after the skeletons (fade + 8 px rise, 40 ms apart) |
-| `LARGE` | 300 ms | instant | settings layers (fade + 0.98 → 1), the title-bar update pill (fade + 8 px slide), the login error shake (3 × ±6 px, decaying) |
-
-- Curves: entering ease-out (`motion::ease`, cubic-out), leaving the same curve backwards
-  (ease-in), moves between two spots cubic in-out. Linear only for spinners and progress bars.
-- Instant on purpose (frequency of use): the quick switcher (Ctrl+K: opens and closes at once,
-  ux-motion 20), hover colours, message rows, channel rows under a
-  collapsing category, autocomplete, tab / channel / server switches, scrolling to a message,
-  closing menus and popovers, the update screen, the captcha slot, the game overlay. A press
-  draws the control 1 px smaller per side while held, no tween.
-- `reduced_motion` (config.rs:128) sets every duration to 0 and egui's scroll animation to none;
-  static states (heat colours) stay; typing dots and call rings stop pulsing. On Windows it is
-  also on while the system's "Animation effects" are off (`motion::os_reduced`, read once).
-- `RUSTCORD_MOTION_SCALE=<f>` multiplies every duration (10: screenshots mid-animation).
+Ending cleanly (0 % idle CPU):
+- Every row above ends and stops asking for frames. Nothing loops: no glow, no pulse, no
+  shimmer, no animated gradient. Existing loops stay: typing dots, incoming ring, spinners.
+- The sheen, the speech corner and the backdrop are static paint.
+- The island repaints only while it fades. CallTimer (when on) keeps its existing 1 Hz tick.
+- Reduced motion (setting or Windows "Animation effects" off): every duration 0, final states
+  at once.
 
 ### 7.1 Sound
 
 Rustcord's own sounds are synthesized in code (`src/sounds/synth.rs`), never files. They follow
 the same ux-motion principles as the motion above.
 
-- Families: bell for chat, rings and streams; anvil (bell plus a soft hammer tick) for voice
+- Families: bell for chat, rings and streams; knock (bell plus a soft tick) for voice
   presence; click for switches. Pitches are D major pentatonic (D4 to F#6).
 - Switch sounds are audible for 150 ms or less (8, snappy); presence sounds 0.3-0.8 s; only rings
   last longer. Every out/off sound is shorter than its in/on pair (18). Push to talk is the
@@ -293,14 +368,17 @@ the same ux-motion principles as the motion above.
 - Reduced motion does not apply; Settings > Notifications > Sounds does.
 
 ---|---|
-| heat bar and pill | 150 ms (existing `ANIM`) |
+| rail pill | 150 ms (existing `ANIM`) |
 | switch knob, segmented selection, category chevron (0 ↔ −90°) | 120 ms |
 | modal open | 140 ms fade + scale 0.97 → 1 |
 | menu and popout open | 100 ms fade |
 
 - No hover tweens: hover changes colour instantly.
 - Repaints only through `request_repaint_after`.
-- `reduced_motion` sets every duration to 0. Static states, including the heat colours, stay.
+- `reduced_motion` sets every duration to 0. Static states stay.
+
+---
+
 
 ---
 
@@ -535,91 +613,179 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 
 ---
 
+
+### 8.6 Four new icons (src/ui/icons.rs; 24 grid, stroke 1.75, round ends; add to `Icon` and `ALL`)
+
+Written with the pen helpers already in icons.rs (`k.closed`, `k.ring`, `k.line`, `k.disc`,
+`k.rrect_line`, `arc(x, y, r, a0, a1)` in degrees, 0 = right, 90 = down):
+
+```rust
+Palette => {
+    // Open ring with a thumb dip at the lower right, three paint dots.
+    let mut pts = arc(12.0, 12.0, 9.0, 75.0, 375.0);
+    pts.extend([(16.5, 14.5), (14.5, 16.5)]);
+    k.closed(&pts);
+    k.disc(7.75, 11.5, 1.5);
+    k.disc(10.5, 7.25, 1.5);
+    k.disc(15.25, 7.75, 1.5);
+}
+Accessibility => {
+    k.ring(12.0, 12.0, 9.0);
+    k.disc(12.0, 7.25, 1.6);
+    k.line(&[(7.5, 10.0), (12.0, 11.0), (16.5, 10.0)]);
+    k.line(&[(12.0, 11.0), (12.0, 14.0)]);
+    k.line(&[(9.5, 18.0), (12.0, 14.0), (14.5, 18.0)]);
+}
+Keyboard => {
+    k.rrect_line(2.5, 6.0, 21.5, 18.0, 2.5);
+    for x in [6.5, 10.0, 13.5, 17.0] { k.disc(x, 10.0, 1.0); }
+    k.line(&[(8.5, 14.5), (15.5, 14.5)]);
+}
+Puzzle => {
+    // One piece: knobs on the top and right edges.
+    let mut pts = vec![(4.5, 8.5), (8.48, 8.5)];
+    pts.extend(arc(10.25, 6.75, 2.5, 135.0, 405.0));
+    pts.extend([(16.5, 8.5), (16.5, 11.98)]);
+    pts.extend(arc(18.25, 13.75, 2.5, 225.0, 495.0));
+    pts.extend([(16.5, 19.5), (4.5, 19.5)]);
+    k.closed(&pts);
+}
+```
+
+Check with `RUSTCORD_NAV_DEMO=icons` (the icon sheet) at 16, 18 and 20 px.
+
+---
+
 ## 9. Components
 
-**Buttons**
-- Height 32 (40 in modal footers and on login; 24 inline). Padding 16, minimum width 64.
-- Label: ui role 14/500, sentence case, verb first. Radius control.
+Sizes are today's unless stated. Colours are tokens from §2.
 
-| Variant | Rest | Hover / pressed | Disabled | Use |
+### 9.1 Buttons (`messages::button`)
+
+32 tall (40 in modal footers and on login), padding 16, min width 64, label ui 14/500, radius r.
+
+| Kind | Rest | Hover | Press | Disabled |
 |---|---|---|---|---|
-| Primary | `accent`, `accent_text` | mix white 8 % / mix black 10 % | `surface` fill, `text_muted` (never dim orange) | one per view: Sign in, Save changes, Create channel, Message, Add friend |
-| Secondary | `selected` | +4 % / +8 % text | text at 45 % | Change password, Watch, Retry, empty-state actions |
-| Danger | `danger_fill`, its label | mix black 10 % / 18 % | as secondary | destructive confirms only |
-| Positive | `positive_fill`, its label | same | as secondary | Join call, Accept call |
-| Ghost | no fill, `text` | `hover` / `selected` | `text_muted` 60 % | Cancel |
-| Icon | 32 hit area, 20 icon `text_muted` | icon `text` + `hover` fill, radius control | 40 % | toolbars; toggled on = icon `text` + `selected` fill, never accent |
+| Primary | `accent` + `accent_text` | `accent.lerp_to_gamma(WHITE, 0.06)` | `accent.lerp_to_gamma(BLACK, 0.12)` | `selected` fill, muted label |
+| Secondary | egui weak fills (`selected`, +4 %, +8 %) | | | text @ 45 % |
+| Danger | `danger_fill` + `danger_label` | +10 % black | +18 % black | as secondary |
+| Positive | `positive_fill` + `positive_label` | +10 % black | +18 % black | as secondary |
+| Ghost | none, `text` | `hover` | `selected` | muted @ 60 % |
+| Icon (`button_with`) | 32 hit, 20 icon muted | `hover` fill, icon `hot` | `selected` | on: `selected` fill + icon `text`, never purple |
 
-**Focus ring**
-- 2 px `focus` at a 2 px offset, radius = element radius + 2. Inset by 2 on full-bleed rows.
-- Shown on keyboard focus.
-- Every custom-painted control needs one: rail tiles, channel, DM and member rows, `icon_button`,
-  menu items, switches.
+The same Primary fills everywhere: "Add friend" tab (friends.rs: hover 0.06), login
+`primary_button`, "Watch stream" (call.rs).
 
-**Inputs**
-- Fill `code_background` (well), 1 px `edge` border, radius control, padding 12.
-- Placeholder `text_muted`. Hover: border `text_muted`. Focus: the 2 px focus ring replaces the
-  border.
-- Error: `danger` border, and below it a 12 px `danger` line with `Alert` saying what is wrong and
-  what to do.
-- Labels: label role, 8 above the field.
-- The search field has a `Search` icon inside, at the left.
+### 9.2 Switch (`messages::switch`)
 
-**Switch**
-- Track 40×24, pill. Knob 18.
-- Off: track `edge`; knob `text` (dark) or white (light) with a 1.5 px × in the track colour.
-- On: track `positive`; knob `on_positive` with a check in `positive`.
-- Slides in `FAST`, cubic in-out; the knob stretches 15 % mid-travel (§7).
+40x24 pill, knob 18. Off: track `edge`, knob `text` (light: white) with a 1.5 px × in the track
+colour. **On: track `accent`, knob `on_accent` with a check in `accent`.** The track lerps
+`edge` → `accent` with the knob travel. Motion unchanged (FAST slide, 15 % stretch).
+Code: `tk.positive` → `pal.accent`, `tk.on_positive` → `pal.accent_text`.
 
-**Checkbox and radio**
-- Checkbox 20, radius chip: off has a 1.5 px `edge` border; on is `positive` with an
-  `on_positive` check.
-- Radio 20: off is a 1.5 px `edge` ring; on is a 2 px `text` ring with an 8 px `text` dot.
+### 9.3 Checkbox and radio
 
-**Segmented control** (login tabs, plugin filter, status picker, Friends tabs)
-- Track `code_background`, radius control, padding 2.
-- Segment 32 tall, radius r−2.
-- Selected segment: `raised` (light) or `selected` (dark), label 500 `text`. Others: `text_muted`. The selection slides in `FAST`.
+- `paint_checkbox`: off 1.5 px `edge` ring; **on `tk.accent` fill + 2 px `tk.on_accent`
+  check**. Radius chip.
+- `paint_radio`: off 1.5 px `edge` ring; **on 2 px `accent` ring + 8 px `accent` dot**
+  (was `text`).
+- Selected-check badges: theme editor swatch (theme_editor.rs) and cosmetics picker
+  (cosmetics.rs): `tk.accent` disc with a `tk.on_accent` check (were green).
 
-**Menus**
-- E2, radius container, padding 4, 188–320 wide.
-- Items 32 tall, radius r−4 = 8 (concentric). Label ui 14/500 on the left; icon 16 `text_muted`
-  on the right.
-- Hover or keyboard focus: `hover` fill and `text` label.
-- Danger item: `danger` label and icon; on hover `danger_fill` with its label colour.
-- Separator: 1 px `rule`, inset 8, 4 above and below. A submenu shows `ChevronRight`.
-- Toggle items: checkbox on the right.
+### 9.4 Inputs
 
-**Tooltips**
-- Dark: `raised` with a `rule` edge. Light: inverted, `text` fill with white label.
-- ui 14/500, radius control, padding 6×10, max width 240, E2. Delay 0.3 s
-  (`style.interaction.tooltip_delay`).
-- The text names the action; the shortcut follows in `text_muted` ("Mute", then "Ctrl+Shift+M").
+Well `code_background`, 1 px `edge`, radius r, padding 12; 40 tall in forms, 32 in search.
+Hover: border `text_muted`. Focus: 2 px `focus` (purple ink) replaces the border (apply.rs
+already reads `tk.focus`). **Caret: 2 px `accent_ink`** (apply.rs). Error: `danger`
+border + a 12 px `danger` line with `Alert`.
 
-**Modals** (ui/mod.rs:1100 `dialog`, :1146 `dialog_buttons`, :1162 `dialog_footer`)
-- E3, widths 440 (confirm) / 520 (form) / 640 (wide), radius modal, padding 24.
-- Title role on the left; `Close` icon button 32 at the top right.
-- Footer right-aligned, 12 gap: Ghost "Cancel" plus one primary (or danger). No grey band.
-- A confirm asks its question in the title and states the consequence in the body.
-- Option lists, such as Create channel's type, are radio rows: icon 20, label 15/500, one-line
-  meta description, radio. They sit in one `surface` group with `rule` separators, not separate
-  cards.
+### 9.5 Segmented control, tabs, menus, tooltips
 
-**Chips, tags, badges**
+Unchanged in shape. Segments and Friends tabs stay neutral (`selected` fill): a view switch is not
+"you". Menus: E2, radius 12, items 32, `hover` fill, danger items `danger_fill` on hover, toggle
+items use the purple checkbox. Tooltips: `raised` + `rule` + E2, radius r (light tooltips stay
+white, no inversion).
 
-| Kind | Look |
+### 9.6 Popouts and modals
+
+- Profile popout (profile.rs): radius float 16, `raised`, `rule`, E2, sheen, display name via
+  `title_text`. Footer Primary "Message".
+- Inbox, pins, pickers: radius float 16 (§5); inbox gets the sheen.
+- Modals (`dialog_closable`, mod.rs): E3, radius 20, padding 24, widths 440 / 520 / 640,
+  title via `pal.title_text`, sheen, `Close` 32 top right. Footer: Ghost "Cancel" + one Primary
+  or Danger (unchanged).
+- Quick switcher: radius 20 via `modal_radius()` (no motion, unchanged).
+
+### 9.7 Toasts (`show_toasts`, mod.rs)
+
+`surface`, **1 px `rule`, E2 shadow, sheen**, radius 16, padding 12x16, max 360, bottom
+right of the chat. 8 px dot: `danger` errors, `positive` done, muted info. Never purple.
+
+### 9.8 Badges, chips, reactions, polls
+
+| Thing | Look |
 |---|---|
-| mention / channel chip in text | `chip` fill, `link` text, radius chip, padding 0×2; hover `link` @ 28 % |
-| role chip | 22 tall, radius chip, `surface` fill, 8 px colour dot (1 px `edge` ring if the dot is < 2:1 on the fill), meta 12/500. Wraps per chip; a long name ends in "…". |
-| count badge | `danger_fill`, badge 11/700, pill, 2 px ring in the parent fill |
-| "New" tag, "Live" tag | `danger_fill`, badge role, radius chip, sentence case |
-| app / server tag | `chip` fill, `link` badge text, radius chip. Never accent. |
-| composer state | dot + word ("Offline"), meta, `text_muted` on `selected`, pill |
+| Count badge | `danger_fill` pill 16 tall, 11/700, 4 px ring in the parent fill (unchanged) |
+| "New" / "Live" tags | `danger_fill`, chip radius (unchanged) |
+| Mention / channel / @everyone / @here / slash pills (markdown.rs `pill`) | `chip` fill (purple), **`accent_ink` text** (was `link`). **Hover: the fill stays; the label gets a 1 px underline in `accent_ink`** (2 px in from both ends, 1 px above the bottom). The old hover fill (fg @ 28 %) drops ink to 4.4:1 |
+| App / bot tag | `chip` + `accent_ink` |
+| My reaction (`reaction_chip`) | `chip` fill + 1 px **`accent_ink`** border; count in **`text`** (was `link`). Hovered mine: `chip.blend(hover)`. Others unchanged |
+| My poll pick (polls.rs) | `chip` fill + 1 px `accent_ink` border + `accent_ink` check (were `link`) |
+| Role chip, status chip | unchanged |
 
-**Empty states**
-- Centred at 30 % height.
-- A 48 px icon in `text_muted`, a heading line saying what is missing, one meta sentence saying
-  what to do, and at most one secondary button that does it.
+### 9.9 Callout (from Illegalcord, in our look)
+
+`messages::callout(ui, pal, kind, text)` with `enum Callout { Info, Warn, Danger }`, about 25
+lines next to `button`.
+- Full width, radius card (12), padding 12 top/bottom, 12 right; a 16 px icon at x+12, text from
+  x+36, ui 14 `text`, wrapped.
+- Colour per kind: Info `link` + `Icon::Info`; Warn `attention` + `Icon::Alert`; Danger `danger` +
+  `Icon::Alert`. Never purple (purple is "you", not "info").
+- Fill: kind colour @ 8 %. Border: 1 px kind colour @ 70 % on dark, 100 % on light, 1.5 px 100 %
+  on HC. (Dark border vs chat: info 4.74, warn 5.87, danger 3.85. Light: 5.59, 3.9, 5.45.)
+- Icon on fill ≥ 3.85; text on fill ≥ 14.
+- First use: Settings → Advanced, the hardware acceleration hint becomes an Info callout with the
+  same words (user_settings/app.rs).
+
+### 9.10 Chat
+
+- Mention / keyword row (messages.rs): `mention_highlight` tint + 2 px **`accent_ink`**
+  bar (was `attention`). Hovered: tint + `hover` (unchanged). A reply to me gets it too.
+- Jumped-to flash: `link` (unchanged: it is navigation).
+- Composer (composer.rs): E1 `surface`, radius 12, no border (HC `rule`), **sheen**.
+- Embeds, code, attachments, hover toolbar, separators, "New": unchanged.
+
+### 9.11 Main window panes and lists
+
+- Channel card, channel rows, DM rows, categories, voice users: unchanged. No purple in rows.
+- Member list (and thread panel, search results): new 1 px `rule` on the left edge (§6.3).
+  Streaming dot and icon in pink `live` (token change, no code).
+- User panel (sidebar.rs `user_panel`): E1 `surface`, radius 12, 56 tall, 8 margin,
+  **1 px `rule` outline on every theme** (today light/HC only), **sheen**. Content
+  unchanged. Voice section words: "Voice connected" `positive_text`, "Connecting…"
+  `readable_on(attention, panel fill)`.
+- "Read All" pill (plugins/sidebar.rs): hover becomes `selected` fill + `text` label
+  (was `accent` / `accent_text`: hover is never purple).
+- Message-link embed bar (plugins/link_embeds.rs): `edge` (was `accent`).
+- Mic meter (user_settings/voice.rs): below threshold `tk.attention` @ 70 %, above
+  `tk.positive` @ 70 % (were raw hex).
+
+### 9.12 Login and update screens
+
+- Login card (login.rs): radius 20 (helper), `raised`, `rule`, E3, **sheen**, padding as
+  today. Title "Sign in to Rustcord" via `pal.display_text`. Raster logo (rustcord-128.png). Primary button fills per §9.1.
+- Update screen (update.rs): title via `display_text`; the 320x4 progress bar fills with
+  **`accent`** on an `edge` @ 50 % track (progress is "now"). Title-bar pill "Update available"
+  stays green.
+
+### 9.13 Installer (`src/bin/rustcord-setup/ui.rs`)
+
+Constants: `FRAME #08070B`, `BACKGROUND #121118`, `SURFACE #1C1A24`, `TEXT #F0EEF6`,
+`MUTED #A8A5B6`, `ACCENT #A42BEA`, `ACCENT_TEXT #FFFFFF`, `EDGE #83808F`, `DANGER_FILL #CC3D3F`,
+`FOCUS #BE67F0`, `CLOSE_RED #C42B1C` (unchanged). Switch and checkbox
+on-state: `ACCENT` + `ACCENT_TEXT`. **Delete `POSITIVE` and `ON_POSITIVE`** (unused afterwards;
+CI runs clippy with `-D warnings`). Header comment: "DESIGN.md §1 (Nightshade)"; doc
+comment follows.
 
 ---
 
@@ -641,29 +807,60 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 |    | |  [pad] Factorio | ..| | +-----------------------------------------+   |                  |
 |    | +--------------------+ |                                               |                  |
 +----+------------------------+-----------------------------------------------+------------------+
- #RW = heat bar on the selected server (4 px: cold ends, ember body, white-hot core)
+ #RW = the pill and the speech corner on the selected server
 ```
 
-### 10.1 Rail and heat bar (signature)
+### 10.1 Rail and speech corner (signature)
 
-**Pill** (`decorate`, sidebar.rs:302):
-- Height eases to 8 (unread), 20 (hover) and 40 (selected), 4 px wide, radius ne/se 4 (as now).
-- Up to 20 px tall it is `text` (white), as on Discord.
-- From 20 to 40, t = (h−20)/20, and each colour lerps from `text` to its heat stop:
-  1. Paint the pill in `heat[0]`.
-  2. Over [top+3, bottom−3], paint one vertex-coloured `Mesh` with stops at 0, 0.3, 0.5, 0.7
-     and 1: `heat[0]`, `heat[1]`, `heat[2]`, `heat[1]`, `heat[0]`.
-- It heats on select and cools on leave through `FAST` (§7).
-- Light and HC themes use a solid accent (all stops = accent).
-- No glow, no shadow.
+The selected server tile gets one sharp corner, bottom left, next to the purple pill. The tile
+then reads like a chat bubble the pill speaks from. The logo has the same corner. One shape rule,
+two places. It is cheap (no mesh). It survives Saturation 0 % and HC.
 
-**Tiles:**
-- Initials tiles become neutral: `surface` fill with 600 `text` initials. Drop the hashed
-  `initial_colors` and the accent lerp (sidebar.rs:489-491).
-- Hover and selected: tile fill `selected`; image icons keep their colours.
-- Home tile: the logo mark in `accent` on `surface`, always. Drop the accent fill (sidebar.rs:471).
-- Add server: `Plus` in `text_muted` on `surface`, `positive` on hover.
-- Mention badge: as now (danger_fill, ring in the rail colour).
+```
+ hover (20 px white pill)      selected (40 px purple pill)
+ |                             |
+ |  [  RW  ]  all corners 12   █  [  RW  ]  nw/ne/se 12
+ █  [      ]                   █  [      ]
+ |                             █  [_     ]  sw 2: the speech corner
+```
+
+In `sidebar.rs` (replaces `heat_bar`):
+
+```rust
+/// The rail pill (docs/DESIGN.md §10.1): `text` up to 20 px tall, then toward `accent` on the way
+/// to the selected 40 px. One flat rect in every theme.
+fn rail_pill(p: &egui::Painter, pill: Rect, text: Color32, accent: Color32) {
+    let t = pill_t(pill.height());
+    p.rect_filled(pill, CornerRadius { ne: 4, se: 4, ..Default::default() }, text.lerp_to_gamma(accent, t));
+}
+fn pill_t(h: f32) -> f32 {
+    ((h - 20.0) / 20.0).clamp(0.0, 1.0)
+}
+/// A rail tile's corners: `ICON_R` everywhere, the bottom-left tightening to 2 as the pill turns
+/// selected (the speech corner, §10.1).
+fn tile_corners(t: f32) -> CornerRadius {
+    let r = ICON_R as u8;
+    CornerRadius { nw: r, ne: r, se: r, sw: egui::lerp(ICON_R..=2.0, t).round() as u8 }
+}
+```
+
+- Order: today `decorate` runs after the icon is painted. Move the pill tween
+  (`motion::value(ctx, resp.id.with("pill"), target, FAST)`, same id) up into `icon_slot`, return
+  the height, paint the tile with `tile_corners(pill_t(h))`, then `decorate` paints the pill, the
+  badge and the focus ring with that height.
+- `paint_guild_icon(.., radius: f32, ..)` takes `CornerRadius` instead (callers: rail tiles pass `tile_corners(t)`, folder minis and the title bar's 16 px
+  icon pass `CornerRadius::same(..)` as today). `egui::Image::corner_radius` takes it as is.
+- Every tile that can carry the 40 px pill uses `tile_corners`: home, servers, servers inside an
+  open folder, a closed folder holding the selected server. The faded drag placeholder and
+  the focus ring (`corners` + 2 on each corner) follow the same corners.
+- Home tile (`home_button`): fill `surface.lerp_to_gamma(accent, morph)`, the R in
+  `accent_ink.lerp_to_gamma(accent_text, morph)` (existing `morph`: hover or selected). This is the
+  one place hover may be purple: the tile is the logo. Selected also gets the speech corner.
+- Unread (8 px) and hover (20 px) pills stay `text` white; hover never changes the shape.
+- Add server, badges, folders, drag: unchanged.
+
+---
+
 
 ### 10.2 Channel card
 
@@ -716,7 +913,7 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
   left (`chip` for my answers, else `selected`), my answers with a 1 px `link` border and a
   `Check` 16 before the percent (ui 14/600); the winner of a closed poll is 600.
 - Footer, 12 above: votes and time left in meta `text_muted`; buttons 32 tall on the right. Vote
-  is **Secondary**, not Primary (one ember button per view); Show results, Back to voting and
+  is **Secondary**, not Primary (one primary per view); Show results, Back to voting and
   Remove vote are Ghost.
 - Voters popover (a click on a result row with votes): E2 `raised`, 1 px `rule`, container radius,
   280 wide, 8 padding, below the row (above when short of room). Header: the answer in the label
@@ -866,7 +1063,66 @@ a hairline:
   13/600 in `positive_text`: "Update available" / "Update ready". Hover: `hover` fill; focus
   ring; the tooltip names the action ("Restart Rustcord to install 0.1.1"). While a call runs,
   "Update ready" is disabled (icon and label `text_muted`, tooltip "Installs after your call
-  ends"). Green, not ember: it is a state, not the view's primary action.
+  ends"). Green, not purple: it is a state, not the view's primary action.
+
+---
+
+
+### 10.7 Call island (title bar centre)
+
+Lives in `sidebar.rs` (new fn `call_island(ui, cx, row) -> f32`, about 120 lines), called from
+`sidebar::title_bar`. No new module.
+
+- **When:** while `cx.state.voice.channel_id` is `Some` (connecting or connected, server voice or
+  DM call), also over settings. It takes the place of the centred location label. Cross-fade: the
+  island draws with opacity t and scale `lerp(0.92, 1, t)` about its centre, the label with
+  opacity 1 − t; t = `motion::anim(ctx, id, in_call, BASE, BASE * OUT)`. When t = 0 only the
+  label draws.
+- **Pill:** 28 tall (2 px above and below in the 32 px bar), radius 14, fill `raised`, 1 px `rule`
+  (HC 1.5 px muted), sheen. Centred on the window. Width = its content, min 160, max
+  `min(420, row.width() − 240)` (keeps clear of the inbox button and the update pill). If even
+  160 does not fit, no island (label stays).
+- **Content, left to right:** 12 pad; 8 px dot (`positive` connected, `attention` connecting);
+  8; the state word, label 13/600: "Voice connected" in `positive_text` or "Connecting…" in
+  `readable_on(attention, raised)`, through `plugins::sidebar::call_timer(ctx, state, word)` so
+  the CallTimer plugin shows the time here too; 8; channel name ui 14/600 `text`; 6; server name
+  meta 12 muted (none for DM calls); 10; two 24 px round icon buttons 4 px apart, 16 px icons;
+  2 pad.
+  - Mute: `Mic` / `MicOff`. Muted: `danger` icon on `danger` @ 12 %. Calls
+    `call::toggle_mute(cx, true)` (make it `pub(super)`, call.rs). Tooltip "Mute" / "Unmute".
+  - Disconnect: `Hangup` in `danger`; hover `danger_fill` with `danger_label` icon. Sends
+    `Command::LeaveVoice` (as voice_panel). Tooltip "Disconnect".
+  - Too narrow: drop the server name first, then end the channel name with "…". The state word
+    stays.
+- **The text part** (dot to server name) is one button: hover `hover` over that part of the pill;
+  click selects the call's channel and closes settings (same as voice_panel);
+  tooltip "Open {channel}"; accessible name "Voice connected, {channel}, {server}"; focus ring.
+- No pulsing, no speaking halo. With CallTimer on, the existing 1 Hz tick of the user panel also
+  updates the island (no extra repaint source).
+- The title bar drag area is registered first (chrome.rs), so the island's widgets win over
+  it, like the inbox button.
+
+### 10.8 Call stage
+
+Same in every theme, like a video player. Violet-black, no brown:
+
+| Constant | Today | New | Check |
+|---|---|---|---|
+| `STAGE` | rgb(14,12,12) | `#050407` | |
+| `TILE` | rgb(38,34,33) | `#1C1A24` | 1.19:1 on stage (same step as today) |
+| `BUTTON` | rgb(56,51,50) | `#2A2833` | FG on it 12.6 |
+| `FG` | gray 238 | `#F0EEF6` | 14.94 on tile |
+| `FG_MUTED` | gray 170 | `#A8A5B6` | 8.49 on stage, 6.02 on button |
+| `DOCK` (new, call.rs) | | `#111017` | FG_MUTED 7.86 on it |
+
+- **Dock** (`controls`, call.rs): paint behind the existing control row, before the
+  buttons: a pill around the buttons' bounding rect, 8 px wider on each side and 56 tall, fill
+  `DOCK`, 1 px white @ 8 %, sheen white @ 6 %, shadow `[0,12]` blur 32 black 60 %. Buttons, order,
+  sizes and positions stay.
+- Speaking ring: 2 px `positive` (unchanged). Muted / camera off: `danger` icon on `danger` @ 12 %.
+  Hang up `danger_fill`. "Live" pill `danger_fill`. "Watch stream" Primary. Tile tint toward the
+  user's colour (30 %) unchanged.
+- DM call area and incoming card (dm_call.rs): the same constants.
 
 ---
 
@@ -915,7 +1171,133 @@ Playing                                     <- label role: "Playing" / "Listenin
 
 ---
 
+
+---
+
 ## 12. Popouts, settings, login, desktop surfaces
+
+### 12.1 Settings shell: a floating panel
+
+#### 12.1.1 What it looks like
+
+```
++-title bar (frame; live: drag, caption buttons, the island)------------------------------+
+| frozen, blurred picture of the app, under the scrim                                     |
+|   +-panel: E3, radius 20, inset 16 top / 24 sides and bottom, max 1180 wide---------+   |
+|   | nav 248 (sidebar fill)        | page (background fill)                      [x] |   |
+|   |  (av) rosc                    |                                                 |   |
+|   |       Edit profile  (pen)     |      Appearance        <- title 20/700, -0.3    |   |
+|   |  [(q) Search settings     ]   |                                                 |   |
+|   |  User settings                |      Theme             <- heading 16/600        |   |
+|   |  [(P) My account          ]<- |      ( ) ( ) ( ) ...                            |   |
+|   |   (ID) Profiles               |                                                 |   |
+|   |   ...                         |      column ≤ 740, centred, ≥ 40 each side      |   |
+|   |   (->) Log out    (danger)    |                                                 |   |
+|   +-------------------------------+-------------------------------------------------+   |
++-----------------------------------------------------------------------------------------+
+```
+
+#### 12.1.2 Backdrop: a frozen, blurred picture (no live app under settings)
+
+Why not the live app: drawing the chat under the panel would let `messages::show` consume Esc
+and call `mark_read` (an ack a normal client would not send), and app-wide shortcuts would fire.
+Today's auto-acks are already gated on `!chat_hidden()` (mod.rs); keep it that way.
+
+Flow, in `main_layout` (ui/mod.rs), state in `ViewState`:
+`settings_backdrop: Option<egui::TextureHandle>`, `backdrop_asked: bool`,
+`backdrop_slot: Arc<Mutex<Option<egui::ColorImage>>>`.
+
+1. The first frame `chat_hidden()` is true and `backdrop_asked` is false: draw the app exactly as
+   when settings are closed (fall through to the normal layout), set `backdrop_asked = true`,
+   and call `ctx.request_screenshot(callback)` (egui 0.37 API, already used at mod.rs).
+   Request a repaint. Opening waits one frame (~16 ms), well inside 100 ms.
+2. The callback: copy to an `image::RgbaImage`, `image::imageops::thumbnail` to 1/8 of each side,
+   then `image::imageops::blur` with sigma 2.5, store the small `ColorImage` in the slot, drop the
+   big buffers, `request_repaint`. (`image` is already a dependency.)
+3. Following frames: if the slot holds an image, `ctx.load_texture("rc_settings_backdrop", img,
+   TextureOptions::LINEAR)` into `settings_backdrop`. Draw it over the central rect (the part of
+   the picture under the title bar: uv y from `TITLE_BAR_H / screen height` to 1), then the
+   `scrim` (`tk.scrim`), then the panel. No picture yet (or none at all): the `guild_bar` colour,
+   then the scrim. That is also the defined fallback.
+4. `chat_hidden()` false again: drop the texture and reset `backdrop_asked`.
+5. Theme change while open (`cx.view.theme_dirty`): drop the texture, keep `backdrop_asked`
+   true (no new capture until the next opening): the panel floats over the plain frame colour.
+6. Window resize while open: the picture stretches (it is blurred; no special code).
+
+Cost: one capture per opening. Transient memory: the full frame (8 MB at 1080p, 33 MB at 4K)
+plus its copy, freed in the callback. The kept texture is ≤ 0.5 MB. Nothing repaints afterwards.
+Switching from user settings to server settings keeps the picture.
+
+#### 12.1.3 Panel geometry and paint (`settings_layer`, mod.rs)
+
+- `content` = the central rect under the title bar. Inset: top 16, left / right / bottom 24
+  (windows narrower than 960 px: 12 everywhere). Width at most 1180, centred.
+- Paint: E3 shadow (`style.visuals.window_shadow.as_shape(panel, 20)`); nav part fill
+  `colors.sidebar` with corners `nw`/`sw` 20; page part `colors.background` with `ne`/`se` 20;
+  1 px `rule` outline over the whole panel (HC 1.5 px muted); a 1 px `rule` vline between nav and
+  page; sheen on the top edge. Opaque theme colours in every theme (gradient themes too: the
+  window gradient cannot follow the rounded corners; the scroll fades use the flat branch).
+- Nav column: **248 wide** (208 under 960 px), padding 12 left/right, 16 top, 24 bottom.
+- Page: scroll area right of the nav. Column width `min(740, page_w − 80)`, centred:
+  left padding `max(40, (page_w − col_w) / 2)`; top 40, bottom 64.
+- Close: a 32 px ghost `vector_button(Icon::Close, "Close settings (Esc)")`, 16 px from the
+  panel's top-right corner. The 60 px tools column and the round 36 px ring button go away.
+- Esc and × close (unchanged logic). A click on the scrim does nothing.
+- Motion (unchanged helper): the whole layer fades in and grows 0.98 → 1 about the panel centre
+  over LARGE; closing is instant. Reduced motion: instant.
+- The CentralPanel frame under it: `fill.frame` (the picture covers it).
+- Keep: `pickers::close_if_open`, `inbox_open = false` and `settings_themes` handling exactly as
+  today: `cx.view.settings_themes = None` must only run while settings are closed.
+
+#### 12.1.4 Nav (`user_settings::nav`, `nav_item` / `nav_heading` mod.rs)
+
+- **User header** (new, top of the user-settings nav), 56 tall, radius r, hover `hover`: avatar
+  40 with its status dot (ring in the nav fill) at x+8; name body 15/600 `text` at x+56; under it
+  "Edit profile" meta 12/500 muted with a 12 px `Icon::Edit` 4 px after the words. Click: opens
+  Profiles. Focusable, focus ring; accessible name "Edit profile, {name}". 8 px below it, the
+  search field.
+- **Search field**: 32 tall well, hint "Search settings", text from x+32, a 16 px `Icon::Search`
+  in muted at x+10 (`TextEdit::margin(left 32, right 8, top 6, bottom 6)`, icon painted over).
+- **Group heading**: label role 13/600 muted, 16 above (12 for the first), 4 below. **No
+  `ui.separator()` between groups** (remove and).
+- **Nav row** (`nav_item(ui, theme, icon: Icon, label, selected, danger)`): **36 tall**, radius r,
+  2 px apart. 18 px icon at x+10, label body 15/500 at x+38.
+  Rest: icon and label muted. Hover: `hover` fill, `text`. Selected: `selected` fill, label
+  `text`, **icon `accent_ink`** (the only purple in the nav). Danger (Log out, Delete channel):
+  icon and label `danger`. Focus ring as today.
+- Icons per user-settings page (`Page::icon()`, 4 new icons in §8.6):
+
+| Page | Icon | Page | Icon |
+|---|---|---|---|
+| My account | `Person` | Voice & video | `Mic` |
+| Profiles | `IdCard` | Clips | `Video` |
+| Profile cosmetics | `Star` | Chat | `Message` |
+| Content & social | `Shield` | Notifications | `Bell` |
+| Data & privacy | `Lock` | Keybinds | `Keyboard` (new) |
+| Family Center | `Members` | Language | `Globe` |
+| Authorized apps | `Key` | Windows / Linux / macOS | `Desktop` |
+| Devices | `Phone` | Streamer mode | `Streaming` |
+| Connections | `Link` | Advanced | `Gear` |
+| Friend requests | `PersonAdd` | Activity privacy | `Eye` |
+| Nitro & billing | `Card` | Registered games | `Playing` |
+| Appearance | `Palette` (new) | Game overlay | `Screen` |
+| Accessibility | `Accessibility` (new) | Plugins | `Puzzle` (new) |
+| Local profile | `File` | Theme editor | `Edit` |
+| Log out | `Leave` (danger) | | |
+
+- Server settings (server_settings.rs), same rows, no user header: Overview `Gear`,
+  Roles `Shield`, Emoji `Smile`, Members `Members`, Invites `Link`, Bans `Ban`; channel pages:
+  Overview `Gear`, Permissions `Lock`, Delete channel / category `Trash` (danger).
+- Page title (`page_title`, mod.rs): `pal.title_text`. Sections and setting rows: unchanged
+  (flat rows with `rule` between them, as in Illegalcord's own settings list; no card around every
+  group).
+
+
+#### 12.1.5 Quick actions
+
+Not in this redesign. Illegalcord's "Quick actions" is one of its plugins; the plugin step owns
+it. If it is built later, use Secondary buttons 40 tall with a 20 px icon, in a wrap grid with
+8 px gaps, inside one E1 card (radius 12, padding 8).
 
 **Profile popout** (profile.rs; fixes reference 2.webp)
 - Fixed width 340. Max height = window − 32, then it scrolls.
@@ -929,7 +1311,7 @@ Playing                                     <- label role: "Playing" / "Listenin
 - Mutuals become two ghost links: "3 mutual servers" and "3 mutual friends".
 - Footer: primary "Message", `PersonAdd` and `More` icon buttons.
 
-**Settings**
+### 12.2 Settings pages
 - Nav groups in the label role, sentence case: "User settings", "App settings".
 - Selected nav row: `selected` fill only.
 - Page title in the title role.
@@ -983,7 +1365,7 @@ Playing                                     <- label role: "Playing" / "Listenin
   login / main window under the 32 px title bar (Rustcord's name there, as on login). Flat
   `guild_bar` page, a centred column, no card: logo 56; 24; title in the title role, `text`
   ("Downloading update 0.1.1", "Installing update", "Restarting", "Update failed"); 16; a
-  320 × 4 progress bar, radius 2, track `edge` @ 50 %, fill `text` (not ember); 8; one meta
+  320 × 4 progress bar, radius 2, track `edge` @ 50 %, fill `accent`; 8; one meta
   line `text_muted` ("7.3 MB of 12.0 MB"); 24; buttons 40 tall, ghost "Not now" left of the
   one primary ("Install", "Continue"). A failure shows `Alert` 16 and the message in `danger`
   (ui role) in the bar's place. Enter = the primary, Esc = "Not now" / "Continue". Static: it
@@ -1009,6 +1391,7 @@ Playing                                     <- label role: "Playing" / "Listenin
   channels, ! for voice channels or * for servers." in meta `text_muted`.
 
 ---
+
 
 ## 13. Copy rules
 
@@ -1047,93 +1430,266 @@ Playing                                     <- label role: "Playing" / "Listenin
 
 ---
 
-## 14. Change list
 
-The priorities:
-- **P0** covers the user's complaints.
-- **P1** is the identity work.
-- **P2** is polish.
+---
 
-Owners follow the module table in ARCHITECTURE.md. Each area re-reads files before editing.
+## 14. Logo: the speech-corner R
 
-### (A) Theme and shared components
+A new mark, not a recolour. A geometric R: the stem's top is round (radius 48), its foot is sharp,
+the leg leaves the bowl at an angle. The tile has three corners at 112.64 (the old icon's radius,
+macOS-like) and one speech corner, bottom left, at 24 (5 % of the side, the same share as the
+rail's 2 px on 40 px). Dark tile lit from above, purple R lit from the top left. The tray mark is
+the inverse: a purple tile with the R cut out. Previews of exactly these files (rendered with
+headless Edge) were checked at 256, 64, 48, 32 and 16 px on dark and light taskbars:
+`C:\Users\uint65_t\AppData\Local\Temp\claude\0168895bbdad278c\12bb50f8-cf50-40cc-b54a-78fc768ccc96\scratchpad\redesign\judge-tools\preview.png`.
 
-| # | P | Change | Files |
-|---|---|---|---|
-| A1 | P0 | Icon module §8: `Icon`, `Badge`, `paint`, `channel()`, `from_glyph`; move the existing painters in | new `src/ui/icons.rs`; sidebar.rs:1264-1330, :809; messages.rs:288; friends.rs:145; dm_call.rs:312; user_settings.rs:725; user_settings/voice.rs:316; pickers.rs:638,997 |
-| A2 | P0 | `icon_button`, `MenuIcon::Glyph`, `icon_line`, `empty_state` paint vectors through `from_glyph`; menu icons 16, `text_muted` | messages.rs:130-180; ui/mod.rs:1386; user_settings.rs:494 |
-| A3 | P0 | `Tokens` §2.2 and `Pal` fields (raised, hover, selected, rule, edge, focus, positive, positive_text, on_positive, positive_fill, attention, live, danger_fill, chip, selection, heat, scrim) | new `src/theme/tokens.rs` (re-export in theme/mod.rs); messages.rs:71-125 |
-| A4 | P0 | `presence_color` reads tokens (online positive, idle attention, streaming live) | ui/mod.rs:1355 |
-| A5 | P1 | Palette §2.1. Update `invalid_color_is_rejected` (it greps `background = "#221e1c"` → `#23282c`); re-run gradient tests | theme/mod.rs:182-247 and tests :547-555; theme/gradient.rs tests |
-| A6 | P1 | egui visuals: hover stroke `edge` (no accent mix, :113); `active` = `selected` (not accent, :115-118); selection = `selection` token + `text` stroke (:97-98); shadows E2/E3 (:90-91); `window_corner_radius` 2r, `menu_corner_radius` 1.5r; tooltip delay 0.3 s | theme/apply.rs:57-131 |
-| A7 | P1 | Type roles §3: default size 15 (HC 16), text styles, `Pal` role helpers; `seguisb.ttf` heads the semibold chain without gg sans | theme/mod.rs:182; theme/apply.rs:27-36, :162-215; messages.rs:102-122 |
-| A8 | P1 | Radius tiers §5: default 8, `card_radius` 1.5r, `modal_radius` | theme/mod.rs:187; messages.rs:108; sidebar.rs:1731 |
-| A9 | P1 | No ALL CAPS in shared helpers: `nav_heading`, `section` (no rule), "ESC" caption out, dialog footer without band, modal widths 440/520/640 | ui/mod.rs:1253,1263-1297,1100-1170 |
-| A10 | P1 | Switch, checkbox, radio, segmented, focus ring per §9 (shared painters next to `icon_button`) | messages.rs (shared helpers); used by settings |
-| A11 | P2 | Done: §7, `ui/motion.rs` | ui/mod.rs dialogs; menus; sidebar.rs category header |
-| A12 | P2 | Update the "Visual direction" paragraph in ARCHITECTURE.md to point here | docs/ARCHITECTURE.md:125-132 |
+### 14.1 Geometry (512 grid, y down)
 
-### (B) Main window
+Tile with the speech corner:
+```
+M112.64 0H399.36A112.64 112.64 0 0 1 512 112.64V399.36A112.64 112.64 0 0 1 399.36 512H24A24 24 0 0 1 0 488V112.64A112.64 112.64 0 0 1 112.64 0Z
+```
 
-| # | P | Change | Files |
-|---|---|---|---|
-| B1 | P0 | Channel icons §8.4 in the list, header, autocomplete, inbox, threads, forum; selected icon not accent; add `Guild.rules_channel_id` | sidebar.rs:1005-1012, :1088-1097; messages.rs:347-353, :874-881; autocomplete.rs:198-203; inbox.rs:279-281; threads.rs:76-80; forum.rs; model.rs `Guild` |
-| B2 | P0 | Activity art: `spotify:` branch and `i.scdn.co` allowed; app-icon fallback via `FetchGames` (after the integrator's OK); type-icon fallback tile | api/cdn.rs:140-155; ui/images.rs (host check); members.rs:176-184; friends.rs:321,351; state/social.rs:301 |
-| B3 | P0 | Member and DM row line 2 + art slot §10.4, with art tooltip | members.rs:137-230; sidebar.rs DM rows; friends.rs rows |
-| B4 | P0 | User panel line 2 with my activity §10.5 | sidebar.rs:1740 `account_row`, :2010 `my_line`, :704 `status_text` |
-| B5 | P0 | Gear, mic, headphones, hang-up as vectors; the muted state tint | sidebar.rs:1278-1330 → icons.rs; user panel |
-| B6 | P1 | Heat bar §10.1; neutral initials tiles; home tile without accent fill; Add server `Plus` | sidebar.rs:302-320, :466-475, :478-500 |
-| B7 | P1 | Mention row: `attention` bar + `mention_highlight`; mention chips `chip`/`link`; "New" tag; reactions | messages.rs (mention row, :1222 "NEW"); markdown.rs chips |
-| B8 | P1 | Member group header: count right-aligned, no em dash | members.rs:127-131; friends.rs:199 |
-| B9 | P1 | Composer E1 radius container; `Plus`/`Smile` vectors; attach tray icons | composer.rs:262-290, :650-660, :886-985 |
-| B10 | P1 | Header: channel icon + heading + rule divider + topic; icon buttons per §9 | messages.rs:870-930 |
-| B11 | P2 | `system_icon` vectors | messages.rs:2629-2637 |
-| B12 | P2 | Call stage buttons as vectors | call.rs:340-380 |
-| B13 | P2 | Title bar location icon 16 | ui/chrome.rs / sidebar.rs title bar |
+R, big (≥ 48 px; stroke 68): one outline (stem, bowl and leg as a union) plus the counter hole.
+Stem x 136-204; bowl y 112-292 with its right side a half circle r 90 about (278, 202); counter
+x 204-300, y 180-224, right side r 22; leg from the bowl bottom to the baseline, bottom edge
+x 310-394 at y 400, slope (82, 108). The leg's right edge meets the bowl's arc at (308.07, 286.83).
+```
+M136 400V160A48 48 0 0 1 184 112H278A90 90 0 0 1 308.07 286.83L394 400H310L228 292H204V400ZM204 180H278A22 22 0 0 1 278 224H204Z
+```
 
-### (C) Settings, modals, popouts, login
+R, small (≤ 32 px; stroke 80, smaller counter, bigger in the tile): stem x 124-204; bowl y
+104-296, r 96 about (276, 200); counter y 184-216, r 16; leg bottom x 304-400 at y 408, slope
+(88, 112); junction (307.75, 290.6).
+```
+M124 408V152A48 48 0 0 1 172 104H276A96 96 0 0 1 307.75 290.6L400 408H304L216 296H204V408ZM204 184H276A16 16 0 0 1 276 216H204Z
+```
 
-| # | P | Change | Files |
-|---|---|---|---|
-| C1 | P0 | Profile popout: width 340, role chips wrap per chip, activity cards §11.2 with art sources | profile.rs:292-345, :420-440, :490-570 |
-| C2 | P0 | Activity cards in Active now (one container per person) and in the full profile | friends.rs:321-360; profile_modal.rs |
-| C3 | P1 | Settings: sentence-case labels, setting rows, close button, My Account single container with one primary | user_settings.rs:674, :483; user_settings/account.rs:128; user_settings/*.rs |
-| C4 | P1 | Plugins as divided rows with segmented filter and "turned on" count | user_settings/plugins.rs:73-170 |
-| C5 | P1 | Create channel: radio rows in one group, painted channel icons, copy; server dialogs one primary | server_menu.rs:775-905, :1060-1145; server_settings.rs:1231 |
-| C6 | P1 | Login: flat background, panel, footer copy | login.rs:172-200, :298-302 |
-| C7 | P1 | Copy pass per §13 (menus, friends, profile, settings, dialogs) | server_menu.rs, friends.rs, profile.rs, messages.rs menus, sidebar.rs menus, user_settings/*.rs |
-| C8 | P1 | Remaining glyphs from §8.5 in settings, pickers (category rail `CATEGORY_ICONS`, picker headers no caps :685), security, lists, connections, cosmetics (↗), status | pickers.rs:50,685,756; user_settings/{security,lists,connections,status,cosmetics,theme_editor,keybinds,app}.rs; cosmetics.rs:960-975 |
-| C9 | P2 | Profile banner fallback, badges hidden until loaded, no section hairlines, mutuals as links | profile.rs; cosmetics.rs:832 |
-| C10 | P2 | Empty states §9 (DM start, Friends, search, inbox, plugins) | messages.rs:1201; friends.rs; search.rs; inbox.rs; user_settings/plugins.rs |
-| C11 | — | Desktop copy §12 (tray, Windows settings rows, installer) | owned by the desktop work |
+### 14.2 `assets/logo.svg` (app icon ≥ 48 px, README, installer, 512 / 1024 PNG for the rich presence art)
 
-## 15. Verification
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+<stop offset="0" stop-color="#1E1A2B"/><stop offset="1" stop-color="#0B0A10"/>
+</linearGradient>
+<radialGradient id="light" gradientUnits="userSpaceOnUse" cx="256" cy="176" r="300">
+<stop offset="0" stop-color="#A42BEA" stop-opacity="0.20"/><stop offset="1" stop-color="#A42BEA" stop-opacity="0"/>
+</radialGradient>
+<linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.04"/>
+</linearGradient>
+<linearGradient id="glyph" gradientUnits="userSpaceOnUse" x1="136" y1="112" x2="394" y2="400">
+<stop offset="0" stop-color="#E6CCFF"/><stop offset="0.5" stop-color="#BE6BF7"/><stop offset="1" stop-color="#A42BEA"/>
+</linearGradient>
+</defs>
+<path fill="url(#tile)" d="M112.64 0H399.36A112.64 112.64 0 0 1 512 112.64V399.36A112.64 112.64 0 0 1 399.36 512H24A24 24 0 0 1 0 488V112.64A112.64 112.64 0 0 1 112.64 0Z"/>
+<path fill="url(#light)" d="M112.64 0H399.36A112.64 112.64 0 0 1 512 112.64V399.36A112.64 112.64 0 0 1 399.36 512H24A24 24 0 0 1 0 488V112.64A112.64 112.64 0 0 1 112.64 0Z"/>
+<path fill="none" stroke="url(#edge)" stroke-width="2" d="M112.64 1H399.36A111.64 111.64 0 0 1 511 112.64V399.36A111.64 111.64 0 0 1 399.36 511H24A23 23 0 0 1 1 488V112.64A111.64 111.64 0 0 1 112.64 1Z"/>
+<path fill="url(#glyph)" fill-rule="evenodd" d="M136 400V160A48 48 0 0 1 184 112H278A90 90 0 0 1 308.07 286.83L394 400H310L228 292H204V400ZM204 180H278A22 22 0 0 1 278 224H204Z"/>
+</svg>
+```
+
+Contrast: the R's darkest stop `#A42BEA` on the tile's darkest `#0B0A10`: 3.9:1; its lightest
+on the lightest tile: > 10:1.
+
+### 14.3 `assets/logo-small.svg` (16, 20, 24, 32 px PNGs and ICO frames)
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="rim" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+<stop offset="0" stop-color="#1D1829"/><stop offset="1" stop-color="#0E0C15"/>
+</linearGradient>
+<linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+<stop offset="0" stop-color="#302848"/><stop offset="1" stop-color="#1D182C"/>
+</linearGradient>
+<linearGradient id="glyph" gradientUnits="userSpaceOnUse" x1="124" y1="104" x2="400" y2="408">
+<stop offset="0" stop-color="#F4EBFF"/><stop offset="0.55" stop-color="#D2A6FF"/><stop offset="1" stop-color="#B567F5"/>
+</linearGradient>
+</defs>
+<!-- The dark rim is a fill, not a stroke over the tile: its anti-aliased edge stays dark (a
+     stroke over the lighter tile left light corner pixels, a light ring at 16 / 32 px). -->
+<path fill="url(#rim)" d="M112.64 0H399.36A112.64 112.64 0 0 1 512 112.64V399.36A112.64 112.64 0 0 1 399.36 512H24A24 24 0 0 1 0 488V112.64A112.64 112.64 0 0 1 112.64 0Z"/>
+<path fill="url(#tile)" d="M112.64 32H399.36A80.64 80.64 0 0 1 480 112.64V399.36A80.64 80.64 0 0 1 399.36 480H48A16 16 0 0 1 32 464V112.64A80.64 80.64 0 0 1 112.64 32Z"/>
+<path fill="url(#glyph)" fill-rule="evenodd" d="M124 408V152A48 48 0 0 1 172 104H276A96 96 0 0 1 307.75 290.6L400 408H304L216 296H204V408ZM204 184H276A16 16 0 0 1 276 216H204Z"/>
+</svg>
+```
+
+Contrast: the R's darkest stop `#B567F5` on the tile `#1D182C`: about 4.9:1.
+
+### 14.4 `assets/logo-mono.svg` (Windows tray, macOS menu bar template)
+
+The tile and the R in one even-odd path: the R becomes a hole, its counter stays filled.
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<path fill="#A42BEA" fill-rule="evenodd" d="M112.64 0H399.36A112.64 112.64 0 0 1 512 112.64V399.36A112.64 112.64 0 0 1 399.36 512H24A24 24 0 0 1 0 488V112.64A112.64 112.64 0 0 1 112.64 0ZM124 408V152A48 48 0 0 1 172 104H276A96 96 0 0 1 307.75 290.6L400 408H304L216 296H204V408ZM204 184H276A16 16 0 0 1 276 216H204Z"/>
+</svg>
+```
+
+On a dark taskbar (`#202020`) 3.19:1, on a light one (`#F3F3F3`) 4.60:1. The macOS template uses
+only the alpha (a tile with an R-shaped hole).
+
+### 14.5 Generated files
+
+`cargo run --example export_icons` (examples/export_icons.rs, unchanged) writes
+`assets/icons/rustcord-{16,32,48,64,128,256,512,1024}.png`, `assets/icons/rustcord-tray-36.png`,
+`assets/rustcord.ico`, `assets/rustcord-tray.ico`. `build.rs` embeds the ICOs; main.rs (64 px
+window icon), login.rs / update.rs (128), the installer (128), notify/linux.rs and macos.rs pick
+the PNGs up; macOS `.icns` and Linux hicolor icons are built from them at package time.
+
+### 14.6 In the app (`sidebar::logo_mark`)
+
+New signature, drawn from five primitives (shorter than today's band shape):
+
+```rust
+/// Rustcord's mark (assets/logo.svg, §14): `tile` with `corners`, the R in `glyph`, its counter
+/// cut in `tile`. Below 32 px the bolder small R (logo-small.svg).
+pub(super) fn logo_mark(p: &egui::Painter, rect: Rect, corners: CornerRadius, tile: Color32, glyph: Color32)
+```
+
+k = `rect.width() / 512`; points are `rect.min + (x, y) * k`; radii `(r * k).round() as u8`.
+
+| Primitive | Big (≥ 32 px) | Small (< 32 px) |
+|---|---|---|
+| 1. tile | `rect_filled(rect, corners, tile)` | same |
+| 2. bowl | rect (136,112)-(368,292), `CornerRadius { nw: 48, ne: 90, se: 90, sw: 0 }`, glyph | rect (124,104)-(372,296), `{ nw: 48, ne: 96, se: 96, sw: 0 }` |
+| 3. stem | rect (136,112)-(204,400), `{ nw: 48 }`, glyph | rect (124,104)-(204,408), `{ nw: 48 }` |
+| 4. leg | `convex_polygon` (200.67,256) (284.67,256) (394,400) (310,400), glyph | (187.71,260) (283.71,260) (400,408) (304,408) |
+| 5. counter | rect (204,180)-(300,224), `{ ne: 22, se: 22 }`, **tile** | rect (204,184)-(292,216), `{ ne: 16, se: 16 }` |
+
+The leg polygon starts inside the bowl's lower stroke (y 256 / 260), so the union matches the
+SVG outline with no seam, and it never touches the counter.
+
+| Place | Rect | Corners | Tile | Glyph |
+|---|---|---|---|---|
+| Home tile (rail) | the 40 px icon | `tile_corners(t)` | `surface.lerp_to_gamma(accent, morph)` | `accent_ink.lerp_to_gamma(accent_text, morph)` |
+| Title bar on DM home (sidebar.rs) | 16 px | `{ nw: 4, ne: 4, se: 4, sw: 1 }` | `accent` | `accent_text` |
+| `chrome::app_label` (login, update title bar, chrome.rs) | 16 px | same | `accent` | `accent_text` |
+
+The glyph at 40 px is 22.5 px tall (today's mark: about 22).
+
+
+---
+
+## 15. Change list
+
+What the Nightshade redesign changed, in the order it was built. Owners follow the module table
+in `docs/ARCHITECTURE.md`.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | Theme: Nightshade and Lilac with a purple primary; `theme::renamed` for old settings; new tokens (`accent`, `on_accent`, `accent_ink`, `sheen`); pink `live`; gradient bases | `src/theme/`, `src/config.rs` |
+| 2 | Shared widgets: purple on-states, radius tiers (float 2r, layer 2.5r), lit edges, bold tight titles, callout, press at 97 % | `ui/messages.rs`, `ui/motion.rs`, `theme/apply.rs`, `ui/mod.rs` |
+| 3 | Chat: purple mention rows and chips, my reactions and poll picks | `ui/messages.rs`, `ui/markdown.rs`, `ui/polls.rs`, `ui/composer.rs` |
+| 4 | Rail: the speech corner, a purple pill, the new mark | `ui/sidebar.rs`, `ui/chrome.rs` |
+| 5 | Call island in the title bar | `ui/sidebar.rs`, `ui/call.rs` |
+| 6 | Call stage: violet-black stage and a floating dock | `ui/call.rs`, `ui/dm_call.rs` |
+| 7 | Four new icons (palette, accessibility, keyboard, puzzle) | `ui/icons.rs` |
+| 8 | Settings: a floating panel over a frozen, blurred picture of the app | `ui/mod.rs` |
+| 9 | Settings nav: user header, search icon, a line icon per row | `ui/user_settings.rs`, `ui/server_settings.rs` |
+| 10 | Theme editor says "Primary" | `ui/user_settings/theme_editor.rs` |
+| 11 | Login, update screen, friends, mic meter, demo copy | `ui/login.rs`, `ui/update.rs`, `ui/friends.rs` |
+| 12 | Logo: the speech-corner R | `assets/` |
+| 13 | Installer colours | `src/bin/rustcord-setup/ui.rs` |
+
+### 15.1 What must not change
+
+- Main-window layout and sizes: title bar 32; rail 72, tiles 40, 8 apart, `ICON_R` 12; channel
+  list 303 (192-360) and its 12 px card corner; chat header 48 (+1); rows 32, DM and member rows
+  42, categories 24; member list 264; user panel 56 + 8 margin; composer min 44; message avatar 40
+  at x 16, text at x 72, 16 between groups, line height 21; compact mode; menu rows 32; buttons
+  32 / 40; inputs 40 / 32; switch 40x24; checkbox / radio 20; icon buttons 32 with 20 icons.
+- Status meanings and shapes: online green dot, idle amber crescent, DnD red bar, offline ring,
+  mobile phone, streaming dot with a play cut-out (now pink); red badges, red "New", red "Live".
+- Discord data colours: role colours, profile colours and effects, platform colours, emoji skin
+  tones, avatar initial hues, MoreUserTags chips; Windows `CLOSE_RED`; media tokens.
+- `ThemeColors` fields and the TOML format; `corner_radius` 8 / HC 4; font size 15 / HC 16; the
+  23 gradient presets and their names; the Saturation setting.
+- Motion tokens and helpers (only `pressed` changes); reduced motion; sounds (only an internal
+  name changes).
+- Behaviour: no read acks while settings are open (auto-acks stay gated on `!chat_hidden()`);
+  keyboard shortcuts, menu contents, focus order; nothing new is sent to Discord.
+- First frame < 1 s, idle RAM < 150 MB, 0 frames when idle.
+
+---
+
+## 16. Verification
 
 Use a scratch copy of `tests/fixtures/home` with `RUSTCORD_HOME`, `RUSTCORD_OFFLINE=1` and
-`RUSTCORD_WINDOW_SIZE=1180x760`. Take screenshots in Ember Dark, Paper Light, High Contrast and
-one gradient theme:
-- `RUSTCORD_OPEN=members` (member art slots), `friends`, `card:<id>`, `profile`
-  (my popout + activity), `voice:<id>`, `muted`, `status:dnd`
-- `settings:my-account`, `settings:appearance`, `settings:plugins`
-- `modal:create-channel`, `server-menu`
-- `RUSTCORD_LOGIN_TAB=email`
-- Motion: mid-animation with `RUSTCORD_MOTION_SCALE=10` (and `RUSTCORD_SCREENSHOT_FRAME`)
+`RUSTCORD_WINDOW_SIZE=1280x800`. `scripts/readme-shots.py` shows the offline screenshot recipe;
+`docs/ARCHITECTURE.md` lists the `RUSTCORD_*` hooks. Then `cargo clippy --locked --all-targets --
+-D warnings` and `cargo test --locked`.
 
-Zoom 3× into:
-- the 20 px channel icons (text, voice, locked, NSFW, rules)
-- the heat bar mid-animation and at rest
-- the member art slot with and without art
-- the user panel line 2
-- a menu with a danger item
-- the focus ring after Tab
+### 16.1 Screenshots (offline fixture, 1280x800, recipe in `scripts/readme-shots.py`)
 
-Then run `cargo test`. Specifically:
-- `builtin_names_are_unique_and_default_is_ember`
-- `invalid_color_is_rejected` (update its hex)
-- `presets_are_readable`
-- `flat_themes_keep_their_fills`
-- the font fallback tests
-- the theme_editor size tests (they use 14.5)
-- `sidebar::tests::glyphs` (it goes away with `channel_glyph`)
+D = Nightshade, L = Lilac, H = High Contrast, G = Chroma Glow, X = Hexagon.
 
-Also run `cargo clippy --all-targets` with zero warnings.
+| Shot | Env | Themes | Look for |
+|---|---|---|---|
+| main | `OPEN=members,status:online MSG_DEMO=online` | D L H G X | near-black panes, purple pill + speech corner, mention rows purple, member list hairline |
+| rail-hover | `POINTER=36x140` | D L H | white 20 px pill, round tile, tooltip |
+| home | `OPEN=friends` | D L H | purple home tile with white R and speech corner; title bar mark; "Add friend" purple |
+| chat-states | `MSG_DEMO=hover,new,poll OPEN=status:online` | D L H | hover toolbar E2, "New" red, my poll pick purple |
+| composer | `MSG_DEMO=emoji` | D L H | composer sheen (D only), picker radius 16 |
+| profile | `OPEN=members,profile` | D L H | popout radius 16, bold tight name, streaming pink |
+| menu | `OPEN=server-menu` | D L H | menu radius 12, E2 |
+| modal | `OPEN=modal:create-channel` | D L H | radius 20, bold title, sheen, purple radio |
+| mid-modal | `+ MOTION_SCALE=10 SCREENSHOT_FRAME=12` | D | grows from the click |
+| toast | `OPEN=toast` | D L H | outline, E2, sheen |
+| switcher | `OPEN=switcher:gen` | D L H | radius 20 |
+| settings | `OPEN=settings:appearance` | D L H G X | floating panel, blurred app behind, nav icons, purple switch, selected icon purple |
+| settings-nav | `OPEN=settings:my-account` | D L H | user header, search icon |
+| plugins | `OPEN=settings:plugins PLUGINS=all` | D L H | rows, switches |
+| settings-narrow | `OPEN=settings:appearance WINDOW_SIZE=900x640` | D | 12 px inset, 208 nav |
+| server-settings | `OPEN=server-settings` | D L H | same shell, server icons per row |
+| advanced | `OPEN=settings:advanced` | D L H | info callout |
+| voice | `OPEN=voice:1565443437363200014` | D L H | island: green dot, "Voice connected", Lounge, Rust Workshop, mute, disconnect |
+| connecting | `OPEN=voice:…14,channel:…14 CALL_DEMO=connecting` | D L | "Connecting…" readable on light |
+| muted | `OPEN=voice:…14,muted` | D L H | red mic in the island and the user panel |
+| island-narrow | `+ WINDOW_SIZE=760x600` | D | server name dropped |
+| settings+island | `OPEN=voice:…14,settings:appearance` | D | island above the panel |
+| call | `OPEN=voice:…14,channel:…14 CALL_DEMO=people,focus SCREENSHOT_FRAME=90` | D L | stage violet-black, dock |
+| ring | `OPEN=ring:1565443437363200027` | D L H | incoming card |
+| login | empty home, `LOGIN_TAB=email` | D L H | new raster logo, radius 20, display title |
+| update | `UPDATE_DEMO=download` | D L H | purple progress |
+| icons | `NAV_DEMO=icons` | D | four new icons |
+| focus | `NAV_DEMO=focus:6` | D L H | purple focus ring |
+| installer | `RUSTCORD_SETUP_SCREEN=install,done` | (fixed) | Nightshade colours, purple checkbox |
+
+### 16.2 Contrast
+
+- Unit tests assert every rule in §2.3 that code can check: `accent_text` on
+  `accent` and on the hover fill ≥ 4.5; `accent` ≥ 3 on `background`; `accent_ink` ≥ 4.5 on chip
+  over the mention row and on `raised`; `edge` ≥ 3 on `background` and `surface`; `focus` ≥ 3 on
+  `sidebar`; danger ≥ 4.5 on `raised`; fills' labels ≥ 4.5; gradient `presets_are_readable` and
+  `names_read_on_every_point_of_a_gradient_pane` still pass.
+- By eye in the G and X shots: switch track and pill still visible on the purple gradients.
+- `is_high_contrast`: Nightshade 7.79 and Lilac 6.63 stay under 9; High Contrast 13.62 over.
+
+### 16.3 Performance
+
+- Idle: `RUSTCORD_FRAME_STATS=1` (no `RUSTCORD_SCREENSHOT`), wait 5 s, frames per 2 s = 0 in each
+  state: main window; settings open (backdrop shown); in a voice call (island shown, CallTimer
+  off); after hovering the rail then moving away; after the island fades out (leave the call).
+- First frame < 1 s: `RUSTCORD_TRACE_STARTUP=<file>`.
+- RAM < 150 MB: `RUSTCORD_MEMSTATS=<file>` idle, and with settings open at 1280x800 and at a
+  2560x1440 window (the capture spike is transient; the steady state adds ≤ 0.5 MB).
+- Opening settings answers within 100 ms (one capture frame + LARGE fade starts).
+
+### 16.4 Must not change (see §15.1)
+
+Compare `main`, `chat-states` and `call` shots of 7c32079 and the final build with the colours
+ignored: every rect and text position in the main window is the same (§15.1). Run the full test
+suite and the survey's other screenshot hooks once in Dark: no layout moved, nothing new is sent
+(offline mode logs no requests).
+
+### 16.5 Old look gone
+
+Search `src`, `docs`, `README.md`, `scripts` and `site` for the first look's colour and logo
+names (the two old theme names, the orange, the glowing bar and the metalworking words; use a
+whole-word search so "member" and "November" stay out). The only hits are `theme::renamed`, its
+test, config tests that parse old settings files, and the history notes in this file.
+
+---

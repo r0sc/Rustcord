@@ -686,7 +686,7 @@ Signing is not part of the script (CI uses openssl; local E2E too, §16.2).
 
 ## 15. UI
 
-Binding look: docs/DESIGN.md (tokens via `Pal`, sentence case, §13 copy rules, ember only on
+Binding look: docs/DESIGN.md (tokens via `Pal`, sentence case, §13 copy rules, purple only on
 the logo and one primary button). English copy as below.
 
 ### 15.1 Update screen (`status.screen == true`)
@@ -698,7 +698,7 @@ centred column, no card:
 - logo: `assets/icons/rustcord-128.png` at 56 px (login's `app_icon`);
 - 24 gap; title in the title role, `text`;
 - 16 gap; progress bar 320 × 4, radius 2, track `edge` @ 50 %, fill `text` (the Spotify bar of
-  DESIGN.md §11.2; not ember: not in the accent budget);
+  DESIGN.md §11.2; not purple: it is the progress of a download, not "you");
 - 8 gap; meta line, `text_muted`;
 - 24 gap; buttons (40 tall like login; `messages::button` kinds); Enter = primary, Esc = the
   ghost / Continue action (`update::dismiss()`), where present.
