@@ -122,7 +122,8 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
         });
     });
     // Under the header itself: `ui.min_rect()` would include the popup's minimum height.
-    let r = header.response.rect;
+    // The header frame only wraps its content; the rule and the lit edge run the popout's full width.
+    let r = egui::Rect::from_x_y_ranges(ui.max_rect().x_range(), header.response.rect.y_range());
     ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, pal.tk.rule));
     sheen(ui.painter(), r, f32::from(pal.float_radius()), &pal.tk);
     ScrollArea::vertical()
