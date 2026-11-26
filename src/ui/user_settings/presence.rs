@@ -48,7 +48,8 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         }
         egui::Frame::new().fill(pal.surface).corner_radius(pal.card_radius()).inner_margin(12).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            super::super::profile::activity_section(ui, cx, &pal, &app.to_activity(), 64.0, pal.surface);
+            let me = cx.state.me.as_ref().map_or(Id(0), |m| m.id);
+            super::super::profile::activity_section(ui, cx, &pal, me, &app.to_activity(), 64.0, pal.surface);
         });
     });
     if cx.state.chat.my_status == Some(UserStatus::Invisible) {

@@ -282,7 +282,7 @@ fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Op
         // includes the game I share.
         if let Some(activity) = crate::activity::activity_of(cx.state, user.id).map(std::borrow::Cow::into_owned) {
             section(ui, pal, &activity.heading());
-            activity_section(ui, cx, pal, &activity, 64.0, pal.surface);
+            activity_section(ui, cx, pal, user.id, &activity, 64.0, pal.surface);
         }
         if !account {
             section(ui, pal, "Member since");
@@ -312,8 +312,10 @@ fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Op
 /// - Spotify: song, "by" artist, "on" album, a progress bar with both times, "Play on Spotify";
 /// - stream: "Live" tag and title, the game, "Watch".
 ///
+/// Then its buttons: "Join" / "Ask to Join" (disabled), the custom ones, Spotify's or the stream's.
 /// The links open in the browser on a click only. Clocks repaint once a second while shown.
-pub(super) fn activity_section(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, a: &Activity, side: f32, bg: egui::Color32) {
+/// `user`: whose activity (custom button links are fetched per user).
+pub(super) fn activity_section(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: Id, a: &Activity, side: f32, bg: egui::Color32) {
     let rich = a.rich.as_deref();
     let now = super::threads::unix_ms();
     let (spotify, stream) = (a.is_spotify(), a.kind == 1);
@@ -414,13 +416,38 @@ pub(super) fn activity_section(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, 
         (_, true) => a.stream_url().map(|u| ("Watch", u.to_owned())),
         _ => None,
     };
-    if let Some((label, url)) = link {
-        ui.add_space(8.0);
-        // A rich-presence button (§11.2): secondary, opens the URL on the click only.
-        if super::messages::button(ui, pal, Btn::Secondary, label, true).on_hover_text(&url).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+    let me = cx.state.me.as_ref().map(|m| m.id);
+    let friend = cx.state.social.relationships.get(&user).is_some_and(|r| r.kind == relationship_type::FRIEND);
+    let same_voice = me.is_some_and(|me| cx.state.voice_states.values().any(|v| v.contains_key(&me) && v.contains_key(&user)));
+    let join = a.join_label(friend, same_voice).filter(|_| me != Some(user));
+    let custom = rich.map_or(&[][..], |r| &r.buttons[..]);
+    if join.is_none() && custom.is_empty() && link.is_none() {
+        return;
+    }
+    ui.add_space(8.0);
+    // Rich-presence buttons (§11.2): secondary, 32, in a row; each opens its link on the click only.
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
+        if let Some(label) = join {
+            // The join secret goes to the game over Discord's local game connection (RPC), which Rustcord lacks.
+            super::messages::button(ui, pal, Btn::Secondary, label, false).on_disabled_hover_text("Rustcord can't connect to games yet, so joining isn't possible here.");
+        }
+        for (i, label) in custom.iter().enumerate() {
+            let known = rich.and_then(|r| r.button_urls.get(i));
+            let mut r = super::messages::button(ui, pal, Btn::Secondary, label, true).on_hover_cursor(egui::CursorIcon::PointingHand);
+            if let Some(u) = known {
+                r = r.on_hover_text(u);
+            }
+            if r.clicked() && let Some(url) = crate::activity::button_url(cx.state, cx.cmd, user, a, i).filter(|u| super::markdown::is_web_scheme(u)) {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+            }
+        }
+        if let Some((label, url)) = link
+            && super::messages::button(ui, pal, Btn::Secondary, label, true).on_hover_text(&url).on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
+        {
             ui.ctx().open_url(egui::OpenUrl::new_tab(url));
         }
-    }
+    });
 }
 
 /// Section heading in the label role (13/600, muted, sentence case), 16 px under the previous

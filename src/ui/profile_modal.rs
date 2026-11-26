@@ -319,7 +319,7 @@ fn about(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, guild_id:
     }
     if let Some(a) = crate::activity::activity_of(cx.state, user.id).map(std::borrow::Cow::into_owned) {
         label(ui, pal, &a.heading());
-        super::profile::activity_section(ui, cx, pal, &a, 64.0, pal.surface);
+        super::profile::activity_section(ui, cx, pal, user.id, &a, 64.0, pal.surface);
     }
     label(ui, pal, "Member since");
     ui.label(RichText::new(super::profile::member_since(user.id)).size(pal.ui()).color(pal.text));

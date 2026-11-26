@@ -35,6 +35,11 @@ pub use detect::{file_name, stale as table_stale};
 const MAX_ICONS: usize = 2000;
 /// App icons asked for but not sent yet (rows shown while connected).
 const MAX_WANTED: usize = 100;
+/// A button whose URLs come later than this after the click is not opened any more.
+const OPEN_WITHIN: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Whose rich-presence buttons: (user, presence session, application).
+pub type ButtonKey = (Id, String, Id);
 
 pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
@@ -106,6 +111,8 @@ pub enum ActivityCommand {
     SetActivities { game: Option<GameActivity>, app: Option<AppActivity> },
     /// `GET /applications/public` for these ids (≤ 25) -> `ActivityEvent::Apps`.
     FetchApps(Vec<Id>),
+    /// Someone's button URLs, after a click on one -> `ActivityEvent::Buttons`.
+    FetchButtons(ButtonKey),
     /// Save my added games (local only) and scan again.
     SetAdded(Vec<AddedGame>),
     /// The windows the "Add it!" picker offers -> `ActivityEvent::Windows`.
@@ -122,6 +129,8 @@ pub enum ActivityEvent {
     Added(Vec<AddedGame>),
     /// App icon hashes (None: none, or unknown app).
     Apps(Vec<(Id, Option<String>)>),
+    /// Button URLs (None: the request failed, so a later click asks again).
+    Buttons(ButtonKey, Option<Vec<String>>),
     Windows(Vec<Window>),
 }
 
@@ -142,10 +151,15 @@ pub struct ActivityState {
     pub app: Option<AppActivity>,
     /// What my session's presence carries (the last `SetActivities`).
     sent: (Option<GameActivity>, Option<AppActivity>),
+    /// Fetched button URLs.
+    button_urls: HashMap<ButtonKey, Vec<String>>,
+    /// The button clicked while its URLs are on their way (also: asked, do not ask again).
+    opening: Option<(ButtonKey, usize, std::time::Instant)>,
 }
 
 impl ActivityState {
-    pub fn apply(&mut self, ev: ActivityEvent) {
+    /// Returns a clicked button's URL to open now, once its answer came in time.
+    pub fn apply(&mut self, ev: ActivityEvent) -> Option<String> {
         match ev {
             ActivityEvent::Table(t) => self.table = Some(t),
             ActivityEvent::Detected(g) => self.detected = g,
@@ -157,7 +171,18 @@ impl ActivityState {
                 self.icons.extend(list);
             }
             ActivityEvent::Windows(w) => self.windows = Some(w),
+            ActivityEvent::Buttons(key, urls) => {
+                let click = self.opening.take_if(|(k, ..)| *k == key);
+                let urls = urls?;
+                let open = click.filter(|(.., at)| at.elapsed() < OPEN_WITHIN).and_then(|(_, i, _)| urls.get(i).cloned());
+                if self.button_urls.len() >= MAX_ICONS {
+                    self.button_urls.clear();
+                }
+                self.button_urls.insert(key, urls);
+                return open;
+            }
         }
+        None
     }
 
     /// What survives a logout: this device's games, not the account's session or its friends'
@@ -200,6 +225,28 @@ pub fn activity_of(state: &AppState, user: Id) -> Option<Cow<'_, Activity>> {
         return Some(Cow::Borrowed(a));
     }
     state.me.as_ref().filter(|m| m.id == user).and_then(|_| my_game(state).or_else(|| state.activity.app.as_ref().map(AppActivity::to_activity))).map(Cow::Owned)
+}
+
+/// A click on custom button `i` of `user`'s activity `a`: its URL when known (my own, or fetched
+/// before), else one metadata request (while connected) whose answer opens it. The caller opens
+/// web links only.
+pub fn button_url(state: &mut AppState, cmd: &CommandSender, user: Id, a: &Activity, i: usize) -> Option<String> {
+    let r = a.rich.as_deref()?;
+    if let Some(u) = r.button_urls.get(i) {
+        return Some(u.clone());
+    }
+    let key = (user, r.session_id.clone()?, r.application_id?);
+    if let Some(urls) = state.activity.button_urls.get(&key) {
+        return urls.get(i).cloned();
+    }
+    let asked = state.activity.opening.as_ref().is_some_and(|(k, ..)| *k == key);
+    if online(state) {
+        if !asked {
+            cmd.send(Command::Activity(ActivityCommand::FetchButtons(key.clone())));
+        }
+        state.activity.opening = Some((key, i, std::time::Instant::now()));
+    }
+    None
 }
 
 fn online(state: &AppState) -> bool {
@@ -324,6 +371,40 @@ mod tests {
         assert!(activity_of(&s, Id(2)).is_none(), "only mine falls back");
         s.activity.apply(ActivityEvent::Detected(Some(GameActivity { name: "Celeste".into(), application_id: None, start_ms: 1 })));
         assert_eq!(activity_of(&s, Id(1)).map(|a| a.name.clone()).as_deref(), Some("Celeste"));
+    }
+
+    #[test]
+    fn button_urls_are_fetched_on_a_click_and_opened_once() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let cmd = CommandSender(tx);
+        let mut s = AppState::default();
+        let rich = RichPresence { buttons: vec!["Watch".into(), "Site".into()], session_id: Some("abc".into()), application_id: Some(Id(8)), ..Default::default() };
+        let a = Activity { kind: 0, name: "Red Eclipse".into(), rich: Some(Box::new(rich)) };
+        let key: ButtonKey = (Id(2), "abc".into(), Id(8));
+        assert_eq!(button_url(&mut s, &cmd, Id(2), &a, 1), None);
+        assert!(sent(&mut rx).is_empty(), "offline: nothing is asked");
+        s.conn = ConnState::Connected;
+        assert_eq!(button_url(&mut s, &cmd, Id(2), &a, 0), None);
+        assert_eq!(button_url(&mut s, &cmd, Id(2), &a, 1), None);
+        assert_eq!(sent(&mut rx), [format!("{:?}", Command::Activity(ActivityCommand::FetchButtons(key.clone())))], "asked once");
+        let urls = vec!["https://twitch.tv/x".to_owned(), "https://x.example".to_owned()];
+        assert_eq!(s.activity.apply(ActivityEvent::Buttons(key.clone(), Some(urls.clone()))).as_deref(), Some("https://x.example"), "the last click opens");
+        assert_eq!(s.activity.apply(ActivityEvent::Buttons(key.clone(), Some(urls))), None, "once");
+        assert_eq!(button_url(&mut s, &cmd, Id(2), &a, 0).as_deref(), Some("https://twitch.tv/x"), "known now");
+        assert!(sent(&mut rx).is_empty());
+        // A failed request is asked again on the next click; a late answer opens nothing.
+        let other: ButtonKey = (Id(3), "abc".into(), Id(8));
+        assert_eq!(button_url(&mut s, &cmd, Id(3), &a, 0), None);
+        assert_eq!(s.activity.apply(ActivityEvent::Buttons(other.clone(), None)), None);
+        assert_eq!(button_url(&mut s, &cmd, Id(3), &a, 0), None);
+        assert_eq!(sent(&mut rx).len(), 2);
+        s.activity.opening.as_mut().unwrap().2 -= OPEN_WITHIN;
+        assert_eq!(s.activity.apply(ActivityEvent::Buttons(other, Some(vec!["https://y.example".into()]))), None, "too late");
+        // My own presence carries its URLs; without a session or an app id nothing is asked.
+        let mine = Activity { rich: Some(Box::new(RichPresence { buttons: vec!["Get".into()], button_urls: vec!["https://own.example".into()], ..Default::default() })), ..Default::default() };
+        assert_eq!(button_url(&mut s, &cmd, Id(1), &mine, 0).as_deref(), Some("https://own.example"));
+        assert_eq!(button_url(&mut s, &cmd, Id(1), &mine, 1), None);
+        assert!(sent(&mut rx).is_empty());
     }
 
     #[test]

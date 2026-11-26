@@ -608,8 +608,12 @@ impl RustcordApp {
                         self.view.toast(msg, true);
                     }
                 }
-                // Game detection, added games, app icons (crate::activity).
-                BackendEvent::Activity(ev) => self.state.activity.apply(ev),
+                // Game detection, added games, app icons, button links (crate::activity).
+                BackendEvent::Activity(ev) => {
+                    if let Some(url) = self.state.activity.apply(ev).filter(|u| markdown::is_web_scheme(u)) {
+                        ctx.open_url(egui::OpenUrl::new_tab(url));
+                    }
+                }
                 // Quests page; a video progress answer goes on to the video modal's session.
                 BackendEvent::Quests(ev) => {
                     if let Some((quest_id, ok)) = self.state.quests.apply(ev) {

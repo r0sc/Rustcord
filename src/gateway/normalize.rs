@@ -137,6 +137,9 @@ struct ActivityWire {
     sync_id: serde_json::Value,
     url: serde_json::Value,
     party: serde_json::Value,
+    buttons: serde_json::Value,
+    session_id: serde_json::Value,
+    flags: serde_json::Value,
 }
 
 impl ActivityWire {
@@ -158,6 +161,11 @@ impl ActivityWire {
             sync_id: text(&self.sync_id),
             url: text(&self.url),
             party: party.filter(|p| p[1] > 0),
+            // Labels as users receive them; a bot-style `{label, url}` object gives its label.
+            buttons: self.buttons.as_array().into_iter().flatten().filter_map(|b| text(b).or_else(|| text(&b["label"]))).take(2).collect(),
+            button_urls: Vec::new(),
+            session_id: text(&self.session_id),
+            flags: self.flags.as_u64().and_then(|f| u32::try_from(f).ok()).unwrap_or(0),
         };
         Activity { kind: self.kind, name: self.name, rich: (rich != RichPresence::default()).then(|| Box::new(rich)) }
     }
@@ -1219,6 +1227,19 @@ mod tests {
         };
         let spotify = Activity { kind: 2, name: "Spotify".into(), rich: Some(Box::new(rich)) };
         assert_eq!(p.activity, Some(spotify), "first non-custom activity; type 6 skipped; odd asset types dropped");
+
+        // A joinable game with custom buttons as a user client receives it: labels only (the
+        // URLs and secrets are send-only), the session and the flags.
+        let r = ev(
+            "PRESENCE_UPDATE",
+            r#"{"user":{"id":"4"},"status":"online","activities":[{"type":0,"name":"Red Eclipse","application_id":"8","session_id":"abc",
+               "flags":66,"party":{"id":"p1","size":[2,4]},"buttons":["Watch on Twitch",{"label":"Website","url":"https://x.example"},"third"]}]}"#,
+        );
+        let [GatewayEvent::PresenceUpdate(list)] = &r[..] else { panic!("{r:?}") };
+        let rich = list[0].1.activity.as_ref().and_then(|a| a.rich.as_deref()).unwrap();
+        assert_eq!(rich.buttons, ["Watch on Twitch", "Website"], "two at most");
+        assert!(rich.button_urls.is_empty(), "never taken from others' payloads");
+        assert_eq!((rich.session_id.as_deref(), rich.flags, rich.party), (Some("abc"), RichPresence::JOIN | RichPresence::PARTY_PRIVACY_FRIENDS, Some([2, 4])));
 
         // Lenient: odd field types, desktop + mobile is not "mobile", invisible is offline.
         let r = ev("PRESENCE_UPDATE", r#"{"user":{"id":"3"},"status":5,"activities":null,"client_status":{"desktop":"online","mobile":"online"}}"#);

@@ -2279,6 +2279,12 @@ fn handle_activity(cmd: crate::activity::ActivityCommand, session: &mut Option<S
                 Some(BackendEvent::Activity(ActivityEvent::Apps(icons)))
             });
         }
+        C::FetchButtons(key) => {
+            let (user, sid, app) = key.clone();
+            rest(session, sink, move |api| async move { api.activity_button_urls(user, &sid, app).await }, move |r| {
+                Some(BackendEvent::Activity(ActivityEvent::Buttons(key, r.map_err(|e| eprintln!("rustcord: activity buttons: {e}")).ok())))
+            });
+        }
         C::SetAdded(games) => activity.set_added(games),
         C::ListWindows => activity.list_windows(),
     }

@@ -310,6 +310,10 @@ pub(super) fn demo_activity(kind: u8) -> Activity {
         sync_id: (kind == 2).then(|| "0rUSTcoRDdem0TRack000x".into()),
         url: (kind == 1).then(|| "https://www.twitch.tv/rustcord".into()),
         party: (kind == 0).then_some([3, 4]),
+        // The game is joinable and has a custom button (its URL is fetched on a click).
+        buttons: if kind == 0 { vec!["Factorio Wiki".into()] } else { Vec::new() },
+        session_id: Some("0demo0session".into()),
+        flags: if kind == 0 { RichPresence::JOIN | RichPresence::PARTY_PRIVACY_FRIENDS } else { 0 },
         ..Default::default()
     };
     Activity { kind, name: name.into(), rich: Some(Box::new(rich)) }

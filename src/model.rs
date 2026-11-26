@@ -1518,6 +1518,20 @@ pub struct RichPresence {
     pub url: Option<String>,
     /// `party.size`: [current, max].
     pub party: Option<[u32; 2]>,
+    /// Custom button labels (≤ 2). Others' URLs are fetched on a click (`activity::button_url`).
+    pub buttons: Vec<String>,
+    /// The URLs of `buttons` when known here (my own presence).
+    pub button_urls: Vec<String>,
+    /// The presence session the activity belongs to (the metadata endpoint's path).
+    pub session_id: Option<String>,
+    /// `flags`: `JOIN`, `PARTY_PRIVACY_FRIENDS`, `PARTY_PRIVACY_VOICE_CHANNEL`, …
+    pub flags: u32,
+}
+
+impl RichPresence {
+    pub const JOIN: u32 = 1 << 1;
+    pub const PARTY_PRIVACY_FRIENDS: u32 = 1 << 6;
+    pub const PARTY_PRIVACY_VOICE_CHANNEL: u32 = 1 << 7;
 }
 
 impl Activity {
@@ -1577,6 +1591,14 @@ impl Activity {
         let host = u.host_str()?;
         let known = ["twitch.tv", "www.twitch.tv", "m.twitch.tv", "youtube.com", "www.youtube.com", "m.youtube.com"].contains(&host);
         (u.scheme() == "https" && u.port().is_none() && u.username().is_empty() && known).then_some(url)
+    }
+
+    /// "Join" when the party lets me in (a friend, or in the same voice channel), else "Ask to
+    /// Join"; None when the game cannot be joined.
+    pub fn join_label(&self, friend: bool, same_voice: bool) -> Option<&'static str> {
+        let f = self.rich.as_ref()?.flags;
+        let open = (f & RichPresence::PARTY_PRIVACY_FRIENDS != 0 && friend) || (f & RichPresence::PARTY_PRIVACY_VOICE_CHANNEL != 0 && same_voice);
+        (f & RichPresence::JOIN != 0).then_some(if open { "Join" } else { "Ask to Join" })
     }
 
     /// (played, length) in ms of a song with start and end times.
@@ -2076,6 +2098,13 @@ mod tests {
             assert_eq!(stream(bad).stream_url(), None, "{bad}");
         }
         assert_eq!(Activity { kind: 0, ..stream("https://www.twitch.tv/x") }.stream_url(), None, "not a stream");
+        let game = |flags| Activity { rich: Some(Box::new(RichPresence { flags, ..Default::default() })), ..Default::default() };
+        let (join, friends, voice) = (RichPresence::JOIN, RichPresence::PARTY_PRIVACY_FRIENDS, RichPresence::PARTY_PRIVACY_VOICE_CHANNEL);
+        assert_eq!([game(0).join_label(true, true), Activity::default().join_label(true, true)], [None, None]);
+        assert_eq!(game(friends).join_label(true, true), None, "privacy without JOIN");
+        assert_eq!([game(join | friends).join_label(true, false), game(join | friends).join_label(false, true)], [Some("Join"), Some("Ask to Join")]);
+        assert_eq!([game(join | voice).join_label(false, true), game(join | voice).join_label(true, false)], [Some("Join"), Some("Ask to Join")]);
+        assert_eq!(game(join).join_label(true, true), Some("Ask to Join"), "no privacy flag: the host decides");
         let id = Id::from_timestamp_ms(1_700_000_000_000);
         assert_eq!(id.timestamp_ms(), 1_700_000_000_000);
         assert_eq!(Id::from_timestamp_ms(0), Id(0));
