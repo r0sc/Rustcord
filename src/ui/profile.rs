@@ -295,7 +295,7 @@ fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Op
         let roles = guild_roles(cx, guild_id, member);
         if !roles.is_empty() {
             section(ui, pal, "Roles");
-            role_pills(ui, pal, &roles, 3);
+            role_pills(ui, cx.images, pal, &roles, 3);
         }
         if !account {
             // Plugins: Friends Since, In Voice, Mutual Groups, Connections, Online On, permissions.
@@ -475,6 +475,17 @@ const CHIP_GAP: f32 = 4.0;
 /// Chip padding left of the colour dot (8 px) + gap to the name, and right of the name.
 const CHIP_LEAD: f32 = 6.0 + 8.0 + 4.0;
 const CHIP_PAD: f32 = 6.0;
+/// A role's icon in its pill: 14 px, 4 px after the dot.
+const CHIP_ICON: f32 = 14.0;
+const CHIP_ICON_W: f32 = CHIP_ICON + 4.0;
+
+/// A pill's width: the dot, the role icon if it has one, the name.
+fn chip_width(name_w: f32, icon: bool) -> f32 {
+    CHIP_LEAD + if icon { CHIP_ICON_W } else { 0.0 } + name_w + CHIP_PAD
+}
+
+/// A role in the profile's list: name, colour, and its icon when the server shows role icons.
+pub(super) type RolePill = (String, u32, Option<crate::model::Role>);
 
 /// (row, x) of chips of `widths` flowed into rows of `max_w`.
 fn flow(widths: &[f32], max_w: f32) -> Vec<(usize, f32)> {
@@ -505,13 +516,22 @@ fn chips_shown(widths: &[f32], max_w: f32, max_rows: usize, more_w: f32) -> usiz
 /// Role chips (colour dot + name) flowed into rows of the available width: a name longer than
 /// a row is cut with "…" (tooltip: the whole name); beyond `max_rows` rows a "+N" chip that
 /// shows them all (the card scrolls), until the roles change.
-pub(super) fn role_pills(ui: &mut egui::Ui, pal: &Pal, roles: &[(String, u32)], max_rows: usize) {
-    let open_id = ui.make_persistent_id(("rc_roles_open", roles));
+pub(super) fn role_pills(ui: &mut egui::Ui, images: &mut images::ImageCache, pal: &Pal, roles: &[RolePill], max_rows: usize) {
+    let open_id = ui.make_persistent_id(("rc_roles_open", roles.iter().map(|r| &r.0).collect::<Vec<_>>()));
     let max_rows = if ui.data(|d| d.get_temp::<bool>(open_id).unwrap_or(false)) { usize::MAX } else { max_rows };
     let font = FontId::new(pal.meta(), crate::theme::medium_family());
     let max_w = ui.available_width();
-    let galleys: Vec<_> = roles.iter().map(|(name, _)| super::one_line(ui, name.as_str(), font.clone(), pal.text, max_w - CHIP_LEAD - CHIP_PAD)).collect();
-    let mut widths: Vec<f32> = galleys.iter().map(|g| CHIP_LEAD + g.size().x + CHIP_PAD).collect();
+    // An icon that can't be drawn (an emoji the fonts lack) leaves no room.
+    let icons: Vec<Option<&crate::model::Role>> = roles
+        .iter()
+        .map(|(_, _, r)| r.as_ref().filter(|r| r.icon.as_deref().is_some_and(|h| !h.is_empty()) || r.unicode_emoji.as_deref().is_some_and(|e| super::messages::has_emoji_glyph(ui, e))))
+        .collect();
+    let galleys: Vec<_> = roles
+        .iter()
+        .zip(&icons)
+        .map(|((name, ..), icon)| super::one_line(ui, name.as_str(), font.clone(), pal.text, max_w - chip_width(0.0, icon.is_some())))
+        .collect();
+    let mut widths: Vec<f32> = galleys.iter().zip(&icons).map(|(g, icon)| chip_width(g.size().x, icon.is_some())).collect();
     let more = |n: usize| super::one_line(ui, format!("+{n}"), font.clone(), pal.muted, max_w);
     let shown = chips_shown(&widths, max_w, max_rows, more(roles.len()).size().x + 2.0 * CHIP_PAD);
     let rest = roles.len() - shown;
@@ -529,13 +549,20 @@ pub(super) fn role_pills(ui: &mut egui::Ui, pal: &Pal, roles: &[(String, u32)], 
     };
     // Chip tier radius; a neutral tint that shows on the raised card in every mode.
     let radius = (pal.radius / 2).max(2);
-    for (i, ((name, color), g)) in roles.iter().zip(galleys).take(shown).enumerate() {
+    for (i, (((name, color, _), g), icon)) in roles.iter().zip(galleys).zip(&icons).take(shown).enumerate() {
         let r = chip(i);
         ui.painter().rect_filled(r, radius, pal.tk.hover);
         ui.painter().circle_filled(pos2(r.left() + 10.0, r.center().y), 4.0, if *color != 0 { rgb(*color) } else { pal.muted });
         crate::plugins::people::role_dot(ui, pos2(r.left() + 10.0, r.center().y), *color);
         let elided = g.elided;
-        ui.painter().galley(pos2(r.left() + CHIP_LEAD, r.center().y - g.size().y / 2.0), g, pal.text);
+        let name_x = if let Some(role) = icon {
+            let at = pos2(r.left() + CHIP_LEAD + CHIP_ICON / 2.0, r.center().y);
+            super::messages::paint_role_icon(ui, images, role, Rect::from_center_size(at, Vec2::splat(CHIP_ICON)), pal.text);
+            CHIP_LEAD + CHIP_ICON_W
+        } else {
+            CHIP_LEAD
+        };
+        ui.painter().galley(pos2(r.left() + name_x, r.center().y - g.size().y / 2.0), g, pal.text);
         if elided {
             ui.interact(r, ui.make_persistent_id(("rc_role_chip", i)), Sense::hover()).on_hover_text(name);
         }
@@ -745,12 +772,12 @@ fn actions(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user_id: Id, guild_i
 }
 
 /// (name, color) of the member's roles in the guild, highest first, without @everyone.
-pub(super) fn guild_roles(cx: &UiCx<'_>, guild_id: Option<Id>, member: Option<&Member>) -> Vec<(String, u32)> {
+pub(super) fn guild_roles(cx: &UiCx<'_>, guild_id: Option<Id>, member: Option<&Member>) -> Vec<RolePill> {
     let (Some(g), Some(m)) = (guild_id, member) else { return Vec::new() };
     let Some(guild) = cx.state.guild(g) else { return Vec::new() };
     let mut roles: Vec<_> = guild.roles.iter().filter(|r| r.id != g && m.roles.contains(&r.id)).collect();
     roles.sort_by_key(|r| std::cmp::Reverse(r.position));
-    roles.into_iter().map(|r| (r.name.clone(), r.color)).collect()
+    roles.into_iter().map(|r| (r.name.clone(), r.color, cx.state.role_icon(g, &[r.id]).cloned())).collect()
 }
 
 fn find_user(cx: &UiCx<'_>, id: Id) -> Option<User> {
@@ -821,6 +848,11 @@ mod tests {
         let uv = cover_uv(vec2(400.0, 100.0), vec2(100.0, 100.0));
         assert!((uv.min.x - 0.375).abs() < 1e-5 && (uv.max.x - 0.625).abs() < 1e-5);
         assert_eq!(cover_uv(Vec2::ZERO, vec2(1.0, 1.0)), full);
+    }
+
+    #[test]
+    fn a_role_icon_widens_its_pill_by_18() {
+        assert_eq!(chip_width(40.0, true) - chip_width(40.0, false), 18.0);
     }
 
     #[test]

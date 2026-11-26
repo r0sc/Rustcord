@@ -329,7 +329,7 @@ fn about(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, guild_id:
     let roles = super::profile::guild_roles(cx, guild_id, member.as_ref());
     if !roles.is_empty() {
         label(ui, pal, "Roles");
-        super::profile::role_pills(ui, pal, &roles, usize::MAX);
+        super::profile::role_pills(ui, cx.images, pal, &roles, usize::MAX);
     }
     // Connections and the game collection (profile widgets): ui/cosmetics.rs.
     if connections.iter().any(|a| cosmetics::shown_connection(&a.kind)) {

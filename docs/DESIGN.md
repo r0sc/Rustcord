@@ -750,6 +750,8 @@ white, no inversion).
 
 - Profile popout (profile.rs): radius float 16, `raised`, `rule`, E2, sheen, display name via
   `title_text`. Footer Primary "Message".
+  Role pills: the colour dot, the role icon 14 when the role has one (4 px after the dot; the pill
+  grows by 18), the name.
 - Inbox, pins, pickers: radius float 16 (§5); inbox gets the sheen.
 - Modals (`dialog_closable`, mod.rs): E3, radius 20, padding 24, widths 440 / 520 / 640,
   title via `pal.title_text`, sheen, `Close` 32 top right. Footer: Ghost "Cancel" + one Primary
