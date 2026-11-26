@@ -84,6 +84,7 @@ pub enum Plugin {
     ClientDiagnostics,
     QuickReply,
     NotificationLog,
+    QuickMention,
 }
 
 /// One option of a plugin (the settings page draws it from this).
@@ -216,6 +217,7 @@ pub const META: &[Meta] = &[
     meta(P::ClientDiagnostics, "ClientDiagnostics", "Settings → Advanced shows frame times, memory and the connection, with a button that copies them as text. Nothing is sent.", &[]),
     meta(P::QuickReply, "QuickReply", "Ctrl+Up / Ctrl+Down pick the message to reply to; Ctrl+Shift+Up / Down pick one of yours to edit. Down past the newest cancels.", &[]),
     meta(P::NotificationLog, "NotificationLog", "The Inbox gets a Recent tab with this session's notifications, also the ones Do Not Disturb, quiet hours or one ping per DM silenced. Kept in memory only.", &[]),
+    meta(P::QuickMention, "QuickMention", "A Mention button on messages puts @name into your message box. Nothing is sent until you send it.", &[]),
 ];
 
 pub fn meta_of(p: Plugin) -> &'static Meta {

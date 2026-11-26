@@ -1181,7 +1181,8 @@ fn new_messages_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut M
 /// (the composer's emoji picker), `pins` (pins popout listing cached messages), `search` /
 /// `indexing` (results panel with cached hits / its indexing state) and `detached` (the older
 /// half of the history shown as a jump window: "Jump to present" bar, highlighted target) and
-/// `online` (the composer without its "Offline" chip; README screenshots).
+/// `online` (the composer without its "Offline" chip; README screenshots) and `mention` (QuickMention's
+/// click on the newest message not by me).
 pub(super) fn demo(flag: &str) -> bool {
     static FLAGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     FLAGS.get_or_init(|| std::env::var("RUSTCORD_MSG_DEMO").unwrap_or_default()).split(',').any(|f| f.trim() == flag)
@@ -1213,6 +1214,11 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>
             }
             cx.view.reaction_picker = target.filter(|_| demo("picker"));
             cx.view.confirm_delete = target.filter(|_| demo("delete"));
+        }
+        if demo("mention") && let Some(m) = cx.state.messages.get(&ch).and_then(|c| c.msgs.iter().rev().find(|m| cx.state.me.as_ref().is_none_or(|u| u.id != m.author.id))) {
+            let member = message_member(cx.state, cx.state.channels.get(&ch).and_then(|c| c.guild_id), m);
+            let name = cx.state.member_display_name(cx.state.channels.get(&ch).and_then(|c| c.guild_id), &m.author, member.as_ref());
+            composer::queue_mention(ctx, ch, format!("@{name}"), format!("<@{}>", m.author.id.0));
         }
         if demo("failed") {
             let content = "This one didn't make it".to_string();
@@ -2812,6 +2818,17 @@ fn hover_toolbar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
             if lc.can_send && !h.system && icon_button(ui, &pal, "↩", "Reply", SIDE, false, pal.text).clicked() {
                 cx.view.reply_to = Some((lc.ch, h.id, crate::plugins::chat::reply_ping(cx.state, lc.ch, h.id)));
                 ui.ctx().request_repaint();
+            }
+            // QuickMention: @name into the composer; never sends.
+            if crate::plugins::enabled(crate::plugins::Plugin::QuickMention)
+                && lc.can_send
+                && !h.system
+                && vector_button(ui, &pal, Icon::At, "Mention", SIDE, false, pal.text).clicked()
+                && let Some(m) = shown(cx.state, lc.ch).iter().find(|m| m.id == h.id)
+            {
+                let member = message_member(cx.state, lc.guild_id, m);
+                let name = cx.state.member_display_name(lc.guild_id, &m.author, member.as_ref());
+                composer::queue_mention(ui.ctx(), lc.ch, format!("@{name}"), format!("<@{}>", m.author.id.0));
             }
             if reacts {
                 let r = icon_button(ui, &pal, "☺", "Add reaction", SIDE, false, pal.text);

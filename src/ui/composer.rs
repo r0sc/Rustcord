@@ -204,6 +204,17 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
 
     let row_h = ui.text_style_height(&egui::TextStyle::Body);
     let edit_id = ui.make_persistent_id(("rc_composer", ch.0));
+    // QuickMention's click (messages.rs) lands in the box of its channel.
+    if ctx.data(|d| d.get_temp::<(Id, String, String)>(mention_queue_id()).is_some_and(|q| q.0 == ch))
+        && let Some((_, readable, wire)) = ctx.data_mut(|d| d.remove_temp::<(Id, String, String)>(mention_queue_id()))
+    {
+        let draft = cx.view.drafts.entry(ch).or_default();
+        let state = egui::text_edit::TextEditState::load(&ctx, edit_id).unwrap_or_default();
+        let at = state.cursor.char_range().map_or(usize::MAX, |r| r.primary.index.0);
+        let before = draft.chars().take(at).last();
+        remember_mention(&ctx, ch, &readable, &wire);
+        insert_at_cursor(&ctx, edit_id, draft, &padded(before, &readable));
+    }
     let pass = ctx.cumulative_pass_nr();
     // The panel's box comes first in a pass (its panel is laid out before the chat).
     let panel_box = if panel {
@@ -546,6 +557,22 @@ fn paint_gif_badge(p: &egui::Painter, r: Rect, color: Color32, _: &Pal) {
     let b = Rect::from_center_size(r.center(), vec2(20.0, 14.0));
     p.rect_stroke(b, 3, Stroke::new(1.6, color), egui::StrokeKind::Inside);
     p.text(b.center() + vec2(0.0, 0.5), Align2::CENTER_CENTER, "GIF", FontId::new(8.5, bold_family()), color);
+}
+
+fn mention_queue_id() -> egui::Id {
+    trays_id().with("mention")
+}
+
+/// QuickMention: `readable` goes into the box of `ch` on its next pass (`wire` is what a send expands it to).
+pub(super) fn queue_mention(ctx: &egui::Context, ch: Id, readable: String, wire: String) {
+    ctx.data_mut(|d| d.insert_temp(mention_queue_id(), (ch, readable, wire)));
+    ctx.request_repaint();
+}
+
+/// "@Name " for the cursor, with a space first when the char before it is not whitespace.
+fn padded(before: Option<char>, readable: &str) -> String {
+    let lead = if before.is_some_and(|c| !c.is_whitespace()) { " " } else { "" };
+    format!("{lead}{readable} ")
 }
 
 /// Inserts `text` at the input's cursor (end if it never had one) and focuses it after.
@@ -1278,6 +1305,16 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mention_gets_a_space_after_text_and_one_behind() {
+        assert_eq!(padded(None, "@A"), "@A ");
+        assert_eq!(padded(Some('i'), "@A"), " @A ");
+        assert_eq!(padded(Some(' '), "@A"), "@A ");
+        assert_eq!(padded(Some('\n'), "@A"), "@A ");
+        let map = [("@Alice".to_string(), "<@2>".to_string())];
+        assert_eq!(autocomplete::expand("hi @Alice ", &map), "hi <@2> ");
+    }
 
     #[test]
     fn slowmode_counts_down_from_my_last_message() {
