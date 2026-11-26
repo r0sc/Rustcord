@@ -1471,13 +1471,13 @@ M124 408V152A48 48 0 0 1 172 104H276A96 96 0 0 1 307.75 290.6L400 408H304L216 29
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
 <defs>
 <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
-<stop offset="0" stop-color="#1E1A2B"/><stop offset="1" stop-color="#0B0A10"/>
+<stop offset="0" stop-color="#221D30"/><stop offset="1" stop-color="#15121D"/>
 </linearGradient>
 <radialGradient id="light" gradientUnits="userSpaceOnUse" cx="256" cy="176" r="300">
 <stop offset="0" stop-color="#A42BEA" stop-opacity="0.20"/><stop offset="1" stop-color="#A42BEA" stop-opacity="0"/>
 </radialGradient>
 <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
-<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.04"/>
+<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.12"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.12"/>
 </linearGradient>
 <linearGradient id="glyph" gradientUnits="userSpaceOnUse" x1="136" y1="112" x2="394" y2="400">
 <stop offset="0" stop-color="#E6CCFF"/><stop offset="0.5" stop-color="#BE6BF7"/><stop offset="1" stop-color="#A42BEA"/>
@@ -1490,7 +1490,7 @@ M124 408V152A48 48 0 0 1 172 104H276A96 96 0 0 1 307.75 290.6L400 408H304L216 29
 </svg>
 ```
 
-Contrast: the R's darkest stop `#A42BEA` on the tile's darkest `#0B0A10`: 3.9:1; its lightest
+Contrast: the R's darkest stop `#A42BEA` on the tile's darkest `#15121D`: 3.6:1; its lightest
 on the lightest tile: > 10:1.
 
 ### 14.3 `assets/logo-small.svg` (16, 20, 24, 32 px PNGs and ICO frames)
