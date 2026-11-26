@@ -60,7 +60,7 @@
     {
      "id": "1565443437363200007",
      "name": "Maintainers",
-     "color": 15234107,
+     "color": 1752220,
      "position": 2,
      "permissions": "104324673",
      "hoist": true
@@ -163,7 +163,7 @@
     {
      "id": "1565443437363200016",
      "name": "Maintainers",
-     "color": 15234107,
+     "color": 1752220,
      "position": 2,
      "permissions": "104324673",
      "hoist": true
@@ -233,7 +233,7 @@
     {
      "id": "1565443437363200022",
      "name": "Maintainers",
-     "color": 15234107,
+     "color": 1752220,
      "position": 2,
      "permissions": "104324673",
      "hoist": true
@@ -634,7 +634,7 @@
        "title": "Rust Programming Language",
        "url": "https://www.rust-lang.org",
        "description": "A language empowering everyone to build **reliable** and efficient software.",
-       "color": 15234107,
+       "color": 1752220,
        "fields": [
         {
          "name": "Edition",
