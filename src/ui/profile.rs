@@ -366,6 +366,8 @@ pub(super) fn activity_section(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, 
     let art = crate::activity::art_url(ui.ctx(), cx.state, a, 128).and_then(|u| cx.images.get(ui.ctx(), &u, 128, false));
     match art {
         Some(tex) => Image::from_texture(tex).corner_radius(pal.radius).paint_at(ui, img),
+        // Rustcord's own activity (shown locally, never sent as art): the R mark.
+        None if crate::activity::is_rustcord(a) => super::sidebar::logo_mark(ui.painter(), img, egui::CornerRadius::same((side * 0.15).round() as u8), pal.tk.raised, pal.tk.accent_ink),
         None => {
             let tile = pal.tk.hover;
             ui.painter().rect_filled(img, pal.radius, tile);
