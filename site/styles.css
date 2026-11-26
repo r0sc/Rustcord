@@ -186,6 +186,7 @@ details[open] > summary .chev { rotate: 0deg; }
   .stats { grid-template-columns: repeat(4, 1fr); }
   .stats > div { padding: 32px 24px; border-bottom: 0; border-right: 1px solid var(--rule); }
   .stats > div:nth-child(2n) { border-right: 1px solid var(--rule); } .stats > div:last-child { border-right: 0; }
+  .stats > div:nth-child(odd) { padding-left: 24px; } .stats > div:first-child { padding-left: 0; }
 }
 .measured { max-width: 68ch; margin: 16px 0 32px; }
 
