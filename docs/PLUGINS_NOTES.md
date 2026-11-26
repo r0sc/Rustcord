@@ -639,6 +639,15 @@ All settings are written `key` = default.
 
 DontRoundMyTimestamps, ForceOwnerCrown, RevealAllSpoilers, BlurNSFW, HideMedia, ImageFilename, NoMosaic, Unindent, CopyUserURLs, CopyEmojiMarkdown, CopyFileContents, NoPendingCount, MutedServersActivityBadge, NoServerEmojis, NoTypingAnimation, NoSystemBadge, NoProfileThemes, SendTimestamps, QuickReply, QuickMention, JumpToTop, KeepCurrentChannel, ShowAllMessageButtons, VoiceChatDoubleClick, VoiceDownload, DirectFileDownload, StreamerModeOnStream, AnonymiseFileNames, IrcColors, UserMessagesPronouns, ValidReply, SortFriendRequests, OpenInApp, NoTrack (already true).
 
+### Illegalcord-inspired (built in, 2026-11-26)
+
+Picked from Illegalcord's plugin list. Already in Rustcord: BetterFolders, RelationshipNotifier.
+
+| Name | Kind | What it does | Files |
+|---|---|---|---|
+| CrashHandlerEnhanced | built in, always on | A panic writes `<config>/crash/crash-<time>.txt` (newest 5 kept); the next start shows a card with Copy report, Report on GitHub, Dismiss and, for a panic in `src/plugins/<file>.rs`, Turn them off | `src/crash.rs`, `src/ui/crash_card.rs`, `plugins::FILES` |
+| ClientDiagnostics | plugin, off | Settings → Advanced: frames, slowest sections, memory, connection, Copy report. Times frames only while that section is on screen | `src/plugins/diagnostics.rs`, `src/ui/user_settings/diagnostics.rs`, `ui/frame_stats.rs` |
+
 ## 5. Equicord extras (205 in `src/equicordplugins`)
 
 Names and descriptions come from Equibored `plugins.json`; the class is my judgement. Plugins not named are toys or overlap with Vencord.

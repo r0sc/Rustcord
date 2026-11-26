@@ -183,7 +183,8 @@ What's in it so far:
   the panic came from a plugin's code, the card offers to turn that plugin off. Nothing is sent.
 - Plugins (Settings → Plugins), rebuilt from Vencord's, all off by default and local to this
   app: AccountPanelServerProfile, BetterFolders, BetterRoleDot, CallTimer, CharacterCounter,
-  ClearURLs, CopyUserURLs, CustomIdle, FavoriteEmojiFirst, FriendsSince, GameActivityToggle,
+  ClearURLs, ClientDiagnostics (frame, memory and connection numbers in Settings → Advanced),
+  CopyUserURLs, CustomIdle, FavoriteEmojiFirst, FriendsSince, GameActivityToggle,
   ImageZoom, IrcColors, MemberCount, MessageLinkEmbeds, MessageLogger (memory only),
   MoreUserTags, MutualGroupDMs, NoBlockedMessages, NoReplyMention, OnePingPerDM, OpenInApp,
   PermissionsViewer, PinDMs, PlatformIndicators, ReadAllNotificationsButton,

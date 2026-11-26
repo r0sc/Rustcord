@@ -26,6 +26,7 @@ mod alerts;
 mod app;
 mod connections;
 mod cosmetics;
+mod diagnostics;
 mod games;
 mod keybinds;
 mod lists;

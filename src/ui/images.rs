@@ -337,9 +337,12 @@ pub fn mem_trace(label: &str) {
     }
 }
 
-/// Working set, private bytes and the process heap's allocated bytes (Rust + CRT + driver mallocs).
 #[cfg(windows)]
-fn process_counters() -> String {
+type Pair = Option<(usize, usize)>;
+
+/// (working set, private bytes) and (process heap allocated, committed): Rust + CRT + driver mallocs.
+#[cfg(windows)]
+fn counters() -> (Pair, Pair) {
     #[repr(C)]
     #[derive(Default)]
     struct Counters {
@@ -371,35 +374,61 @@ fn process_counters() -> String {
         fn GetProcessHeap() -> isize;
         fn HeapSummary(heap: isize, flags: u32, summary: *mut HeapSummary) -> i32;
     }
-    let mb = |b: usize| b as f64 / (1024.0 * 1024.0);
     let mut c = Counters { cb: size_of::<Counters>() as u32, ..Default::default() };
     let mut h = HeapSummary { cb: size_of::<HeapSummary>() as u32, ..Default::default() };
     // SAFETY: plain out-parameter calls with correctly sized, initialized structs.
     let (ok_c, ok_h) = unsafe {
         (K32GetProcessMemoryInfo(GetCurrentProcess(), &mut c, c.cb) != 0, HeapSummary(GetProcessHeap(), 0, &mut h) != 0)
     };
+    (ok_c.then_some((c.ws, c.private)), ok_h.then_some((h.allocated, h.committed)))
+}
+
+/// Working set and private bytes in MB (Settings > Advanced > Diagnostics).
+#[cfg(windows)]
+pub fn memory_mb() -> Option<(f64, f64)> {
+    counters().0.map(|(ws, private)| (ws as f64 / MB, private as f64 / MB))
+}
+
+#[cfg(windows)]
+fn process_counters() -> String {
+    let (proc, heap) = counters();
     let mut out = String::new();
-    if ok_c {
-        out += &format!("process: working set {:.1} MB, private {:.1} MB", mb(c.ws), mb(c.private));
+    if let Some((ws, private)) = proc {
+        out += &format!("process: working set {:.1} MB, private {:.1} MB", ws as f64 / MB, private as f64 / MB);
     }
-    if ok_h {
-        out += &format!(", process heap allocated {:.1} MB / committed {:.1} MB", mb(h.allocated), mb(h.committed));
+    if let Some((allocated, committed)) = heap {
+        out += &format!(", process heap allocated {:.1} MB / committed {:.1} MB", allocated as f64 / MB, committed as f64 / MB);
     }
     out + "\n"
 }
 
 /// Linux: resident set (VmRSS) as the working set, anonymous resident memory (RssAnon) as private.
 #[cfg(target_os = "linux")]
+pub fn memory_mb() -> Option<(f64, f64)> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let mb = |key: &str| status.lines().find_map(|l| l.strip_prefix(key)?.trim().strip_suffix("kB")?.trim().parse::<f64>().ok()).map(|kb| kb / 1024.0);
+    Some((mb("VmRSS:")?, mb("RssAnon:")?))
+}
+
+#[cfg(target_os = "linux")]
 fn process_counters() -> String {
-    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
-    let mb = |key: &str| status.lines().find_map(|l| l.strip_prefix(key)?.trim().strip_suffix("kB")?.trim().parse::<f64>().ok()).map_or(0.0, |kb| kb / 1024.0);
-    format!("process: working set {:.1} MB, private {:.1} MB\n", mb("VmRSS:"), mb("RssAnon:"))
+    let (ws, private) = memory_mb().unwrap_or_default();
+    format!("process: working set {ws:.1} MB, private {private:.1} MB\n")
+}
+
+/// Not measured on macOS.
+#[cfg(not(any(windows, target_os = "linux")))]
+pub fn memory_mb() -> Option<(f64, f64)> {
+    None
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
 fn process_counters() -> String {
     String::new()
 }
+
+#[cfg(any(windows, target_os = "linux"))]
+const MB: f64 = 1024.0 * 1024.0;
 
 fn upload(ctx: &egui::Context, name: &str, img: DecodedImage) -> State {
     let first = &img.frames[0].image;

@@ -5,10 +5,13 @@
 //! `+name` run inside another one (markdown inside chat …) and are left out of `unscoped`.
 //! `RUSTCORD_FRAME_STATS=continuous` also repaints every frame (cost of a full repaint).
 //! Off, every call is one cached check.
+//! Settings > Advanced > Diagnostics (plugin ClientDiagnostics) uses the same numbers live:
+//! `keep_live` while that section is drawn makes `end` keep each 2 s window for `last`.
 
 use std::cell::RefCell;
 use std::fmt::Write as _;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const EVERY: Duration = Duration::from_secs(2);
@@ -21,6 +24,48 @@ fn mode() -> u8 {
         Ok("" | "0") | Err(_) => 0,
         Ok(_) => 1,
     })
+}
+
+/// Passes left in which the live view (the Diagnostics section) counts as shown; each draw of
+/// the section sets it to 2, each pass takes one off, so leaving the page ends the timing.
+static LIVE: AtomicU8 = AtomicU8::new(0);
+static LAST: Mutex<Option<Window>> = Mutex::new(None);
+
+fn active() -> bool {
+    mode() != 0 || LIVE.load(Ordering::Relaxed) > 0
+}
+
+/// The Diagnostics section calls this every time it is drawn.
+pub fn keep_live() {
+    LIVE.store(2, Ordering::Relaxed);
+}
+
+/// A finished 2 s window: what the live view shows.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Window {
+    pub frames: usize,
+    pub secs: f32,
+    /// (mean, p95) in ms: eframe's time per frame and ours.
+    pub frame_ms: (f32, f32),
+    pub app_ms: (f32, f32),
+    /// (section, ms per frame), in first-seen order.
+    pub sections: Vec<(&'static str, f32)>,
+}
+
+/// The newest finished window, while the live view is shown.
+pub fn last() -> Option<Window> {
+    LAST.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+fn window(s: &mut Stats) -> Window {
+    let n = s.app_ms.len().max(1) as f32;
+    Window {
+        frames: s.app_ms.len(),
+        secs: s.since.map_or(0.0, |t| t.elapsed().as_secs_f32()),
+        frame_ms: mean_p95(&mut s.frame_ms),
+        app_ms: mean_p95(&mut s.app_ms),
+        sections: s.sections.iter().map(|(name, total, _)| (*name, total.as_secs_f32() * 1000.0 / n)).collect(),
+    }
 }
 
 #[derive(Default)]
@@ -53,7 +98,7 @@ impl Drop for Scope {
 
 /// Times the rest of the enclosing block as section `name` (nothing with the hook off).
 pub fn scope(name: &'static str) -> Option<Scope> {
-    (mode() != 0).then(|| Scope(name, Instant::now()))
+    active().then(|| Scope(name, Instant::now()))
 }
 
 /// `f` timed as section `name`.
@@ -64,7 +109,7 @@ pub fn time<R>(name: &'static str, f: impl FnOnce() -> R) -> R {
 
 /// Start of a pass (`App::logic`). `last`: eframe's time of the previous frame.
 pub fn begin(ctx: &egui::Context, last: Option<f32>) {
-    if mode() == 0 {
+    if !active() {
         return;
     }
     STATS.with_borrow_mut(|s| {
@@ -77,9 +122,10 @@ pub fn begin(ctx: &egui::Context, last: Option<f32>) {
 
 /// End of a pass (`App::ui`): our time, the report every 2 s, the continuous repaint.
 pub fn end(ctx: &egui::Context) {
-    if mode() == 0 {
+    if !active() {
         return;
     }
+    let live = LIVE.load(Ordering::Relaxed) > 0;
     let nr = ctx.cumulative_frame_nr();
     let done = STATS.with_borrow_mut(|s| {
         let app = s.pass.take().map_or(0.0, |t| t.elapsed().as_secs_f32() * 1000.0);
@@ -92,8 +138,20 @@ pub fn end(ctx: &egui::Context) {
         let since = *s.since.get_or_insert_with(Instant::now);
         (since.elapsed() >= EVERY).then(|| std::mem::replace(s, Stats { frame_nr: nr, ..Stats::default() }))
     });
-    if let Some(s) = done {
-        eprintln!("{}", report(ctx, s));
+    if let Some(mut s) = done {
+        if live {
+            *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some(window(&mut s));
+        }
+        if mode() != 0 {
+            eprintln!("{}", report(ctx, s));
+        }
+    }
+    // The live view was not drawn in the last two passes: forget it, so nothing is timed or kept.
+    if live && LIVE.fetch_sub(1, Ordering::Relaxed) == 1 {
+        *LAST.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        if mode() == 0 {
+            STATS.with_borrow_mut(|s| *s = Stats::default());
+        }
     }
     if mode() == 2 {
         ctx.request_repaint();
@@ -151,6 +209,32 @@ fn tessellate(ctx: &egui::Context) -> (f32, usize, usize, usize) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_has_the_means_and_ms_per_frame() {
+        let mut s = Stats {
+            since: Some(Instant::now()),
+            frame_ms: vec![2.0, 4.0],
+            app_ms: vec![1.0, 3.0],
+            sections: vec![("chat", Duration::from_millis(20), 2), ("+markdown", Duration::from_millis(4), 2)],
+            ..Stats::default()
+        };
+        let w = window(&mut s);
+        assert_eq!((w.frames, w.frame_ms, w.app_ms), (2, (3.0, 4.0), (2.0, 3.0)));
+        assert_eq!(w.sections, [("chat", 10.0), ("+markdown", 2.0)]);
+    }
+
+    #[test]
+    fn live_off_keeps_nothing() {
+        let ctx = egui::Context::default();
+        assert_eq!(LIVE.load(Ordering::Relaxed), 0);
+        begin(&ctx, Some(0.01));
+        end(&ctx);
+        assert_eq!(last(), None);
+        assert!(STATS.with_borrow(|s| s.app_ms.is_empty() && s.since.is_none()));
+    }
+
     #[test]
     fn mean_and_p95() {
         let mut v: Vec<f32> = (1..=20).rev().map(|i| i as f32).collect();

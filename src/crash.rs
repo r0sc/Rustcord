@@ -4,12 +4,20 @@
 //! the version, the system, the panic's own message and place, and the plugins that were on.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Reports kept on disk; older ones are deleted when a new one is written.
 const KEEP: usize = 5;
 const MESSAGE_MAX: usize = 500;
+
+static START: OnceLock<Instant> = OnceLock::new();
+
+/// Seconds since `install` (the process start; Diagnostics shows it too).
+pub fn uptime_s() -> u64 {
+    START.get_or_init(Instant::now).elapsed().as_secs()
+}
 
 /// Set by the hook; the UI takes it once and loads the new report.
 static NEW: AtomicBool = AtomicBool::new(false);
@@ -88,7 +96,8 @@ fn write(dir: &Path, text: &str) -> Option<PathBuf> {
 /// Keeps the default hook (stderr) and adds the report file. `ctx` wakes the UI when a
 /// background thread panicked and the app lives on.
 pub fn install(ctx: &egui::Context) {
-    let (ctx, started) = (ctx.clone(), Instant::now());
+    uptime_s();
+    let ctx = ctx.clone();
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default(info);
@@ -96,7 +105,7 @@ pub fn install(ctx: &egui::Context) {
         let message = payload.downcast_ref::<&str>().map(|s| (*s).to_owned()).or_else(|| payload.downcast_ref::<String>().cloned()).unwrap_or_else(|| "(no message)".into());
         let location = info.location().map_or_else(|| "unknown".to_owned(), |l| format!("{}:{}:{}", l.file().replace('\\', "/"), l.line(), l.column()));
         let thread = std::thread::current().name().unwrap_or("unnamed").to_owned();
-        let text = report_text(&thread, &message, &location, started.elapsed().as_secs(), &crate::plugins::enabled_names());
+        let text = report_text(&thread, &message, &location, uptime_s(), &crate::plugins::enabled_names());
         if write(&dir(), &text).is_some() {
             NEW.store(true, Ordering::Relaxed);
             ctx.request_repaint();

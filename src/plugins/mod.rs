@@ -24,6 +24,7 @@ pub mod link_embeds;
 pub mod panel;
 pub mod idle;
 pub mod voice;
+pub mod diagnostics;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{OnceLock, RwLock};
@@ -80,6 +81,7 @@ pub enum Plugin {
     VolumeBooster,
     OnePingPerDm,
     PinDms,
+    ClientDiagnostics,
 }
 
 /// One option of a plugin (the settings page draws it from this).
@@ -209,6 +211,7 @@ pub const META: &[Meta] = &[
     meta(P::VolumeBooster, "VolumeBooster", "Turn someone up to 400 % from their menu while you're in voice together.", &[]),
     meta(P::OnePingPerDm, "OnePingPerDM", "Only the first notification of a DM until you've read it.", &[]),
     meta(P::PinDms, "PinDMs", "Pin DMs to the top of the list from their menu.", &[]),
+    meta(P::ClientDiagnostics, "ClientDiagnostics", "Settings → Advanced shows frame times, memory and the connection, with a button that copies them as text. Nothing is sent.", &[]),
 ];
 
 pub fn meta_of(p: Plugin) -> &'static Meta {
@@ -315,6 +318,7 @@ const FILES: &[(&str, &[Plugin])] = &[
     ("sidebar", &[P::PinDms, P::BetterFolders, P::TypingIndicator, P::CallTimer, P::ShowHiddenChannels, P::ReadAllNotificationsButton]),
     ("voice", &[P::VolumeBooster, P::VcNarrator]),
     ("voice_messages", &[P::VoiceMessages]),
+    ("diagnostics", &[P::ClientDiagnostics]),
 ];
 
 /// Every plugin whose code lives in the file of a panic location (`src/plugins/people.rs:3:5`,
