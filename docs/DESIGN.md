@@ -339,6 +339,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Modals | BASE, grow from the click | BASE x OUT ghost | `modal` (existing) | 11, 18 |
 | Toasts | BASE, 8 px rise + fade | BASE x OUT | existing | 5, 18 |
 | Press (everything using `motion::pressed`) | instant: drawn at **97 %** about the centre, at least 1 px smaller per side | instant | change `pressed` + its test | 16, 20 (house ".97", no frames) |
+| Hidden message shown | FAST fade of its content, height instant | – | `anim` | 5, 16, 20 |
 | My reaction | pop 1 → 1.12 → 1 over BASE | | `pop` (existing) | 9 |
 | Login error shake, update pill | LARGE | | existing | 9 |
 
@@ -930,6 +931,8 @@ fn tile_corners(t: f32) -> CornerRadius {
 - ShowBadgesInChat (plugin): 16 `text_muted` badge glyphs in the decorations after the time (§8.7), 4 apart, tooltip with the badge title.
 - Body 15 with line height 21. 16 between groups. Compact mode unchanged.
 
+**Hidden message** (Settings > Content & social > Hidden words): a message from someone else whose text, embed title or description, or forwarded text has one of my words folds into one 20 px line instead of the whole message. `EyeOff` 16 `text_muted` in the avatar column (cozy: x + 20, compact: x + 8), then "Hidden message" (meta 12, `text_muted`), 8 px, "Show" (meta 12/600, `link`). The whole line is one button: `hover` fill, pointing hand, focus ring, Enter or Space shows it; no hover bar or context menu on it. It ends its group (the next shown message of that author gets its header again). Shown, the message draws normally until the channel is left; its uploaded pictures and videos and its embed pictures sit under the spoiler cover labelled "Hidden", also with "Show spoiler content: Always". A reply to a hidden message quotes "Hidden message". My own messages are never hidden.
+
 **Mentions of me:** `mention_highlight` row fill plus a 2 px `attention` bar on the left
 (not accent). A message that matches one of my keyword alerts (Settings > Notifications, in scope, history included) takes the same look.
 
@@ -1358,6 +1361,7 @@ it. If it is built later, use Secondary buttons 40 tall with a 20 px icon, in a 
 - Notifications page order: Desktop notifications, Flash the taskbar, Quiet hours, (Keyword alerts), Sounds, Discord's synced groups, Servers. "Quiet hours": a switch row; when on, "From" [time] "to" [time] (two 96 px combos in 30-minute steps), then seven day check rows (Mon to Sun). An error line in `danger`, meta size, under them: "Pick an end time different from the start." or "Pick at least one day."
 - Account popout: directly under the status row a pause row ("Pause notifications", "Paused until 14:30" or "Quiet hours until 07:00"), a bell (muted: bell off) at x+16 and the submenu arrow. Its flyout (same helper as the status flyout, 188 px, 32 px items): "For 1 hour", "Until tomorrow", and "Resume notifications" only while paused. A pick toasts the result and closes the popout.
 - Notifications > Keyword alerts: section "Keyword alerts" with a hint, then a 320 px field ("Add a word or phrase", Enter adds and keeps focus) and a secondary "Add" button; errors in `danger` meta under it. One setting row per keyword (the word as title, a "Whole word" check and a × on the right). Once there is a keyword: an "All servers" switch row; off, a row per server or channel (× on the right) and an add row (Server combo, Channel combo with "Whole server", "Add").
+- Content & social > Hidden words: like Keyword alerts without the places (section "Hidden words" first, a hint, the 320 px field + Add, rows with Whole word and ×). Local only; the words apply everywhere, DMs included.
 - Notifications > Sounds: section "Sounds", the "Play sounds" switch row, a "Volume" label with a slider (a release plays the message sound), then a row per sound (title, optional meta) with a 28 px play button, 8 px, and a switch on the right. Play buttons are disabled while deafened (a hint says so); the rows are disabled while Play sounds is off.
 - Setting row:
   - left: title ui 14/500 and a meta `text_muted` description

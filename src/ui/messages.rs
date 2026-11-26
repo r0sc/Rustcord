@@ -825,6 +825,8 @@ struct Memo {
     view_h: f32,
     /// Open message context menu.
     menu: Option<MsgMenu>,
+    /// Hidden-word messages the user clicked open, until the channel is left.
+    unhidden: HashSet<Id>,
     #[cfg(test)]
     offset: f32,
 }
@@ -886,6 +888,11 @@ struct MsgMenu {
     from_button: bool,
     /// Opened this pass (egui's popup memory still has to be told).
     new: bool,
+}
+
+/// `RUSTCORD_MSG_DEMO=hidden-open`: the messages the list opens at its first pass.
+fn demo_unhidden_id() -> egui::Id {
+    egui::Id::unique("rc_demo_unhidden")
 }
 
 fn memo_id() -> egui::Id {
@@ -1205,7 +1212,7 @@ fn new_messages_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut M
 /// `indexing` (results panel with cached hits / its indexing state) and `detached` (the older
 /// half of the history shown as a jump window: "Jump to present" bar, highlighted target) and
 /// `online` (the composer without its "Offline" chip; README screenshots) and `mention` (QuickMention's
-/// click on the newest message not by me) `badges` (public flags on the demo authors) and
+/// click on the newest message not by me), `badges` (public flags on the demo authors), `hidden-open` (hidden-word messages but the first start shown) and
 /// `roleicons` / `roleicons-emoji` (the first hoisted role gets an image icon or an emoji, `ROLE_ICONS` on).
 pub(super) fn demo(flag: &str) -> bool {
     static FLAGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -1256,6 +1263,17 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>
                     r.icon = Some("0demo0roleicon".into());
                 }
             }
+        }
+        if demo("hidden-open") && let Some(cm) = cx.state.messages.get_mut(&ch) {
+            // Every hidden-word message but the first starts shown; with `media`, the newest
+            // media demo message holds the word, so its picture shows the "Hidden" cover.
+            let other = cm.msgs.iter().find(|m| cx.state.me.as_ref().is_none_or(|u| u.id != m.author.id)).map(|m| m.author.clone());
+            if demo("media") && let (Some(m), Some(other)) = (cm.msgs.last_mut(), other) {
+                (m.content, m.author) = ("async".into(), other);
+            }
+            let me = cx.state.me.as_ref().map(|u| u.id);
+            let open: Vec<Id> = cm.msgs.iter().filter(|m| crate::alerts::hides(&cx.settings.hidden_words, me, m)).skip(1).map(|m| m.id).collect();
+            ctx.data_mut(|d| d.insert_temp(demo_unhidden_id(), open));
         }
         if demo("badges") && let Some(cm) = cx.state.messages.get_mut(&ch) {
             // ShowBadgesInChat: flags on the authors of the loaded messages.
@@ -1411,6 +1429,9 @@ fn message_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo)
         let heights = std::mem::take(&mut memo.heights);
         *memo = Memo { channel: Some(lc.ch), heights, at_bottom: true, to_bottom: lc.panel, ..Memo::default() };
     }
+    if let Some(ids) = ui.ctx().data_mut(|d| d.remove_temp::<Vec<Id>>(demo_unhidden_id())) {
+        memo.unhidden.extend(ids);
+    }
     if memo.heights.len() > 4000
         && let Some(cm) = cx.state.messages.get(&lc.ch)
     {
@@ -1484,6 +1505,7 @@ fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
     let mut rows: Vec<(Id, f32, f32)> = Vec::with_capacity(n);
     let mut hover_row = None;
     let mut last_author = None;
+    let mut prev_collapsed = false;
     for i in 0..n {
         let (id, group_start, seps, fp) = {
             let msgs = shown(cx.state, lc.ch);
@@ -1493,13 +1515,16 @@ fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
             }
             let prev = i.checked_sub(1).and_then(|j| msgs.get(j));
             let date_sep = with_times(&ctx, |t| prev.is_none_or(|p| t.day(p.id) != t.day(m.id)));
-            let group_start = is_group_start(prev, m, date_sep);
+            // A folded line ends its group: the next shown message gets its header again.
+            let collapsed = hidden_word(cx, m) && !memo.unhidden.contains(&m.id);
+            let group_start = is_group_start(prev, m, date_sep) || (prev_collapsed && !collapsed);
+            prev_collapsed = collapsed;
             // First unread message; at the list top only if nothing older can be paged in.
             let new_sep = lc.unread_after.is_some_and(|b| m.id > b && prev.map_or(!more_before, |p| p.id <= b));
             let revealed = cx.view.revealed_spoilers.iter().filter(|(mid, _)| *mid == m.id).count();
-            let layout = (lc.compact, lc.pal.size.to_bits(), group_start, date_sep, new_sep, revealed, editing == Some(m.id));
+            let layout = (lc.compact, lc.pal.size.to_bits(), group_start, date_sep, new_sep, revealed, editing == Some(m.id), collapsed);
             last_author = Some(m.author.id);
-            (m.id, group_start, (date_sep, new_sep), fingerprint(m, layout))
+            (m.id, group_start, (date_sep, new_sep, collapsed), fingerprint(m, layout))
         };
         let top = ui.cursor().top() - origin;
         let cached = memo.heights.get(&id).filter(|r| r.fp == fp);
@@ -1765,7 +1790,7 @@ fn message_block(
     memo: &mut Memo,
     msg: &Message,
     group_start: bool,
-    (date_sep, new_sep): (bool, bool),
+    (date_sep, new_sep, collapsed): (bool, bool, bool),
     toolbar_hit: Option<Id>,
     flashing: f32,
 ) -> Option<HoverRow> {
@@ -1794,12 +1819,21 @@ fn message_block(
     if group_start && !date_sep && !new_sep {
         ui.add_space(if lc.compact { 4.0 } else { cx.settings.message_group_spacing });
     }
+    if collapsed {
+        hidden_row(ui, &pal, lc, memo, msg);
+        return None;
+    }
+    // Clicked open: the content fades in once (`hidden_row` keeps the state at 0 while folded).
+    let fade = memo.unhidden.contains(&msg.id).then(|| super::motion::anim(ui.ctx(), egui::Id::unique("rc_unhidden").with(msg.id.0), true, super::motion::FAST, 0.0));
     let hovered_before = lc.hovered == Some(msg.id);
     let bg = ui.painter().add(Shape::Noop);
     let rect = Frame::new()
         .inner_margin(Margin { left: 16, right: 16, top: 2, bottom: 2 })
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
+            if let Some(t) = fade {
+                ui.multiply_opacity(t);
+            }
             ui.spacing_mut().item_spacing = vec2(6.0, 4.0);
             // Text rows as tall as the text: the default 22 px min row height loosens the layout.
             ui.spacing_mut().interact_size.y = ui.text_style_height(&egui::TextStyle::Body);
@@ -1848,6 +1882,67 @@ fn message_block(
         forwardable: system.is_none() && !stub && msg.forwardable(),
         content: msg.content.clone(),
     })
+}
+
+/// Hidden words (Settings > Content & social): does this message fold for me?
+/// shortcut: matched per message and pass while the list isn't empty; memoize by message id if
+/// RUSTCORD_FRAME_STATS shows +chat growing.
+fn hidden_word(cx: &UiCx<'_>, msg: &Message) -> bool {
+    crate::alerts::hides(&cx.settings.hidden_words, cx.state.me.as_ref().map(|u| u.id), msg)
+}
+
+/// A hidden-word message folded to one thin line; the whole line is a button that shows it.
+fn hidden_row(ui: &mut egui::Ui, pal: &Pal, lc: &Lcx, memo: &mut Memo, msg: &Message) {
+    // Folded: the fade of a later "Show" starts from 0.
+    super::motion::anim(ui.ctx(), egui::Id::unique("rc_unhidden").with(msg.id.0), false, super::motion::FAST, 0.0);
+    let bg = ui.painter().add(Shape::Noop);
+    let rect = Frame::new()
+        .inner_margin(Margin { left: 16, right: 16, top: 2, bottom: 2 })
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.allocate_exact_size(vec2(ui.available_width(), 20.0), Sense::hover()).0
+        })
+        .response
+        .rect;
+    let line = rect.shrink2(vec2(16.0, 2.0));
+    let resp = ui.interact(rect, ui.make_persistent_id(("rc_hidden_row", msg.id.0)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Show hidden message"));
+    let p = ui.painter();
+    if resp.hovered() {
+        p.set(bg, Shape::rect_filled(rect, 0.0, pal.hover));
+    }
+    let icon_x = if lc.compact { line.left() + 8.0 } else { line.left() + AVATAR / 2.0 };
+    icons::paint(p, Icon::EyeOff, Rect::from_center_size(pos2(icon_x, line.center().y), Vec2::splat(16.0)), pal.muted, pal.bg);
+    let meta = pal.meta();
+    let label = p.layout_no_wrap("Hidden message".into(), FontId::proportional(meta), pal.muted);
+    let show = p.layout_no_wrap("Show".into(), FontId::new(meta, crate::theme::semibold_family()), pal.link);
+    let x = line.left() + lc.gutter();
+    let end = x + label.size().x + 8.0;
+    p.galley(pos2(x, line.center().y - label.size().y / 2.0), label, pal.muted);
+    p.galley(pos2(end, line.center().y - show.size().y / 2.0), show, pal.link);
+    if resp.has_focus() {
+        focus_ring(ui, pal, rect, 0.0);
+    }
+    if resp.clicked() {
+        memo.unhidden.insert(msg.id);
+        ui.ctx().request_repaint();
+    }
+}
+
+/// Whether a picture of a message sits under its cover: a spoiler (unless spoilers are open) or
+/// a hidden-word message's, until clicked open.
+fn covered(spoiler: bool, spoilers_open: bool, hidden: bool, revealed: bool) -> bool {
+    !revealed && (hidden || (spoiler && !spoilers_open))
+}
+
+/// The cover over a picture of `size`: `surface` with an outline and `label`. True when clicked.
+fn cover(ui: &mut egui::Ui, pal: &Pal, size: Vec2, label: &str) -> bool {
+    let (rect, r) = ui.allocate_exact_size(size, Sense::click());
+    // Surface + outline: the sidebar color equals the background in some themes.
+    let fill = if r.hovered() { pal.surface.blend(pal.tint()) } else { pal.surface };
+    ui.painter().rect(rect, pal.radius, fill, Stroke::new(1.0, pal.tk.rule), egui::StrokeKind::Inside);
+    ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, FontId::new(pal.meta(), crate::theme::semibold_family()), pal.muted);
+    r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Click to reveal").clicked()
 }
 
 /// A system line: a monochrome icon in the gutter (the call handset green, joins green, leaves
@@ -2044,7 +2139,7 @@ fn reply_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message) {
                 }
                 let color = name_color(cx, lc.guild_id, member.as_ref(), row_bg(cx, &pal, msg)).unwrap_or(pal.text);
                 ui.add(Label::new(RichText::new(name).size(pal.meta()).family(bold_family()).color(color)).selectable(false));
-                let mut preview = resolve_tokens(&reply_preview(rm), |tok| token_name(cx.state, lc.guild_id, &rm.mentions, tok));
+                let mut preview = if hidden_word(cx, rm) { "Hidden message".to_owned() } else { resolve_tokens(&reply_preview(rm), |tok| token_name(cx.state, lc.guild_id, &rm.mentions, tok)) };
                 while let Some((r, code)) = missing_emoji(ui, &preview) {
                     preview.replace_range(r, &format!(":{code}:"));
                 }
@@ -2315,13 +2410,9 @@ fn attachments(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message) {
         let max = media_box(ui, MAX_MEDIA);
         let shown = fit_size(natural, max);
         let key = (msg.id, 1000 + i);
-        if a.is_spoiler() && !cx.view.revealed_spoilers.contains(&key) && !cx.state.spoilers_open() {
-            let (rect, r) = ui.allocate_exact_size(shown, Sense::click());
-            // Surface + outline: the sidebar color equals the background in some themes.
-            let fill = if r.hovered() { pal.surface.blend(pal.tint()) } else { pal.surface };
-            ui.painter().rect(rect, pal.radius, fill, Stroke::new(1.0, pal.tk.rule), egui::StrokeKind::Inside);
-            ui.painter().text(rect.center(), Align2::CENTER_CENTER, "Spoiler", FontId::new(pal.meta(), crate::theme::semibold_family()), pal.muted);
-            if r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Click to reveal").clicked() {
+        let hidden = hidden_word(cx, msg);
+        if covered(a.is_spoiler(), cx.state.spoilers_open(), hidden, cx.view.revealed_spoilers.contains(&key)) {
+            if cover(ui, &pal, shown, if a.is_spoiler() { "Spoiler" } else { "Hidden" }) {
                 cx.view.revealed_spoilers.insert(key);
                 ui.ctx().request_repaint();
             }
@@ -2397,6 +2488,13 @@ fn embed(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message, e: &Embe
     let kind = e.kind.as_deref().unwrap_or("rich");
     // gifv and proxied videos play in place, images open the lightbox (viewer.rs).
     let item = matches!(kind, "image" | "gifv" | "video").then(|| super::viewer::embed_item(e)).flatten();
+    if item.is_some() || matches!(kind, "image" | "gifv") {
+        let max = media_box(ui, MAX_MEDIA);
+        let size = e.thumbnail.as_ref().or(e.image.as_ref()).or(e.video.as_ref()).map_or(max, |m| fit_size(natural_size(m.width, m.height), max));
+        if embed_covered(ui, cx, lc, msg, size) {
+            return;
+        }
+    }
     match (kind, item) {
         (_, Some(item)) if item.play_url.is_some() => {
             let max = media_box(ui, MAX_MEDIA);
@@ -2527,6 +2625,9 @@ fn embed_media(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message, e:
     let px = fit_size(natural, max) * ui.ctx().pixels_per_point();
     // Only proxied media is shown; third-party hosts are never contacted directly.
     let Some(url) = cdn::embed_media_url(m, px.x.round() as u32, px.y.round() as u32) else { return };
+    if embed_covered(ui, cx, lc, msg, fit_size(natural, max)) {
+        return;
+    }
     if !images::fit_image(ui, cx.images, &url, max, natural, false).on_hover_cursor(CursorIcon::PointingHand).clicked() {
         return;
     }
@@ -2539,6 +2640,19 @@ fn embed_media(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message, e:
             }
         }
     }
+}
+
+/// A hidden-word message's embed pictures sit under one cover (`(msg.id, 2000)`). True while covered.
+fn embed_covered(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message, size: Vec2) -> bool {
+    let key = (msg.id, 2000);
+    if !covered(false, true, hidden_word(cx, msg), cx.view.revealed_spoilers.contains(&key)) {
+        return false;
+    }
+    if cover(ui, &lc.pal, size, "Hidden") {
+        cx.view.revealed_spoilers.insert(key);
+        ui.ctx().request_repaint();
+    }
+    true
 }
 
 fn link_or_label(ui: &mut egui::Ui, text: RichText, url: Option<&str>) {
@@ -4078,6 +4192,40 @@ mod tests {
         h.state.messages.get_mut(&ch).unwrap().msgs.splice(0..0, older);
         h.frame();
         assert_eq!(h.memo().heights[&row].at, h.ctx.input(|i| i.time));
+    }
+
+    #[test]
+    fn covers_follow_spoilers_and_hidden_words() {
+        // (spoiler, spoilers open, hidden, revealed)
+        assert!(covered(true, false, false, false));
+        assert!(!covered(true, true, false, false), "open spoilers show");
+        assert!(covered(false, false, true, false));
+        assert!(covered(true, true, true, false), "hidden stays covered with spoilers open");
+        assert!(!covered(true, false, true, true) && !covered(false, false, true, true), "revealed always shows");
+        assert!(!covered(false, false, false, false));
+    }
+
+    #[test]
+    fn hidden_words_fold_and_show() {
+        let mut h = Harness::new();
+        let ch = h.state.selected_channel.unwrap();
+        // The first three messages: alice's and bob's second mention async, bob's first doesn't.
+        h.state.messages.get_mut(&ch).unwrap().msgs.truncate(3);
+        h.settings.hidden_words = vec![crate::alerts::Keyword { text: "async".into(), whole_word: true }];
+        h.frame();
+        let texts = h.texts();
+        assert_eq!(texts.iter().filter(|t| *t == "Hidden message").count(), 2, "{texts:?}");
+        assert!(!texts.iter().any(|t| t.contains("async")), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains("tokio")), "the other message stays: {texts:?}");
+        // A click on "Show" is `memo.unhidden`: the messages draw normally again.
+        let mut memo = h.memo();
+        memo.unhidden = h.state.messages[&ch].msgs.iter().map(|m| m.id).collect();
+        h.ctx.data_mut(|d| d.insert_temp(memo_id(), memo));
+        for _ in 0..3 {
+            h.frame();
+        }
+        let texts = h.texts();
+        assert!(texts.iter().any(|t| t.contains("async")) && !texts.iter().any(|t| t == "Hidden message"), "{texts:?}");
     }
 
     #[test]

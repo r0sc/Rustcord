@@ -141,7 +141,7 @@ impl Page {
             ),
             Page::Profiles => ("Profiles", "profiles", "pronouns about me bio avatar banner colour color"),
             Page::Cosmetics => ("Profile cosmetics", "cosmetics", "avatar decoration profile effect nameplate frame"),
-            Page::ContentSocial => ("Content & social", "content", "messaging permissions dms spam sensitive explicit filter"),
+            Page::ContentSocial => ("Content & social", "content", "messaging permissions dms spam sensitive explicit filter hide hidden mute words"),
             Page::Privacy => ("Data & privacy", "privacy", "data consent personalize statistics read receipts"),
             Page::FamilyCenter => ("Family Center", "family", "teen parent"),
             Page::AuthorizedApps => ("Authorized apps", "apps", "oauth applications deauthorize bots"),
@@ -186,6 +186,7 @@ impl Page {
                 "Reduced motion",
                 "Play animated avatars, emoji and GIFs",
             ],
+            Page::ContentSocial => &["Hidden words", "Whole word"],
             Page::Windows => &app::DESKTOP_LABELS,
             Page::StreamerMode => &["Streamer mode", "Hide personal information", "Hide invite links", "Disable notifications", "Disable sounds", "Hide window from screen capture"],
             Page::Privacy => &["Send read receipts"],
@@ -301,6 +302,8 @@ pub struct UserSettingsUi {
     voice: voice::VoiceForm,
     /// Notifications > Keyword alerts drafts.
     alerts: alerts::Form,
+    /// Content & social > Hidden words draft.
+    hidden: alerts::Form,
     /// Profile Cosmetics tab / search; lives as long as the login (like the catalog in state).
     cosmetics: cosmetics::Form,
     /// The sidebar's search text (per opening).
@@ -595,7 +598,8 @@ fn page(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         Page::StreamerMode => changed |= app::streamer(ui, cx),
         Page::Advanced => app::advanced(ui, cx),
         Page::ActivityPrivacy => changed |= presence::show(ui, cx),
-        Page::ContentSocial | Page::FriendRequests | Page::Chat | Page::Language => {}
+        Page::ContentSocial => changed |= alerts::hidden_words(ui, cx),
+        Page::FriendRequests | Page::Chat | Page::Language => {}
     }
     // Profiles > Server Profiles is about one server only.
     if !(p == Page::Profiles && cx.view.user_settings_ui.server_tab.is_some()) {

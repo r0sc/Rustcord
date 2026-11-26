@@ -2,7 +2,7 @@
 //! device (`crate::alerts`, docs/FEATURES_NOTES.md §2.7). Nothing is sent anywhere.
 
 use super::{Pal, combo_icon, hint, section, setting_row, switch_row};
-use crate::alerts::{MAX_KEYWORD_CHARS, MAX_PLACES, hhmm};
+use crate::alerts::{Keyword, MAX_KEYWORD_CHARS, MAX_PLACES, add_word, hhmm};
 use crate::model::Id;
 use crate::state::{AppState, SidebarItem};
 use crate::ui::UiCx;
@@ -78,47 +78,7 @@ fn keyword_alerts(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     ui.add_space(8.0);
     let form = &mut cx.view.user_settings_ui.alerts;
     let a = &mut cx.settings.keyword_alerts;
-    let mut changed = false;
-    ui.horizontal(|ui| {
-        let r = ui.add(TextEdit::singleline(&mut form.draft).hint_text("Add a word or phrase").char_limit(MAX_KEYWORD_CHARS).desired_width(320.0));
-        if r.changed() {
-            form.error = None;
-        }
-        let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-        let click = messages::button(ui, &pal, Btn::Secondary, "Add", !form.draft.trim().is_empty()).clicked();
-        if enter || click {
-            match a.add(&form.draft) {
-                Ok(()) => {
-                    form.draft.clear();
-                    changed = true;
-                }
-                Err(e) => form.error = Some(e),
-            }
-            if enter {
-                r.request_focus();
-            }
-        }
-    });
-    if let Some(text) = form.error {
-        ui.label(RichText::new(text).size(pal.meta()).color(pal.danger));
-    }
-    let mut remove = None;
-    for (i, k) in a.keywords.iter_mut().enumerate() {
-        let (text, whole) = (k.text.clone(), &mut k.whole_word);
-        let before = *whole;
-        setting_row(ui, cx.theme, &text, None, vec2(160.0, 32.0), |ui| {
-            // Right to left: the × is outermost.
-            if icon_button(ui, &pal, "×", "Remove keyword", 28.0, false, pal.danger).clicked() {
-                remove = Some(i);
-            }
-            check_row(ui, &pal, "Whole word", whole, true);
-        });
-        changed |= *whole != before;
-    }
-    if let Some(i) = remove {
-        a.keywords.remove(i);
-        changed = true;
-    }
+    let mut changed = word_rows(ui, cx.theme, &pal, form, &mut a.keywords, "Remove keyword");
     if a.keywords.is_empty() {
         return changed;
     }
@@ -181,6 +141,62 @@ fn keyword_alerts(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         }
     });
     changed
+}
+
+/// The field, Add button, inline error and one row per word (Whole word, ×) of a word list: Keyword
+/// alerts and Hidden words. True when the list changed.
+fn word_rows(ui: &mut egui::Ui, theme: &crate::theme::Theme, pal: &Pal, form: &mut Form, list: &mut Vec<Keyword>, remove_tip: &str) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        let r = ui.add(TextEdit::singleline(&mut form.draft).hint_text("Add a word or phrase").char_limit(MAX_KEYWORD_CHARS).desired_width(320.0));
+        if r.changed() {
+            form.error = None;
+        }
+        let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+        let click = messages::button(ui, pal, Btn::Secondary, "Add", !form.draft.trim().is_empty()).clicked();
+        if enter || click {
+            match add_word(list, &form.draft) {
+                Ok(()) => {
+                    form.draft.clear();
+                    changed = true;
+                }
+                Err(e) => form.error = Some(e),
+            }
+            if enter {
+                r.request_focus();
+            }
+        }
+    });
+    if let Some(text) = form.error {
+        ui.label(RichText::new(text).size(pal.meta()).color(pal.danger));
+    }
+    let mut remove = None;
+    for (i, k) in list.iter_mut().enumerate() {
+        let (text, whole) = (k.text.clone(), &mut k.whole_word);
+        let before = *whole;
+        setting_row(ui, theme, &text, None, vec2(160.0, 32.0), |ui| {
+            // Right to left: the × is outermost.
+            if icon_button(ui, pal, "×", remove_tip, 28.0, false, pal.danger).clicked() {
+                remove = Some(i);
+            }
+            check_row(ui, pal, "Whole word", whole, true);
+        });
+        changed |= *whole != before;
+    }
+    if let Some(i) = remove {
+        list.remove(i);
+        changed = true;
+    }
+    changed
+}
+
+/// Content & social > Hidden words: a local list; matching messages fold into one line.
+pub(super) fn hidden_words(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
+    let pal = Pal::new(cx.theme);
+    section(ui, cx.theme, "Hidden words");
+    hint(ui, cx.theme, "Messages with these words fold into one line, and their pictures stay covered. Only on this device; nobody is told.");
+    ui.add_space(8.0);
+    word_rows(ui, cx.theme, &pal, &mut cx.view.user_settings_ui.hidden, &mut cx.settings.hidden_words, "Remove word")
 }
 
 /// A place's row title: a server's name, or "#channel in Server".

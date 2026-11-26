@@ -52,29 +52,13 @@ pub struct Hit {
 impl KeywordAlerts {
     /// Trims and lowercases, drops empties and duplicates (hand-edited files).
     pub fn normalize(&mut self) {
-        let mut seen = std::collections::HashSet::new();
-        for k in &mut self.keywords {
-            k.text = k.text.trim().to_lowercase();
-        }
-        self.keywords.retain(|k| !k.text.is_empty() && seen.insert(k.text.clone()));
-        self.keywords.truncate(MAX_KEYWORDS);
+        normalize_words(&mut self.keywords);
         self.places.truncate(MAX_PLACES);
     }
 
     /// Adds `text` (trimmed, lowercased, whole word). Err is the inline error copy.
     pub fn add(&mut self, text: &str) -> Result<(), &'static str> {
-        let text: String = text.trim().to_lowercase().chars().take(MAX_KEYWORD_CHARS).collect();
-        if text.is_empty() {
-            return Err("Type a word or phrase first.");
-        }
-        if self.keywords.iter().any(|k| k.text == text) {
-            return Err("That's already on your list.");
-        }
-        if self.keywords.len() >= MAX_KEYWORDS {
-            return Err("You can add up to 50 keywords.");
-        }
-        self.keywords.push(Keyword { text, whole_word: true });
-        Ok(())
+        add_word(&mut self.keywords, text)
     }
 
     /// In scope: everywhere, or one of the places is the server, the channel or the thread's parent.
@@ -84,12 +68,57 @@ impl KeywordAlerts {
 
     /// The first keyword in `text`.
     pub fn find(&self, text: &str) -> Option<&Keyword> {
-        if self.keywords.is_empty() || text.is_empty() {
-            return None;
-        }
-        let hay = text.to_lowercase();
-        self.keywords.iter().find(|k| !k.text.is_empty() && occurs(&hay, &k.text, k.whole_word))
+        find_word(&self.keywords, text)
     }
+}
+
+/// Trims and lowercases, drops empties and duplicates, caps the list (hand-edited files).
+pub fn normalize_words(list: &mut Vec<Keyword>) {
+    let mut seen = std::collections::HashSet::new();
+    for k in list.iter_mut() {
+        k.text = k.text.trim().to_lowercase();
+    }
+    list.retain(|k| !k.text.is_empty() && seen.insert(k.text.clone()));
+    list.truncate(MAX_KEYWORDS);
+}
+
+/// Adds `text` (trimmed, lowercased, whole word) to a word list. Err is the inline error copy.
+pub fn add_word(list: &mut Vec<Keyword>, text: &str) -> Result<(), &'static str> {
+    let text: String = text.trim().to_lowercase().chars().take(MAX_KEYWORD_CHARS).collect();
+    if text.is_empty() {
+        return Err("Type a word or phrase first.");
+    }
+    if list.iter().any(|k| k.text == text) {
+        return Err("That's already on your list.");
+    }
+    if list.len() >= MAX_KEYWORDS {
+        return Err("You can add up to 50 words or phrases.");
+    }
+    list.push(Keyword { text, whole_word: true });
+    Ok(())
+}
+
+/// The first word of the list that `text` contains.
+pub fn find_word<'a>(list: &'a [Keyword], text: &str) -> Option<&'a Keyword> {
+    if list.is_empty() || text.is_empty() {
+        return None;
+    }
+    let hay = text.to_lowercase();
+    list.iter().find(|k| !k.text.is_empty() && occurs(&hay, &k.text, k.whole_word))
+}
+
+/// Hidden words (Settings > Content & social): does `msg` fold away for me? Never my own, a
+/// system message or with an empty list; else its text, an embed's title or description, or a
+/// forwarded message's text matches. Only the screen changes: notifications are untouched.
+pub fn hides(words: &[Keyword], me: Option<Id>, msg: &Message) -> bool {
+    if words.is_empty() || msg.kind != 0 && msg.kind != 19 || me == Some(msg.author.id) {
+        return false;
+    }
+    let texts = |m: &Message| {
+        let embeds = m.embeds.iter().flat_map(|e| [e.title.as_deref(), e.description.as_deref()]).flatten().map(str::to_owned);
+        std::iter::once(m.content.clone()).chain(embeds).collect::<Vec<_>>()
+    };
+    texts(msg).into_iter().chain(msg.message_snapshots.iter().flat_map(|s| texts(&s.message))).any(|t| find_word(words, &t).is_some())
 }
 
 /// Every start position (not `match_indices`: an overlapping earlier hit must not hide a whole-word one).
@@ -305,6 +334,26 @@ mod tests {
         assert!(alerts(&[("rust", true)]).find("").is_none());
     }
 
+    fn msg(author: Id, content: &str) -> Message {
+        Message { author: crate::model::User { id: author, ..Default::default() }, content: content.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn hidden_words_hide_other_peoples_matching_messages() {
+        let w = |t: &str, whole| vec![Keyword { text: t.into(), whole_word: whole }];
+        assert!(hides(&w("async", true), Some(ME), &msg(ANN, "Async closures")));
+        assert!(!hides(&w("rust", true), Some(ME), &msg(ANN, "I trust it")));
+        assert!(hides(&w("rust", false), Some(ME), &msg(ANN, "I trust it")));
+        assert!(!hides(&w("async", true), Some(ME), &msg(ME, "async")), "mine never");
+        assert!(!hides(&[], Some(ME), &msg(ANN, "async")));
+        let system = Message { kind: 7, ..msg(ANN, "async") };
+        assert!(!hides(&w("async", true), Some(ME), &system));
+        let embed = Message { embeds: vec![crate::model::Embed { title: Some("All about ASYNC".into()), ..Default::default() }], ..msg(ANN, "look") };
+        assert!(hides(&w("async", true), Some(ME), &embed));
+        let fwd = Message { message_snapshots: vec![crate::model::MessageSnapshot { message: msg(ANN, "async") }], ..msg(ANN, "") };
+        assert!(hides(&w("async", true), Some(ME), &fwd));
+    }
+
     #[test]
     fn add_validates() {
         let mut a = KeywordAlerts::default();
@@ -315,7 +364,7 @@ mod tests {
         for i in 1..MAX_KEYWORDS {
             a.add(&format!("w{i}")).unwrap();
         }
-        assert_eq!(a.add("one more"), Err("You can add up to 50 keywords."));
+        assert_eq!(a.add("one more"), Err("You can add up to 50 words or phrases."));
         let mut h = alerts(&[("  Rust ", true), ("", true), ("rust", false), ("Go", true)]);
         h.normalize();
         assert_eq!(h.keywords.iter().map(|k| k.text.as_str()).collect::<Vec<_>>(), ["rust", "go"]);

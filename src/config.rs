@@ -166,6 +166,8 @@ pub struct Settings {
     pub sounds: SoundSettings,
     /// Notifications > Keyword alerts (crate::alerts).
     pub keyword_alerts: crate::alerts::KeywordAlerts,
+    /// Content & social > Hidden words (crate::alerts): matching messages fold into one line.
+    pub hidden_words: Vec<crate::alerts::Keyword>,
     /// Notifications > Quiet hours and the pause from the tray / account menu (crate::alerts).
     pub quiet_hours: crate::alerts::QuietHours,
 }
@@ -328,6 +330,7 @@ impl Default for Settings {
             overlay: OverlaySettings::default(),
             sounds: SoundSettings::default(),
             keyword_alerts: Default::default(),
+            hidden_words: Vec::new(),
             quiet_hours: Default::default(),
         }
     }
@@ -341,6 +344,7 @@ impl Settings {
         // A fresh install needs no "this changed" notice; a 0.1.4 file (no such key) gets it once.
         s.rustcord_presence.notice_seen |= !existed;
         s.keyword_alerts.normalize();
+        crate::alerts::normalize_words(&mut s.hidden_words);
         s.publish();
         s
     }
@@ -456,6 +460,16 @@ mod tests {
         let text = toml::to_string_pretty(&Settings { keyword_alerts: k.clone(), ..Default::default() }).unwrap();
         assert!(text.contains("places = [\"42\"]"), "{text}");
         assert_eq!(toml::from_str::<Settings>(&text).unwrap().keyword_alerts, k);
+        // Hidden words: none in an old file; a round trip keeps them (`[[hidden_words]]` tables).
+        assert!(old.hidden_words.is_empty());
+        let hidden = vec![crate::alerts::Keyword { text: "async".into(), whole_word: false }];
+        let text = toml::to_string_pretty(&Settings { hidden_words: hidden.clone(), ..Default::default() }).unwrap();
+        assert!(text.contains("[[hidden_words]]"), "{text}");
+        assert_eq!(toml::from_str::<Settings>(&text).unwrap().hidden_words, hidden);
+        let mut messy = vec![crate::alerts::Keyword { text: "  Rust ".into(), whole_word: true }, crate::alerts::Keyword { text: "rust".into(), whole_word: false }, Default::default()];
+        crate::alerts::normalize_words(&mut messy);
+        assert_eq!(messy.len(), 1);
+        assert_eq!(messy[0].text, "rust");
     }
 
     #[test]

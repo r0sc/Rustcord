@@ -82,6 +82,8 @@ retakes the screenshots.</sub>
 - File uploads by button, drag and drop or paste. Emoji and GIF pickers and `@ # :`
   autocomplete.
 - Role icons next to names in chat and the member list, like Discord.
+- Hidden words: messages with your words fold into one line and their pictures stay covered,
+  only on your screen.
 - Typing indicator, pins, search and mark unread.
 - Threads: sidebar rows, the thread panel and creating threads.
 - Forum and media channels with posts, tags and creating a post.
@@ -528,6 +530,9 @@ auto_update = true            # install updates automatically (the check runs ei
 # places = ["123"]
 # [[keyword_alerts.keywords]]
 # text = "release"
+# whole_word = true
+# [[hidden_words]]           # Content & social > Hidden words (messages fold into one line)
+# text = "spoilerword"
 # whole_word = true
 # [quiet_hours]               # Notifications > Quiet hours
 # enabled = false
