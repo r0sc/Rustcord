@@ -9,7 +9,7 @@ export const gate = ({ fx, webgl, motion, fine, software, hook }) =>
 export const renderScale = (w, h, dpr) => Math.min(Math.min(dpr || 1, 1) * 0.75, Math.sqrt(1.2e6 / Math.max(1, w * h)));
 // exponential follow; dt is clamped so a 0 or NaN step can't break it
 export const follow = (v, to, dt, tau) => v + (to - v) * (1 - Math.exp(-Math.min(64, Math.max(1, dt || 1)) / tau));
-export const ringAt = k => { k = Math.min(1, Math.max(0, k)); return { r: 1 - (1 - k) ** 3, a: (1 - k) ** 1.5 }; };
+export const ringAt = k => { k = Math.min(1, Math.max(0, k)); return { r: 1 - (1 - k) ** 2, a: (1 - k) ** 1.5 }; };
 export const isSoftware = gpu => /SwiftShader|Basic Render|llvmpipe|softpipe|Software/i.test(gpu || '');
 
 const VS = `#version 300 es
@@ -43,7 +43,7 @@ void main(){
   vec2 bq = max(abs(p - B.xy) - B.zw, 0.); float halo = K * exp(-length(bq) * k * mix(9., 18., smoothstep(0., .06, (B.y - B.w - p.y) * k))); l = max(l, halo);
   float c = M.z * exp(-r2 * mix(10., 20., G));
   vec3 col = vec3(.031, .027, .043) + C * (.11 * L.z * exp(-dot(dl, dl) * 1.1) + .05 * wave + .16 * halo);
-  col = mix(col, mix(vec3(.745, .404, .941), C, min(l, 1.) * .6), min(line * (.045 + .2 * l + .5 * c * (1. + .4 * G) + .7 * wave), .36));  // .36 keeps muted text at 4.5:1
+  col = mix(col, mix(vec3(.745, .404, .941), C, min(l, 1.) * .6), min(line * (.045 + .2 * l + .5 * c * (1. + .4 * G)), .36) + line * .5 * wave);  // .36 keeps muted text at 4.5:1
   col += (fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453) - .5) / 255.;
   o = vec4(col, 1.);
 }`;
@@ -107,9 +107,9 @@ export function start(q) {
     if (opening && ready()) {
       opening = false;
       if (y > hero.offsetHeight / 2) lz = 1; // opened scrolled down: no ring
-      else { rampT = now; pu = { x: wr.left + wr.width / 2, y: wr.top + wr.height * 0.3, t: 0, dur: 1600, reach: Math.hypot(W, H) }; }
+      else { rampT = now; pu = { x: wr.left + wr.width / 2, y: wr.top + wr.height * 0.3, t: 0, dur: 1400, reach: Math.hypot(Math.max(wr.left + wr.width / 2, W - wr.left - wr.width / 2), Math.max(wr.top + wr.height * .3, H - wr.top - wr.height * .3)) }; }
     }
-    if (pu && pu.fix) { pu.x = wr.left + wr.width / 2; pu.y = wr.top + wr.height * 0.3; pu.reach = Math.hypot(W, H); }
+    if (pu && pu.fix) { pu.x = wr.left + wr.width / 2; pu.y = wr.top + wr.height * 0.3; pu.reach = Math.hypot(Math.max(pu.x, W - pu.x), Math.max(pu.y, H - pu.y)); }
     cx = follow(cx, px, dt, 70); cy = follow(cy, py, dt, 70); ms = follow(ms, msT, dt, 140);
     const gT = near ? Math.max(0, 1 - nd / 110) : 0; g = follow(g, gT, dt, 70);
     if (near) { const kb = g < 0.02 ? 1 : follow(0, 1, dt, 70); bx += (near[1].left + near[1].width / 2 - bx) * kb; by += (near[1].top + near[1].height / 2 - by) * kb; }
@@ -175,6 +175,7 @@ export function start(q) {
 
   size();
   document.body.prepend(cv);
+  if (live) cv.style.transition = 'none'; // the lz ramp is the switch-on
   cv.addEventListener('webglcontextlost', e => { e.preventDefault(); dead = true; stop(); cv.remove(); d.classList.add('nolight'); });
   addEventListener('resize', () => { size(); live ? kick() : step(performance.now(), 16); });
   if (live) {
@@ -196,7 +197,7 @@ export function start(q) {
     win.addEventListener('screen', kick);
     document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelAnimationFrame(raf); raf = 0; last = 0; } else { last = 0; kick(); } });
     const on = new Set(), io = new IntersectionObserver(es => { for (const e of es) on[e.isIntersecting ? 'add' : 'delete'](e.target); seen = on.size; kick(); });
-    document.querySelectorAll('.hero, .dl').forEach(el => io.observe(el));
+    document.querySelectorAll('.hero, .tour, .dl').forEach(el => io.observe(el));
     // shortcut: reduced motion switched off mid-visit needs a reload
     matchMedia('(prefers-reduced-motion: no-preference)').addEventListener('change', e => { if (!e.matches) stop(); });
     kick();

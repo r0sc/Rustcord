@@ -118,7 +118,7 @@ test('effect math', () => {
   assert.equal(follow(0, 1, 1000, 70), follow(0, 1, 64, 70));
   assert.deepEqual(ringAt(0), { r: 0, a: 1 });
   assert.deepEqual(ringAt(1), { r: 1, a: 0 });
-  assert.equal(ringAt(0.5).r, 0.875);
+  assert.equal(ringAt(0.5).r, 0.75);
   assert.deepEqual(ringAt(2), ringAt(1));
   assert.ok(isSoftware('ANGLE (Microsoft, Microsoft Basic Render Driver (0x0000008C) Direct3D11 vs_5_0 ps_5_0, D3D11)'));
   assert.ok(isSoftware('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)'));
