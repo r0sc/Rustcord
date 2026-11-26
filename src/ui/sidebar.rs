@@ -339,7 +339,7 @@ fn decorate(ui: &egui::Ui, c: &ThemeColors, (row, icon, resp): (Rect, Rect, &egu
     let tk = crate::theme::applied_tokens(ui.ctx());
     if h >= 1.0 {
         let pill = Rect::from_min_size(pos2(row.left(), row.center().y - h / 2.0), vec2(4.0, h));
-        rail_pill(ui.painter(), pill, c.text.to_color32(), tk.accent_ink);
+        rail_pill(ui.painter(), pill, c.text.to_color32(), tk.accent);
     }
     if mentions > 0 {
         badge(ui, c, pos2(icon.right() + 4.0, icon.bottom() - 4.0), mentions, Some(c.guild_bar.to_color32()));
@@ -583,12 +583,13 @@ pub fn title_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     }
     // The island takes the place of the label while I am in a call (cross-fade, §8).
     let island = call_island(ui, cx, rect);
-    if island >= 1.0 {
+    // The label is gone by mid-way (exits faster than entries): the words never overlap.
+    if island >= 0.5 {
         return;
     }
     ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
         if island > 0.0 {
-            ui.multiply_opacity(1.0 - island);
+            ui.multiply_opacity((1.0 - 2.0 * island).max(0.0));
         }
         location(ui, cx, rect);
     });
@@ -681,7 +682,7 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
     let pal = super::messages::Pal::new(cx.theme);
     let mut action = None;
     ui.with_visual_transform(super::motion::about(pill.center(), scale), |ui| {
-        ui.multiply_opacity(t);
+        ui.multiply_opacity(((t - 0.3) / 0.7).clamp(0.0, 1.0));
         let p = ui.painter().clone();
         let stroke = if tk.mode == crate::theme::Mode::HighContrast { Stroke::new(1.5, muted) } else { Stroke::new(1.0, tk.rule) };
         p.rect_filled(pill, 14, tk.raised);
