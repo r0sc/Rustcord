@@ -1,7 +1,7 @@
 //! The setup window (docs/DESIGN.md §12 "Installer"): a 32 px title bar of its own with the
 //! mark, one screen with the options and the main button, then progress and the result. The
 //! window takes each screen's height (`Setup::fit`), so no screen is half empty.
-//! Colours, sizes and controls follow DESIGN.md §2 (Ember Dark), §3, §9; the setup reads no
+//! Colours, sizes and controls follow DESIGN.md §2 (Nightshade), §3, §9; the setup reads no
 //! theme files, so the values are repeated here.
 
 use crate::payload;
@@ -16,18 +16,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-const FRAME: Color32 = Color32::from_rgb(0x15, 0x1a, 0x1e);
-const BACKGROUND: Color32 = Color32::from_rgb(0x23, 0x28, 0x2c);
-const SURFACE: Color32 = Color32::from_rgb(0x2c, 0x32, 0x36);
-const TEXT: Color32 = Color32::from_rgb(0xec, 0xe9, 0xe4);
-const MUTED: Color32 = Color32::from_rgb(0xab, 0xb4, 0xbc);
-const ACCENT: Color32 = Color32::from_rgb(0xf6, 0x88, 0x42);
-const ACCENT_TEXT: Color32 = Color32::from_rgb(0x21, 0x11, 0x0a);
-const POSITIVE: Color32 = Color32::from_rgb(0x50, 0xc7, 0x6a);
-const ON_POSITIVE: Color32 = FRAME;
-const EDGE: Color32 = Color32::from_rgb(0x89, 0x91, 0x98);
+const FRAME: Color32 = Color32::from_rgb(0x08, 0x07, 0x0b);
+const BACKGROUND: Color32 = Color32::from_rgb(0x12, 0x11, 0x18);
+const SURFACE: Color32 = Color32::from_rgb(0x1c, 0x1a, 0x24);
+const TEXT: Color32 = Color32::from_rgb(0xf0, 0xee, 0xf6);
+const MUTED: Color32 = Color32::from_rgb(0xa8, 0xa5, 0xb6);
+const ACCENT: Color32 = Color32::from_rgb(0xa4, 0x2b, 0xea);
+const ACCENT_TEXT: Color32 = Color32::from_rgb(0xff, 0xff, 0xff);
+const EDGE: Color32 = Color32::from_rgb(0x83, 0x80, 0x8f);
 const DANGER_FILL: Color32 = Color32::from_rgb(0xcc, 0x3d, 0x3f);
-const FOCUS: Color32 = Color32::from_rgb(0x81, 0xbf, 0xeb);
+const FOCUS: Color32 = Color32::from_rgb(0xbe, 0x67, 0xf0);
 /// Windows' caption red (ui/chrome.rs).
 const CLOSE_RED: Color32 = Color32::from_rgb(0xc4, 0x2b, 0x1c);
 const LOGO: &[u8] = include_bytes!("../../../assets/icons/rustcord-128.png");
@@ -459,10 +457,10 @@ fn switch(ui: &mut egui::Ui, row: Rect, on: &mut bool, label: &str) {
     resp.widget_info(|| WidgetInfo::selected(Role::Switch, true, *on, label));
     let t = ui.ctx().animate_bool_with_time(id, *on, 0.12);
     let p = ui.painter();
-    let track = EDGE.lerp_to_gamma(POSITIVE, t);
+    let track = EDGE.lerp_to_gamma(ACCENT, t);
     p.rect_filled(rect, 12.0, track);
     let knob = pos2(egui::lerp(rect.left() + 12.0..=rect.right() - 12.0, t), rect.center().y);
-    p.circle_filled(knob, 9.0, TEXT.lerp_to_gamma(ON_POSITIVE, t));
+    p.circle_filled(knob, 9.0, TEXT.lerp_to_gamma(ACCENT_TEXT, t));
     let ink = Stroke::new(1.5, track);
     if t > 0.5 {
         p.line_segment([knob + vec2(-3.5, 0.0), knob + vec2(-1.0, 2.5)], ink);
@@ -487,9 +485,9 @@ fn checkbox(ui: &mut egui::Ui, row: Rect, on: &mut bool, label: &str) {
     resp.widget_info(|| WidgetInfo::selected(Role::CheckBox, true, *on, label));
     let p = ui.painter();
     if *on {
-        p.rect_filled(rect, 4.0, POSITIVE);
+        p.rect_filled(rect, 4.0, ACCENT);
         let c = rect.center();
-        let ink = Stroke::new(2.0, ON_POSITIVE);
+        let ink = Stroke::new(2.0, ACCENT_TEXT);
         p.line_segment([c + vec2(-4.5, 0.0), c + vec2(-1.5, 3.0)], ink);
         p.line_segment([c + vec2(-1.5, 3.0), c + vec2(4.5, -3.5)], ink);
     } else {
