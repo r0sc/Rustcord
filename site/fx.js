@@ -1,7 +1,4 @@
-// Effects, loaded after 'load'; the page is complete without them. The field: purple contour lines on a WebGL2
-// canvas. They drift, are lit by the app window, and (with a mouse) bend around the cursor and the Download button.
-// Touch, reduced motion, ?static=1 and software GL get one still frame. The loop stops while the tab is hidden or
-// off screen. Debug: ?cursor=X,Y, ?t=<ms>, ?ring=0..1, ?fx=debug.
+// Effects, loaded after 'load'; the page is complete without them. Debug: ?cursor=X,Y, ?t=<ms>, ?ring=0..1, ?fx=debug.
 
 // 'off': no canvas; 'still': one frame; 'live': the loop
 export const gate = ({ fx, webgl, motion, fine, software, hook }) =>
@@ -21,31 +18,31 @@ uniform vec2 R; uniform float T, S, G; uniform vec3 M, L, C; uniform vec4 P, B; 
 out vec4 o;
 vec3 pm(vec3 x){ return mod((x * 34. + 1.) * x, 289.); }
 float sn(vec2 v){
-  const vec4 C = vec4(.211324865, .366025404, -.577350269, .024390244);
-  vec2 i = floor(v + dot(v, C.yy)), x0 = v - i + dot(i, C.xx), i1 = x0.x > x0.y ? vec2(1, 0) : vec2(0, 1);
-  vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod(i, 289.);
-  vec3 p = pm(pm(i.y + vec3(0, i1.y, 1)) + i.x + vec3(0, i1.x, 1));
-  vec3 m = max(.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), 0.); m *= m; m *= m;
-  vec3 x = 2. * fract(p * C.www) - 1., h = abs(x) - .5, a = x - floor(x + .5);
-  m *= 1.79284291 - .85373472 * (a * a + h * h);
-  return 130. * dot(m, vec3(a.x * x0.x + h.x * x0.y, a.yz * x12.xz + h.yz * x12.yw));
+const vec4 C = vec4(.211324865, .366025404, -.577350269, .024390244);
+vec2 i = floor(v + dot(v, C.yy)), x0 = v - i + dot(i, C.xx), i1 = x0.x > x0.y ? vec2(1, 0) : vec2(0, 1);
+vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1; i = mod(i, 289.);
+vec3 p = pm(pm(i.y + vec3(0, i1.y, 1)) + i.x + vec3(0, i1.x, 1));
+vec3 m = max(.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), 0.); m *= m; m *= m;
+vec3 x = 2. * fract(p * C.www) - 1., h = abs(x) - .5, a = x - floor(x + .5);
+m *= 1.79284291 - .85373472 * (a * a + h * h);
+return 130. * dot(m, vec3(a.x * x0.x + h.x * x0.y, a.yz * x12.xz + h.yz * x12.yw));
 }
 void main(){
-  vec2 p = gl_FragCoord.xy; float k = 1. / R.y, t = T * .04;
-  vec2 u = vec2(p.x, p.y - S) * k;
-  float n = .65 * sn(u * 1.1 + vec2(t, -.6 * t)) + .35 * sn(u * 2.4 + vec2(4. - .7 * t, 1.1 * t));
-  vec2 dm = (p - M.xy) * k; float r2 = dot(dm, dm);
-  n += M.z * mix(.5, .9, G) * exp(-r2 * mix(16., 42., G));            float rp = (length(p - P.xy) - P.z) * k, wave = P.w * exp(-rp * rp * 300.);
-  n += wave * .2;
-  float f = n * 6., a = abs(fract(f + .5) - .5) / max(fwidth(f), 1e-4);
-  float line = 1. - smoothstep(.35, 1.15, a);
-  vec2 dl = (p - L.xy) * k; float l = L.z * exp(-dot(dl, dl) * 2.4);
-  vec2 bq = max(abs(p - B.xy) - B.zw, 0.); float halo = K * exp(-length(bq) * k * mix(9., 18., smoothstep(0., .06, (B.y - B.w - p.y) * k))); l = max(l, halo);
-  float c = M.z * exp(-r2 * mix(10., 20., G));
-  vec3 col = vec3(.031, .027, .043) + C * (.11 * L.z * exp(-dot(dl, dl) * 1.1) + .05 * wave + .16 * halo);
-  col = mix(col, mix(vec3(.745, .404, .941), C, min(l, 1.) * .6), min(line * (.045 + .2 * l + .5 * c * (1. + .4 * G)), .36) + line * .5 * wave);  // .36 keeps muted text at 4.5:1
-  col += (fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453) - .5) / 255.;
-  o = vec4(col, 1.);
+vec2 p = gl_FragCoord.xy; float k = 1. / R.y, t = T * .04;
+vec2 u = vec2(p.x, p.y - S) * k;
+float n = .65 * sn(u * 1.1 + vec2(t, -.6 * t)) + .35 * sn(u * 2.4 + vec2(4. - .7 * t, 1.1 * t));
+vec2 dm = (p - M.xy) * k; float r2 = dot(dm, dm);
+n += M.z * mix(.5, .9, G) * exp(-r2 * mix(16., 42., G)); float rp = (length(p - P.xy) - P.z) * k, wave = P.w * exp(-rp * rp * 300.);
+n += wave * .2;
+float f = n * 6., a = abs(fract(f + .5) - .5) / max(fwidth(f), 1e-4);
+float line = 1. - smoothstep(.35, 1.15, a);
+vec2 dl = (p - L.xy) * k; float l = L.z * exp(-dot(dl, dl) * 2.4);
+vec2 bq = max(abs(p - B.xy) - B.zw, 0.); float halo = K * exp(-length(bq) * k * mix(9., 18., smoothstep(0., .06, (B.y - B.w - p.y) * k))); l = max(l, halo);
+float c = M.z * exp(-r2 * mix(10., 20., G));
+vec3 col = vec3(.031, .027, .043) + C * (.11 * L.z * exp(-dot(dl, dl) * 1.1) + .05 * wave + .16 * halo);
+col = mix(col, mix(vec3(.745, .404, .941), C, min(l, 1.) * .6), min(line * (.045 + .2 * l + .5 * c * (1. + .4 * G)), .36) + line * .5 * wave); // .36 keeps muted text at 4.5:1
+col += (fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453) - .5) / 255.;
+o = vec4(col, 1.);
 }`;
 // room light per screen: purple, live pink for Voice, bright for Lilac
 const ROOM = [[.643, .169, .918], [.941, .384, .753], [.70, .22, .80], [.50, .20, .95], [1.3, 1.15, 1.45]];
@@ -56,6 +53,7 @@ export function start(q) {
   const fake = (q.get('cursor') || '').split(',').map(Number), hasFake = fake.length === 2 && fake.every(Number.isFinite);
   const tFix = q.has('t') ? +q.get('t') / 1000 : null, ringFix = q.has('ring') ? +q.get('ring') : null, debug = q.get('fx') === 'debug';
   const hook = hasFake || tFix !== null || ringFix !== null;
+  let dbgm; if (debug || hasFake) import('./fx-debug.js').then(m => { dbgm = m; if (hasFake) m.arrow(fake[0], fake[1]); if (debug) m.report(stat, performance.now()); });
   if (hook) d.classList.add('fx-shot');
   const win = document.querySelector('.win'), hero = document.querySelector('.hero'), lit = [...document.querySelectorAll('.lit')];
 
@@ -79,7 +77,7 @@ export function start(q) {
   const U = Object.fromEntries('RTSGMLPCBK'.split('').map(n => [n, gl.getUniformLocation(prog, n)]));
   let live = mode === 'live', W = 0, H = 0, s = 1, raf = 0, last = 0, time = tFix ?? 0, odd = false, dirty = true, dead = false, seen = 0;
   let px = -1e4, py = -1e4, cx = -1e4, cy = -1e4, ms = 0, msT = 0, g = 0, bx = 0, by = 0, lx = null, ly = 0, pu = null, lastRing = -1e9;
-  let lz = hook || !live ? (hook ? 1 : 0.8) : 0, rampT = null, opening = live && !hook, room = ROOM[0].slice(), repT = 0, repN = 0;
+  let lz = hook || !live ? (hook ? 1 : 0.8) : 0, rampT = null, opening = live && !hook, room = ROOM[0].slice();
   if (hasFake) { px = cx = fake[0]; py = cy = fake[1]; ms = msT = 1; }
   if (ringFix !== null && live) pu = { x: 0, y: 0, t: ringFix, dur: Infinity, reach: 0, fix: true };
 
@@ -148,7 +146,7 @@ export function start(q) {
     dirty = false;
     const c = performance.now() - t0;
     stat.frames++; stat.ms += c; stat.max = Math.max(stat.max, c); stat.avg = stat.ms / stat.frames;
-    if (debug && stat.frames % 30 === 0) report(now);
+    if (debug && stat.frames % 30 === 0) dbgm?.report(stat, now);
     return settling || ambient;
   };
   const frame = now => {
@@ -158,13 +156,6 @@ export function start(q) {
     if (step(now, dt)) raf = requestAnimationFrame(frame);
   };
   const kick = () => { dirty = true; if (!raf && live && !dead && !document.hidden) raf = requestAnimationFrame(frame); };
-  const report = now => {
-    const t = `fx ${stat.avg.toFixed(2)} ms avg, ${stat.max.toFixed(2)} max; stage ${(stat.stage / Math.max(1, stat.stageN)).toFixed(2)} ms; ${Math.round((stat.drawn - repN) * 1000 / Math.max(1, now - repT))} drawn/s; ${stat.w}x${stat.h}; ${stat.mode}; ${stat.gpu}`;
-    repT = now; repN = stat.drawn;
-    let el = document.getElementById('fx-debug');
-    if (!el) { el = document.createElement('output'); el.id = 'fx-debug'; document.body.append(el); }
-    el.textContent = t; console.log(t);
-  };
   const pulse = (x, y, dur, reach) => { pu = { x, y, t: 0, dur, reach }; lastRing = performance.now(); kick(); };
   const stop = () => { // reduced motion on, or the GPU context is gone
     live = false; cancelAnimationFrame(raf); raf = 0;
@@ -191,9 +182,6 @@ export function start(q) {
     addEventListener('pointermove', e => { if (e.pointerType === 'touch' || hasFake) return; px = e.clientX; py = e.clientY; if (cx < -1e3) { cx = px; cy = py; } msT = 1; kick(); }, { passive: true });
     const away = () => { if (!hasFake) { msT = 0; kick(); } };
     d.addEventListener('pointerleave', away); addEventListener('blur', away);
-    if (hasFake) { // an arrow for screenshots
-      document.body.insertAdjacentHTML('beforeend', `<svg aria-hidden="true" width="18" height="26" viewBox="0 0 18 26" style="position:fixed;z-index:50;pointer-events:none;left:${fake[0] - 1}px;top:${fake[1] - 1}px"><path d="M1.5 1.5v19.5l5-4.8 3.6 7.8 3.4-1.6-3.5-7.6h7Z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg>`);
-    }
     addEventListener('scroll', kick, { passive: true });
     win.addEventListener('screen', kick);
     document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelAnimationFrame(raf); raf = 0; last = 0; } else { last = 0; kick(); } });
@@ -203,5 +191,4 @@ export function start(q) {
     matchMedia('(prefers-reduced-motion: no-preference)').addEventListener('change', e => { if (!e.matches) stop(); });
     kick();
   } else step(performance.now(), 16);
-  if (debug) report(performance.now());
 }
