@@ -66,6 +66,9 @@ impl GameActivity {
 pub const APP_DETAILS: &str = "Third-party client, built in Rust";
 /// Rustcord's presence button: label and link.
 pub const APP_BUTTON: (&str, &str) = ("Get Rustcord", "https://getrustcord.netlify.app/");
+/// Rustcord's own Discord application (the R icon): its presence uses it unless the user set
+/// their own in Settings > Activity privacy.
+pub const RUSTCORD_APP_ID: Id = Id(1575590836601753835);
 
 /// When this process started (unix ms): a reconnect keeps the timer.
 static STARTED: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
@@ -280,7 +283,7 @@ pub fn art_url(ctx: &egui::Context, state: &mut AppState, a: &Activity, px: u32)
 /// app-icon request.
 pub fn logic(state: &mut AppState, settings: &crate::config::Settings, cmd: &CommandSender) {
     let p = &settings.rustcord_presence;
-    state.activity.app = p.enabled.then(|| AppActivity { application_id: p.application_id, start_ms: *STARTED.get_or_init(now_ms) });
+    state.activity.app = p.enabled.then(|| AppActivity { application_id: Some(p.application_id.unwrap_or(RUSTCORD_APP_ID)), start_ms: *STARTED.get_or_init(now_ms) });
     if !online(state) {
         return;
     }
@@ -324,7 +327,7 @@ mod tests {
         s.conn = ConnState::Connected;
         logic(&mut s, &cfg, &cmd);
         let app = s.activity.app.clone();
-        assert!(app.is_some(), "on by default");
+        assert_eq!(app.as_ref().and_then(|a| a.application_id), Some(RUSTCORD_APP_ID), "on by default, with Rustcord's app");
         assert_eq!(sent(&mut rx), [set(Some(&game), app.clone())]);
         logic(&mut s, &cfg, &cmd);
         assert!(sent(&mut rx).is_empty(), "no change, no op 3");

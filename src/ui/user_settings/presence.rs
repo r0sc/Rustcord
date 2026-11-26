@@ -1,5 +1,5 @@
 //! Activity privacy > Rustcord presence: the local switch for "Playing Rustcord", a preview of
-//! what others see, and the optional Application ID whose icon becomes the picture
+//! what others see, and the Application ID whose icon becomes the picture (Rustcord's own unless set)
 //! (`crate::activity::AppActivity`, docs/FEATURES_NOTES.md §1.3). This device only; the synced
 //! activity rows follow below it.
 
@@ -11,8 +11,6 @@ use crate::ui::messages::{self, Btn, Callout, callout};
 use egui::{RichText, TextEdit, vec2};
 
 const PORTAL: &str = "https://discord.com/developers/applications";
-/// Discord looks a presence button's link up by application, so without one nobody sees it.
-const NO_BUTTON: &str = "Others see the Get Rustcord button once you add an Application ID below.";
 
 /// "" -> no ID; 17 to 20 digits (spaces around are ignored) -> that ID; anything else -> Err.
 fn parse_app_id(text: &str) -> Result<Option<Id>, ()> {
@@ -43,7 +41,8 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     ui.add_space(8.0);
     hint(ui, cx.theme, "Preview");
     ui.add_space(4.0);
-    let app = cx.state.activity.app.clone().filter(|_| enabled).unwrap_or(AppActivity { application_id: current, start_ms: crate::activity::now_ms() });
+    let shown = Some(current.unwrap_or(crate::activity::RUSTCORD_APP_ID));
+    let app = cx.state.activity.app.clone().filter(|_| enabled).unwrap_or(AppActivity { application_id: shown, start_ms: crate::activity::now_ms() });
     ui.scope(|ui| {
         if !enabled {
             ui.set_opacity(0.5);
@@ -52,16 +51,8 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
             ui.set_width(ui.available_width());
             let me = cx.state.me.as_ref().map_or(Id(0), |m| m.id);
             super::super::profile::activity_section(ui, cx, &pal, me, &app.to_activity(), 64.0, pal.surface);
-            if app.application_id.is_none() {
-                ui.add_space(8.0);
-                messages::button(ui, &pal, Btn::Secondary, crate::activity::APP_BUTTON.0, false).on_disabled_hover_text(NO_BUTTON);
-            }
         });
     });
-    if enabled && app.application_id.is_none() {
-        ui.add_space(8.0);
-        callout(ui, &pal, Callout::Info, NO_BUTTON);
-    }
     if cx.state.chat.my_status == Some(UserStatus::Invisible) {
         ui.add_space(8.0);
         callout(ui, &pal, Callout::Info, "Hidden while you are invisible.");
@@ -79,10 +70,10 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         ui,
         cx.theme,
         "Application ID (optional)",
-        Some("Make an app in the Discord Developer Portal, give it the Rustcord icon and paste its ID here. Its icon becomes the picture and others see the Get Rustcord button. Empty: neither."),
+        Some("Empty: Rustcord's own app gives the picture and the Get Rustcord button. Paste your own app's ID from the Developer Portal to use its icon instead."),
         vec2(260.0, 32.0),
         |ui| {
-            let r = ui.add(TextEdit::singleline(&mut draft).hint_text("18-digit ID").char_limit(32).desired_width(260.0));
+            let r = ui.add(TextEdit::singleline(&mut draft).hint_text("Rustcord's app").char_limit(32).desired_width(260.0));
             if r.changed() {
                 error = false;
             }
