@@ -31,9 +31,8 @@ and macOS builds have had the least testing. Please report bugs as a
 
 > [!WARNING]
 > Third-party clients that log in with a user account break Discord's Terms of Service and can
-> get the account banned. Use Rustcord at your own risk. Rustcord automates nothing, respects rate
-> limits and sends nothing on your behalf except your status and activity. That does not remove
-> the risk. By default your activity shows "Playing Rustcord", so friends and Discord can see that
+> get the account banned. Use Rustcord at your own risk. Rustcord does not automate anything and
+> keeps to Discord's rate limits, but the risk remains. By default your activity shows "Playing Rustcord", so friends and Discord can see that
 > you use a third-party client. Turn it off in Settings → Activity privacy. Rustcord is not
 > affiliated with Discord.
 
@@ -84,9 +83,8 @@ retakes the screenshots.</sub>
   autocomplete.
 - Typing indicator, pins, search and mark unread.
 - Threads: sidebar rows, the thread panel and creating threads.
-- Forum and media channels with posts, tags and new posts.
-- Video uploads, video embeds and GIFV play inline. Rustcord decodes MP4 with H.264 and AAC
-  itself.
+- Forum and media channels with posts, tags and creating a post.
+- Video uploads, video embeds and GIFV play inline. The player supports MP4 with H.264 and AAC.
 - Images, GIFs and videos open in a viewer with zoom, pan, arrow keys, Save, Copy image and Copy
   link. The browser opens only from "Open in browser", for videos the player cannot play (WebM)
   and for YouTube or Twitch.
@@ -95,8 +93,8 @@ retakes the screenshots.</sub>
 - Quick switcher (Ctrl+K) for servers, channels, DMs and friends, with the `@ # ! *` prefixes.
 - Discord's navigation keys: Alt+↑/↓, Alt+Shift+↑/↓, Ctrl+Alt+↑/↓, Esc and Shift+Esc to mark
   read, and Ctrl+/. All keys can be changed under Settings → Keybinds.
-- A disk cache of servers, channels, DMs, recent messages and images. The second start shows
-  the cached UI at once and refreshes in the background.
+- A disk cache of servers, channels, DMs, recent messages and images. Later starts show the
+  cached UI at once and refresh it in the background.
 
 ### Servers and friends
 
@@ -117,7 +115,7 @@ retakes the screenshots.</sub>
 
 ### Profiles and activity
 
-- Full user profiles with notes.
+- User profiles with notes.
 - Online status and custom status.
 - Profile cosmetics from Discord: avatar decorations, nameplates, profile effects and frames,
   display-name styles, profile themes, clan tags, badges, connections and games. An uploaded
@@ -125,7 +123,7 @@ retakes the screenshots.</sub>
 - Clicking a badge shows what it means instead of opening a link, with its date when Discord
   gives one ("Subscriber since …").
 - Clicking a server tag opens that server's card with Go to server, Join server or Apply to
-  join. The join is only sent on that click.
+  join.
 - A local profile banner and avatar in Settings → Local profile. The banner can be any image or
   GIF, the avatar a GIF, APNG, animated WebP or still image. They replace your banner and avatar
   everywhere in this client and are only visible to you on this device. "Only on hover"
@@ -148,9 +146,8 @@ retakes the screenshots.</sub>
   synced with your account, as in the official app. Your added games stay on this PC.
 - Discord Quests: a Quests row under Friends lists your quests, their rewards and your Orbs.
   Accept and claim each one with a click.
-- Video quests only count while the video plays in Rustcord's player in a visible window. Play
-  and stream quests have to be finished in the Discord desktop app, because their progress needs
-  the official desktop client.
+- Video quests only count while the video plays in Rustcord's player in a visible window. Discord
+  counts play and stream quests only from its desktop app, so they have to be finished there.
 
 ### Account and settings
 
@@ -174,7 +171,7 @@ retakes the screenshots.</sub>
 - Themes in TOML with a live editor, three built-in themes, and import and export (see
   [Themes](#themes)).
 - Gradient app themes (the Nitro color themes), free and only on this device.
-- The design is described in `docs/DESIGN.md`. Settings open as a floating panel over the app.
+- Settings open as a floating panel over the app.
 - A custom title bar with window buttons, and a floating user panel.
 - Channel icons keep Discord's meanings (`#` for text, a speaker for voice, megaphone, forum,
   media, stage, rules), with lock and age-restricted variants. No icon files are copied from
@@ -211,7 +208,7 @@ retakes the screenshots.</sub>
 
 ### Plugins
 
-- 51 plugins in Settings → Plugins, rebuilt from Vencord's. All of them are off by default and
+- 51 plugins in Settings → Plugins, modeled on Vencord's. All of them are off by default and
   only change this app. Their options are stored in `plugins.toml`.
 
 <details>
@@ -313,8 +310,8 @@ Two packages for 64-bit x86 with glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+,
 "Open Rustcord when I log in" is on by default. Rustcord turns it on at its first start, and
 Settings → Linux settings turns it off. It starts Rustcord hidden in the system tray.
 
-Rustcord runs on X11, and through XWayland on Wayland desktops, as Discord's app does. Wayland
-does not let an app hide its window to a tray. The tray icon needs a desktop with a
+Wayland does not let an app hide its window to a tray, so Rustcord runs on X11, and through
+XWayland on Wayland desktops, as Discord's app does. The tray icon needs a desktop with a
 StatusNotifierItem tray, such as KDE, Xfce, Cinnamon or Ubuntu's GNOME. Plain GNOME (Fedora)
 needs the AppIndicator extension, otherwise closing the window quits Rustcord. The login is kept
 in the Secret Service keyring (GNOME Keyring or KWallet). Without one, Rustcord cannot remember
@@ -354,17 +351,21 @@ Installed copies update themselves from this repository's releases.
   behind an update screen, and Rustcord restarts into it. Otherwise it downloads in the
   background and **Update ready** appears in the title bar. Click it to restart now, or the next
   start installs it.
-- Settings → Windows settings (Linux settings, macOS settings) → Updates has **Install updates
-  automatically**, on by default. With it off, Rustcord still checks, but downloads and installs
-  nothing until you click **Update available**. The check itself has no switch.
+- Settings → Windows settings (Linux settings, macOS settings) → Updates shows the current version
+  and has **Check for updates** and **Install updates automatically**, which is on by default. With
+  it off, Rustcord still checks, but downloads and installs nothing until you click **Update
+  available**. The automatic check itself has no switch.
 - `.deb` installs download the new package. **Install** then runs `apt-get install` through
   `pkexec`, which asks for your password. Without `pkexec`, Rustcord shows where it saved the
   `.deb`.
 - On macOS the app updates itself only where it may write: `/Applications` (as an
   administrator) or `~/Applications`.
 
-Installs while Rustcord waits in the tray, failed updates and copies that were not installed by
-a package are described in [`docs/UPDATER_DESIGN.md`](docs/UPDATER_DESIGN.md).
+After 10 minutes hidden in the tray, Rustcord installs a downloaded update and restarts hidden,
+but not during a call or a screen share. On macOS it waits for the next start or a click
+instead. A copied exe, a build from source or a copy started with `RUSTCORD_HOME` only shows
+**Update available**, which opens the release page. Failed updates and the other details are in
+[`docs/UPDATER_DESIGN.md`](docs/UPDATER_DESIGN.md).
 
 Privacy: the check downloads `latest.json` and `latest.json.sig` from github.com, and a package
 from GitHub's download servers when there is one. GitHub sees your IP address and the user agent
@@ -602,6 +603,7 @@ zlib-stream compression. REST requests follow the per-bucket and global rate lim
   protocol (including DAVE) and the `src/voice/` engine.
 - `docs/CHAT_ESSENTIALS_DESIGN.md`, `docs/SOCIAL_DESIGN.md`, `docs/ACCOUNT_SERVER_DESIGN.md`,
   `docs/SOCIAL_UI_DESIGN.md`: backend contracts and UI hook-up per feature block.
+- `docs/DESIGN.md`: the design spec for the UI.
 - `docs/MEDIA_DESIGN.md`: the inline video player and the media viewer.
 - `docs/QUESTS_NOTES.md`: quests, the video progress rule and why play and stream quests are not
   advanced.
