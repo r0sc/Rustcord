@@ -1101,6 +1101,8 @@ impl eframe::App for RustcordApp {
     /// negative n: from the last control, e.g. an open menu's), one per frame from frame 14, to
     /// show the focus ring wherever it lands. RUSTCORD_NAV_DEMO=press:<shortcut> presses that
     /// combination once at frame 14 (Focus stays where it is, so it goes through a focused composer).
+    /// RUSTCORD_POINTER_AT=<frame>:<x>x<y> moves the pointer there from that frame on (a hover that
+    /// starts after a card opened, as from the member list).
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         // Runs for every viewport's pass; the pointer, click and focus hooks below are the root's.
         if raw.viewport_id != egui::ViewportId::ROOT {
@@ -1134,6 +1136,20 @@ impl eframe::App for RustcordApp {
         }
         static POINTER: std::sync::OnceLock<Option<egui::Pos2>> = std::sync::OnceLock::new();
         let pointer = POINTER.get_or_init(|| std::env::var("RUSTCORD_POINTER").ok().as_deref().and_then(parse_size).map(|v| v.to_pos2()));
+        static LATER: std::sync::OnceLock<Option<(u64, egui::Pos2)>> = std::sync::OnceLock::new();
+        let later = LATER.get_or_init(|| {
+            let v = std::env::var("RUSTCORD_POINTER_AT").ok()?;
+            let (frame, at) = v.split_once(':')?;
+            Some((frame.parse().ok()?, parse_size(at)?.to_pos2()))
+        });
+        let pointer = &match *later {
+            Some((frame, p)) if self.frame_no >= frame => Some(p),
+            _ => *pointer,
+        };
+        // The real mouse would fight the hook (Windows sends moves while the cursor rests on the window).
+        if pointer.is_some() {
+            raw.events.retain(|e| !matches!(e, egui::Event::PointerMoved(_) | egui::Event::PointerGone));
+        }
         // Only when it moved away: every move event restarts the tooltip delay.
         if let Some(p) = *pointer
             && ctx.input(|i| i.pointer.latest_pos()) != Some(p)

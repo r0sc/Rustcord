@@ -273,7 +273,9 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   `RUSTCORD_PLUGIN_SEARCH=<text>` fills in its search.
 - `RUSTCORD_POINTER=<x>x<y>`: keep the pointer at that point (logical px) for hover states and
   tooltips in screenshots; with `RUSTCORD_CLICK=left|right` it also clicks there once (frames
-  10-11), e.g. to open a context menu.
+  10-11), e.g. to open a context menu. `RUSTCORD_POINTER_AT=<frame>:<x>x<y>` moves it there from
+  that frame on (a hover that starts after a card opened, as from the member list). While either
+  is set, the real mouse is ignored.
 - `RUSTCORD_MSG_DEMO=<comma list>` (ui/messages.rs; `online` hides the composer's Offline chip): message-view states offline mode can't
   reach, on the newest message of the open channel: `hover` (hover toolbar), `reply` (composer
   reply bar), `edit` (inline edit), `picker` (reaction picker), `delete` (confirmation), `menu`
