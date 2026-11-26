@@ -75,6 +75,7 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
 .hdr-end { display: flex; align-items: center; gap: 8px; justify-self: end; }
 .link-ext { gap: 6px; padding: 0 8px; }
 .link-ext .icon { width: 16px; height: 16px; }
+@media (max-width: 379px) { .hdr-end .link-ext { display: none; } } /* 320 px phones: the footer keeps the link */
 
 /* buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; padding: 0 22px; border: 1px solid transparent; border-radius: var(--r-control);
