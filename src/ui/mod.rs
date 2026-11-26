@@ -1247,7 +1247,13 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
             {
                 cx.view.settings_backdrop = Some(ui.ctx().load_texture("rc_settings_backdrop", img, egui::TextureOptions::LINEAR));
             }
-            let scrim = cx.theme.tokens().scrim;
+            // Lighter than a modal's scrim: the frozen picture of the app should stay readable behind the panel.
+            let tk = cx.theme.tokens();
+            let scrim = match tk.mode {
+                crate::theme::Mode::Dark => egui::Color32::from_black_alpha(89),
+                crate::theme::Mode::Light => egui::Color32::from_black_alpha(61),
+                crate::theme::Mode::HighContrast => tk.scrim,
+            };
             let picture = cx.view.settings_backdrop.as_ref().map(|t| t.id());
             let page = egui::Frame::new().fill(fill.frame.to_color32());
             // The wrapper stays at rest too: skipping it would change the widget ids under it.
@@ -1592,7 +1598,7 @@ fn capture_backdrop(ctx: &egui::Context, slot: Arc<std::sync::Mutex<Option<egui:
         let rgba: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
         if let Some(big) = image::RgbaImage::from_raw(w as u32, h as u32, rgba) {
             let small = image::imageops::thumbnail(&big, (w as u32 / 8).max(1), (h as u32 / 8).max(1));
-            let small = image::imageops::blur(&small, 2.5);
+            let small = image::imageops::blur(&small, 1.5);
             let size = [small.width() as usize, small.height() as usize];
             if let Ok(mut s) = slot.lock() {
                 *s = Some(egui::ColorImage::from_rgba_unmultiplied(size, small.as_raw()));
@@ -1661,7 +1667,9 @@ pub fn settings_layer(
     let nav_rect = Rect::from_min_max(panel.min, pos2(panel.left() + if narrow { PANEL_NAV_W_NARROW } else { PANEL_NAV_W }, panel.bottom()));
     let page_rect = Rect::from_min_max(pos2(nav_rect.right(), panel.top()), panel.max);
     let p = ui.painter().clone();
-    p.add(ui.visuals().window_shadow.as_shape(panel, r));
+    // Softer and shorter than a modal's E3, so the picture behind the panel stays visible.
+    let shadow_a = if pal.tk.mode == crate::theme::Mode::Light { 46 } else { 115 };
+    p.add(egui::Shadow { offset: [0, 16], blur: 48, spread: 0, color: egui::Color32::from_black_alpha(shadow_a) }.as_shape(panel, r));
     p.rect_filled(nav_rect, CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, sidebar);
     p.rect_filled(page_rect, CornerRadius { ne: r, se: r, nw: 0, sw: 0 }, background);
 
