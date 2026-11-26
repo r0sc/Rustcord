@@ -90,6 +90,16 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
 .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 12px; }
 @media (max-width: 479.98px) { .cta-row .btn-primary { width: 100%; } }
 
+/* the glint (fx.js): a soft light clipped to the 1 px edge; only its transform moves */
+@supports (mask-composite: exclude) or (-webkit-mask-composite: xor) {
+  .edge { position: absolute; inset: 0; z-index: 4; border-radius: inherit; padding: 1px; overflow: hidden; pointer-events: none;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+  .edge i { position: absolute; left: 0; top: 0; width: 520px; height: 520px; margin: -260px 0 0 -260px; opacity: 0; will-change: transform, opacity;
+    background: radial-gradient(closest-side, rgb(226 186 255), rgb(190 103 240 / .5) 45%, transparent); }
+  .btn .edge i { width: 160px; height: 160px; margin: -80px 0 0 -80px; background: radial-gradient(closest-side, #fff, rgb(255 255 255 / .4) 50%, transparent); }
+}
+
 /* hero */
 .hero { padding: clamp(40px, 8vh, 96px) 0 clamp(24px, 4vh, 48px); }
 .hero-grid { display: grid; gap: 24px; }

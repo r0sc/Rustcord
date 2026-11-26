@@ -98,6 +98,11 @@ export function start(q) {
     // reads first, then writes
     const stage = live && d.classList.contains('stage'), wr = win.getBoundingClientRect(), br = lit[lit.length - 1].getBoundingClientRect(), y = scrollY;
     let near = null, nd = 1e9;
+    if (live && ms + msT > 0.01) for (const b of lit) {
+      const r = b.getBoundingClientRect(); if (!r.width) continue;
+      const e = Math.hypot(Math.max(r.left - cx, 0, cx - r.right), Math.max(r.top - cy, 0, cy - r.bottom));
+      if (e < nd) { nd = e; near = [b, r]; }
+    }
     if (opening && ready()) {
       opening = false;
       if (y > hero.offsetHeight / 2) lz = 1; // opened scrolled down: no ring
@@ -129,6 +134,13 @@ export function start(q) {
       gl.drawArrays(gl.TRIANGLES, 0, 3); stat.drawn++;
       if (!cv.classList.contains('on')) requestAnimationFrame(() => cv.classList.add('on'));
     }
+    if (stage) {
+      const amp = 1 - (win._p ?? 1), nx = Math.max(-1, Math.min(1, (cx - (wr.left + wr.width / 2)) / (W / 2)));
+      const ny = Math.max(-1, Math.min(1, (cy - (wr.top + wr.height / 2)) / (H / 2)));
+      put(win, '--ry', (nx * 3 * amp * ms).toFixed(2) + 'deg'); put(win, '--rx', (-ny * 2 * amp * ms).toFixed(2) + 'deg');
+      edge(win, cx - wr.left, cy - wr.top, ms);
+    }
+    for (const b of lit) if (b._edge) edge(b, near && near[0] === b ? cx - near[1].left : -999, near && near[0] === b ? cy - near[1].top : -999, near && near[0] === b ? g : 0);
     dirty = false;
     const c = performance.now() - t0;
     stat.frames++; stat.ms += c; stat.max = Math.max(stat.max, c); stat.avg = stat.ms / stat.frames;
@@ -149,6 +161,7 @@ export function start(q) {
     if (!el) { el = document.createElement('output'); el.id = 'fx-debug'; document.body.append(el); }
     el.textContent = t; console.log(t);
   };
+  const pulse = (x, y, dur, reach) => { pu = { x, y, t: 0, dur, reach }; lastRing = performance.now(); kick(); };
   const stop = () => { // reduced motion on, or the GPU context is gone
     live = false; cancelAnimationFrame(raf); raf = 0;
     win.style.setProperty('--rx', '0deg'); win.style.setProperty('--ry', '0deg');
@@ -162,6 +175,20 @@ export function start(q) {
   cv.addEventListener('webglcontextlost', e => { e.preventDefault(); dead = true; stop(); cv.remove(); d.classList.add('nolight'); });
   addEventListener('resize', () => { size(); live ? kick() : step(performance.now(), 16); });
   if (live) {
+    for (const el of [win, ...lit]) {
+      const e = document.createElement('span'); e.className = 'edge'; e.setAttribute('aria-hidden', 'true');
+      el._edge = e.appendChild(document.createElement('i')); el.append(e);
+    }
+    for (const b of lit) b.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch' || performance.now() - lastRing < 400) return; // max 2.5 rings/s
+      const r = b.getBoundingClientRect(); pulse(r.left + r.width / 2, r.top + r.height / 2, 900, H * 0.7);
+    });
+    addEventListener('pointermove', e => { if (e.pointerType === 'touch' || hasFake) return; px = e.clientX; py = e.clientY; if (cx < -1e3) { cx = px; cy = py; } msT = 1; kick(); }, { passive: true });
+    const away = () => { if (!hasFake) { msT = 0; kick(); } };
+    d.addEventListener('pointerleave', away); addEventListener('blur', away);
+    if (hasFake) { // an arrow for screenshots
+      document.body.insertAdjacentHTML('beforeend', `<svg aria-hidden="true" width="18" height="26" viewBox="0 0 18 26" style="position:fixed;z-index:50;pointer-events:none;left:${fake[0] - 1}px;top:${fake[1] - 1}px"><path d="M1.5 1.5v19.5l5-4.8 3.6 7.8 3.4-1.6-3.5-7.6h7Z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg>`);
+    }
     addEventListener('scroll', kick, { passive: true });
     win.addEventListener('screen', kick);
     document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelAnimationFrame(raf); raf = 0; last = 0; } else { last = 0; kick(); } });
