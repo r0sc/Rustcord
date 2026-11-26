@@ -9,7 +9,7 @@ export const SYSTEMS = {
     file: /^Rustcord-Setup-\d+\.\d+\.\d+\.exe$/, pattern: 'Rustcord-Setup-<version>.exe', notes: 'windows' },
   mac: { label: 'Download for macOS', title: 'Rustcord for macOS', tail: 'for macOS 11 or newer, Apple silicon and Intel',
     file: /^Rustcord-\d+\.\d+\.\d+-macos-universal\.dmg$/, pattern: 'Rustcord-<version>-macos-universal.dmg', notes: 'mac' },
-  deb: { label: 'Download for Linux (.deb)', title: 'Rustcord for Linux', tail: 'for Debian, Ubuntu, Mint and relatives, 64-bit x86',
+  deb: { label: 'Download for Linux (.deb)', title: 'Rustcord for Linux', tail: 'for Debian, Ubuntu, Mint and similar distributions, 64-bit x86',
     file: /^rustcord_\d+\.\d+\.\d+_amd64\.deb$/, pattern: 'rustcord_<version>_amd64.deb', notes: 'linux' },
   tar: { label: 'Download for Linux (.tar.gz)', title: 'Rustcord for Linux', tail: 'for any 64-bit x86 Linux with glibc 2.35 or newer',
     file: /^rustcord-\d+\.\d+\.\d+-linux-x86_64\.tar\.gz$/, pattern: 'rustcord-<version>-linux-x86_64.tar.gz', notes: 'linux' },

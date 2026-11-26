@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rustcord, a lightweight desktop client for Discord written in Rust</title>
-<meta name="description" content="Rustcord is an unofficial, lightweight desktop client for Discord, written from scratch in Rust with egui and tokio. No Electron. Open source (MIT) for Windows, Linux and macOS.">
+<title>Rustcord, a desktop client for Discord</title>
+<meta name="description" content="Rustcord is an unofficial desktop client for Discord, written in Rust with egui and tokio. It runs on Windows, Linux and macOS and is MIT licensed.">
 <meta name="theme-color" content="#08070B">
 <meta name="color-scheme" content="dark">
 <link rel="canonical" href="https://getrustcord.netlify.app/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Rustcord">
-<meta property="og:description" content="A lightweight desktop client for Discord, written from scratch in Rust. No Electron.">
+<meta property="og:description" content="An unofficial desktop client for Discord, written in Rust.">
 <meta property="og:url" content="https://getrustcord.netlify.app/">
 <meta property="og:image" content="https://getrustcord.netlify.app/shots/og.png">
 <meta property="og:image:alt" content="Rustcord's main window in the Nightshade theme">
@@ -66,7 +66,7 @@
   <div class="wrap hero-grid">
     <h1 class="wordmark" id="hero-title">Rustcord</h1>
     <div class="cta" data-dl>
-      <p class="lede">A light desktop client for Discord, written from scratch in Rust.</p>
+      <p class="lede">A desktop client for Discord, written in Rust.</p>
       <div data-dl-mobile hidden>
         <p>It’s a desktop app. Open <strong>getrustcord.netlify.app</strong> on your computer.</p>
         <button class="btn btn-secondary" type="button" data-copy-link><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span aria-live="polite">Copy link</span></button>
@@ -77,7 +77,7 @@
       </div>
       <a class="link-plain" data-dl-alt href="#download" hidden></a>
       <p class="meta" data-dl-meta>Opens the latest release on GitHub.</p>
-      <p class="risk"><i aria-hidden="true"></i><span>Unofficial beta. Third-party clients break Discord’s Terms of Service and can get your account banned. <a href="#notes">Read first</a></span></p>
+      <p class="risk"><i aria-hidden="true"></i><span>Rustcord is an unofficial beta. Third-party clients break Discord’s Terms of Service and can get your account banned. <a href="#notes">Before you download</a></span></p>
     </div>
   </div>
 </section>
@@ -87,23 +87,23 @@
     <div class="win">
       <figure class="shot is-on" id="s-chat">
         <div class="frame"><img src="shots/main.webp" srcset="shots/main-960.webp 960w, shots/main.webp 1600w" sizes="(min-width: 960px) 1180px, calc(100vw - 32px)" width="1600" height="1000" fetchpriority="high" alt="Rustcord’s main window in the Nightshade theme: the server bar with Rust Workshop selected, its channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc’s custom status “Rewriting it in Rust”, a game and Spotify"></div>
-        <figcaption><h2>Chat, threads and forums. Starts in 199&nbsp;ms.</h2></figcaption>
+        <figcaption><h2>Text chat with threads and forums.</h2></figcaption>
       </figure>
       <figure class="shot" id="s-voice">
         <div class="frame"><img src="shots/stream.webp" srcset="shots/stream-960.webp 960w, shots/stream.webp 1600w" sizes="(min-width: 960px) 1180px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="A voice channel in Rustcord: Cara’s live stream of Red Eclipse gameplay fills the stage, with Alice, Bob, Cara, dan_ops and rosc in the tiles below, and the call island in the title bar showing rosc connected to Lounge"></div>
-        <figcaption><h2>Voice calls and streams, end-to-end encrypted.</h2></figcaption>
+        <figcaption><h2>Voice channels and streams, encrypted end to end with DAVE.</h2></figcaption>
       </figure>
       <figure class="shot" id="s-profile">
         <div class="frame"><img src="shots/profile.webp" srcset="shots/profile-960.webp 960w, shots/profile.webp 1600w" sizes="(min-width: 960px) 1180px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="rosc’s profile popout above the user panel, with a local-only banner, the custom status “Rewriting it in Rust”, a game activity and the status picker"></div>
-        <figcaption><h2>Profiles with status, games and Spotify.</h2></figcaption>
+        <figcaption><h2>Profiles with custom status, games and Spotify.</h2></figcaption>
       </figure>
       <figure class="shot" id="s-plugins">
         <div class="frame"><img src="shots/plugins.webp" srcset="shots/plugins-960.webp 960w, shots/plugins.webp 1600w" sizes="(min-width: 960px) 1180px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="Settings open as a floating panel over the app, on the Plugins page: the built-in Vencord-style plugins, 4 of 51 turned on"></div>
-        <figcaption><h2>51 plugins, all off until you turn them on.</h2></figcaption>
+        <figcaption><h2>51 built-in plugins modeled on Vencord’s, off by default.</h2></figcaption>
       </figure>
       <figure class="shot" id="s-lilac">
         <div class="frame"><img src="shots/light.webp" srcset="shots/light-960.webp 960w, shots/light.webp 1600w" sizes="(min-width: 960px) 1180px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="The same #general chat in the Lilac theme"></div>
-        <figcaption><h2>The Lilac theme. Or make your own.</h2></figcaption>
+        <figcaption><h2>Lilac, one of three built-in themes.</h2></figcaption>
       </figure>
     </div>
     <div class="pills" role="group" aria-label="Pick a screen" hidden>
@@ -116,9 +116,9 @@
   <div class="wrap narrow">
     <h2 class="big" id="download-title">Download</h2>
     <ul class="notes" id="notes">
-      <li class="warn"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><p><strong>Your account is at risk.</strong> Third-party clients that log in with a user account break Discord’s Terms of Service and can get the account banned.</p></li>
-      <li><p>Unofficial and not affiliated with Discord.</p></li>
-      <li><p>Beta, built almost entirely with AI coding tools. If something breaks, <a href="https://github.com/r0sc/Rustcord/issues">open an issue</a>.</p></li>
+      <li class="warn"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><p>Third-party clients that log in with a user account break Discord’s Terms of Service and can get the account banned. Use Rustcord at your own risk.</p></li>
+      <li><p>Rustcord is not affiliated with Discord.</p></li>
+      <li><p>Rustcord is in beta. Almost all of the code was written with AI coding tools (Claude Code). Please report bugs as a <a href="https://github.com/r0sc/Rustcord/issues">GitHub issue</a>.</p></li>
     </ul>
 
     <div class="dl-panel" data-dl>
@@ -140,7 +140,7 @@
       <li><a class="sys" data-row="tar" href="https://github.com/r0sc/Rustcord/releases/latest"><span class="sys-name">Any Linux, glibc 2.35+ <span class="chip" data-row-mine hidden>Your system</span></span><span class="sys-file" data-file>rustcord-&lt;version&gt;-linux-x86_64.tar.gz</span><span class="sys-size" data-size></span><svg class="icon" aria-hidden="true"><use href="#i-dl"/></svg></a></li>
       <li><a class="sys" data-row="mac" href="https://github.com/r0sc/Rustcord/releases/latest"><span class="sys-name">macOS 11+ <span class="chip" data-row-mine hidden>Your system</span></span><span class="sys-file" data-file>Rustcord-&lt;version&gt;-macos-universal.dmg</span><span class="sys-size" data-size></span><svg class="icon" aria-hidden="true"><use href="#i-dl"/></svg></a></li>
     </ul>
-    <p class="after-list">All 64-bit. <a href="https://github.com/r0sc/Rustcord/releases/latest">Release notes</a> are on GitHub, or <a href="https://github.com/r0sc/Rustcord#build">build it yourself</a>.</p>
+    <p class="after-list">All builds are 64-bit. <a href="https://github.com/r0sc/Rustcord/releases/latest">Release notes</a> are on GitHub. To build from source, see the <a href="https://github.com/r0sc/Rustcord#build">README</a>.</p>
 
     <div class="acc">
       <details id="notes-windows" data-notes="windows"><summary>First start on Windows <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
@@ -159,7 +159,7 @@
 sh rustcord-&lt;version&gt;/install.sh</code></pre><button class="btn btn-secondary btn-small" type="button" data-copy><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span aria-live="polite">Copy</span></button></div></div></details>
       <details id="notes-updates"><summary>Updates and checksums <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
         <div class="acc-body">
-          <p>Rustcord asks GitHub for a new version every 6 hours and only installs updates signed with its Ed25519 key. GitHub sees your IP address and the app version, nothing else.</p>
+          <p>Rustcord asks GitHub for a new version every 6 hours and only installs updates signed with its Ed25519 key. GitHub sees your IP address and the app version. The check sends no other data.</p>
           <p id="notes-verify">To check a download, compare it with the release’s SHA256SUMS file:</p>
           <div class="cmd"><pre><code>sha256sum -c SHA256SUMS --ignore-missing</code></pre><button class="btn btn-secondary btn-small" type="button" data-copy><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span aria-live="polite">Copy</span></button></div>
           <p>On Windows, use <code>Get-FileHash</code>. On macOS, use <code>shasum -a 256</code>.</p></div></details>
@@ -172,10 +172,6 @@ sh rustcord-&lt;version&gt;/install.sh</code></pre><button class="btn btn-second
   <div class="wrap foot-grid">
     <div>
       <a class="brand" href="#top"><img src="favicon.svg" alt="" width="28" height="28"><span>Rustcord</span></a>
-      <figure class="quote">
-        <blockquote class="bubble"><p>“I didn’t feel like waiting for it. So I vibe-coded my own Rust client and shipped it first.”</p></blockquote>
-        <figcaption><a href="https://github.com/r0sc">rosc</a>, after Discord announced <a href="https://www.andrealosavio.com/en/blog/discord-rust-client-rewrite">its own Rust rewrite</a></figcaption>
-      </figure>
       <ul class="foot-links">
         <li><a href="https://github.com/r0sc/Rustcord">Source code</a></li>
         <li><a href="https://github.com/r0sc/Rustcord/issues">Report a bug</a></li>
@@ -183,10 +179,10 @@ sh rustcord-&lt;version&gt;/install.sh</code></pre><button class="btn btn-second
       </ul>
     </div>
     <div class="foot-text">
-      <p>MIT license. Not affiliated with Discord. The plugins re-implement <a href="https://github.com/Vendicated/Vencord">Vencord</a>’s in Rust, with none of its code.</p>
-      <p>199 ms: release build, Ryzen 7 5825U, Windows 11, warm cache. No cookies, no analytics.</p>
+      <p>Rustcord is MIT licensed and not affiliated with Discord. The plugins re-implement <a href="https://github.com/Vendicated/Vencord">Vencord</a>’s in Rust and contain none of its code.</p>
+      <p>This site uses no cookies and no analytics.</p>
       <details class="credits"><summary>Credits <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
-        <p>The screenshots use Rustcord’s offline demo data; people, servers and messages are made up. The stream and the profile banner show one frame of <a href="https://commons.wikimedia.org/wiki/File:Red_Eclipse_1,5_Gameplay_1.webm">Red Eclipse 1,5 Gameplay 1</a> by Premitre, <a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a> (a still frame, scaled). Avatars from Wikimedia Commons, cropped and scaled: <a href="https://commons.wikimedia.org/wiki/File:Cat_face_in_sunlight_%28Unsplash%29.jpg">Cat face in sunlight</a> by Alicja Koczaska (CC0), <a href="https://commons.wikimedia.org/wiki/File:Crab_Nebula.jpg">Crab Nebula</a> by NASA, ESA, J. Hester and A. Loll (public domain), <a href="https://commons.wikimedia.org/wiki/File:Neon_streets_%28Unsplash%29.jpg">Neon streets</a> by JINDONG H (CC0), <a href="https://commons.wikimedia.org/wiki/File:Portrait_of_a_labrador_retriever.jpg">Portrait of a labrador retriever</a> by Dktue (CC0). rosc’s avatar is rosc’s own. Set in Archivo (SIL Open Font License).</p></details>
+        <p>The screenshots use Rustcord’s offline demo data; people, servers and messages are made up. The stream and the profile banner show one frame of <a href="https://commons.wikimedia.org/wiki/File:Red_Eclipse_1,5_Gameplay_1.webm">Red Eclipse 1,5 Gameplay 1</a> by Premitre, <a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a> (a still frame, scaled). Avatars from Wikimedia Commons, cropped and scaled: <a href="https://commons.wikimedia.org/wiki/File:Cat_face_in_sunlight_%28Unsplash%29.jpg">Cat face in sunlight</a> by Alicja Koczaska (CC0), <a href="https://commons.wikimedia.org/wiki/File:Crab_Nebula.jpg">Crab Nebula</a> by NASA, ESA, J. Hester and A. Loll (public domain), <a href="https://commons.wikimedia.org/wiki/File:Neon_streets_%28Unsplash%29.jpg">Neon streets</a> by JINDONG H (CC0), <a href="https://commons.wikimedia.org/wiki/File:Portrait_of_a_labrador_retriever.jpg">Portrait of a labrador retriever</a> by Dktue (CC0). The avatar of the account rosc is not part of the repository. Set in Archivo (SIL Open Font License).</p></details>
     </div>
   </div>
 </footer>
