@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-orange">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-f74c00?logo=rust&logoColor=white">
+  <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-a42bea">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-a42bea?logo=rust&logoColor=white">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078d6">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <a href="https://github.com/r0sc/Rustcord/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/r0sc/Rustcord?label=release"></a>
@@ -26,7 +26,7 @@
 > [issue](https://github.com/r0sc/Rustcord/issues).
 
 <p align="center">
-  <img src="docs/screenshots/main.png" width="820" alt="Rustcord's main window in the Ember Dark theme: the server bar, the Rust Workshop server's channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc's custom status &quot;Rewriting it in Rust&quot;, a game and Spotify">
+  <img src="docs/screenshots/main.png" width="820" alt="Rustcord's main window in the Nightshade theme: the server bar, the Rust Workshop server's channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc's custom status &quot;Rewriting it in Rust&quot;, a game and Spotify">
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
 <table>
   <tr>
     <td><img src="docs/screenshots/profile.png" alt="rosc's profile popout above the user panel, with a local-only banner, the custom status &quot;Rewriting it in Rust&quot;, a game activity and the status picker"></td>
-    <td><img src="docs/screenshots/plugins.png" alt="Settings → Plugins: the built-in Vencord-style plugins, 4 of 48 turned on"></td>
+    <td><img src="docs/screenshots/plugins.png" alt="Settings → Plugins: the built-in Vencord-style plugins, 4 of 51 turned on"></td>
   </tr>
   <tr>
     <td align="center">My profile, with a local-only banner</td>
@@ -44,11 +44,11 @@
   </tr>
   <tr>
     <td><img src="docs/screenshots/viewer.png" alt="The built-in media viewer showing a Red Eclipse screenshot that rosc posted, with Save, Copy image and Copy link"></td>
-    <td><img src="docs/screenshots/light.png" alt="The same #general chat in the Paper Light theme"></td>
+    <td><img src="docs/screenshots/light.png" alt="The same #general chat in the Lilac theme"></td>
   </tr>
   <tr>
     <td align="center">Pictures and videos open in the app</td>
-    <td align="center">Paper Light theme</td>
+    <td align="center">Lilac theme</td>
   </tr>
 </table>
 
@@ -77,7 +77,7 @@ the meantime ([mlq.ai](https://mlq.ai/news/discord-is-rebuilding-its-desktop-app
 I didn't feel like waiting for it. So I vibe-coded my own Rust client and shipped it first:
 Rustcord 0.1.0 came out on November 15, 2026, for Windows, Linux and macOS, while Discord's Rust
 app still has no release date. I also built in plugins, the way [Vencord](https://vencord.dev)
-adds them to the official app: 48 of them, re-implemented in Rust, off by default, and they only
+adds them to the official app: 51 of them, re-implemented in Rust, off by default, and they only
 change this app.
 
 — rosc ([@r0sc](https://github.com/r0sc))
@@ -132,8 +132,10 @@ What's in it so far:
 - Discord-web layout (own branding): server bar with folders and drag & drop, own title bar
   and window buttons, floating user panel, "new messages" bar, jump to present, message
   context menu.
-- Its own look (`docs/DESIGN.md`): steel-blue panes with ember orange only for the brand and
-  the main action, one type scale, and Rustcord's own vector icon set drawn in code. Channel
+- Its own look (`docs/DESIGN.md`): near-black panes and floating rounded layers, with one
+  purple for what is yours and your main action. Settings open as a floating panel over the
+  app, and a call island in the title bar shows your voice call with mute and disconnect. One
+  type scale with bold titles, and Rustcord's own vector icon set drawn in code. Channel
   icons read like Discord's (`#` for text, a speaker for voice, megaphone, forum, media,
   stage, rules) with lock and age-restricted variants; I didn't copy any icon files from Discord.
 - Activities like Discord's: games with their art, party size and elapsed time, Spotify with
@@ -492,7 +494,7 @@ and `<dir>/cache` (portable mode).
 Written by the settings page; all keys are optional.
 
 ```toml
-theme = "Ember Dark"          # built-in name or the name of a theme in the themes folder
+theme = "Nightshade"          # built-in name or the name of a theme in the themes folder
 desktop_notifications = true
 send_read_acks = true         # mark viewed channels read on your account (syncs other devices)
 show_member_list = true
@@ -521,7 +523,7 @@ auto_update = true            # install updates automatically (the check runs ei
 
 ### Themes
 
-Built-in: **Ember Dark** (default), **Paper Light**, **High Contrast**. Create your own in
+Built-in: **Nightshade** (default), **Lilac**, **High Contrast**. Create your own in
 Settings → Appearance (live preview, *Save as…*, *Import…*, *Export…*) or drop a file into the
 themes folder:
 
@@ -555,6 +557,8 @@ compact = false               # true = compact rows without avatars
 ```
 
 Colors are `#rrggbb` or `#rrggbbaa`. Font paths must be local files.
+
+A settings file from 0.1.x that names the old dark theme or Paper Light opens Nightshade or Lilac.
 
 ### Local profile (banner and avatar)
 

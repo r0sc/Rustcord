@@ -26,7 +26,7 @@ SHOTS = [  # (file, theme, env); every run also gets status:online and the compo
     ("profile.png", None, {"RUSTCORD_OPEN": "members,profile"}),
     ("plugins.png", None, {"RUSTCORD_OPEN": "settings:plugins", "RUSTCORD_PLUGINS": "ShowHiddenChannels,PlatformIndicators,ImageZoom,CopyUserURLs"}),
     ("viewer.png", None, {"RUSTCORD_OPEN": f"channel:{GENERAL}", "RUSTCORD_MSG_DEMO": "media,viewer"}),
-    ("light.png", "Paper Light", {"RUSTCORD_OPEN": "members"}),
+    ("light.png", "Lilac", {"RUSTCORD_OPEN": "members"}),
 ]
 # the fixture repeats 11 test messages three times; this is the same chat as a normal conversation
 CHAT = [
@@ -42,7 +42,7 @@ CHAT = [
     "btw I'm on Rustcord now, my own client. it barely touches my RAM",
     f"<@{ME}> wait, the one you built? post it in <#{SHOWCASE}>", "does it do voice?",
     "voice, video and streams. we used it last night",
-    "# Rustcord\n- voice, video & streams\n- 48 built-in plugins\n-# Windows · Linux · macOS",
+    "# Rustcord\n- voice, video & streams\n- 51 built-in plugins\n-# Windows · Linux · macOS",
     "ok that's sick, downloading now", f"let me know what you think <@{ALICE}>!",
 ]
 
