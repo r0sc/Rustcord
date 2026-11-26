@@ -323,7 +323,7 @@ re-checked against [UD]/[MOB] in `docs/GUILD_CARD_NOTES.md`, which wins over thi
 - APNG frame time: use `(t - start) mod anim_len` for the frame index, and restart the decoder clock when a layer becomes visible.
 - `randomizedSources`: pick one index below the shortest array length, once per open, and use it for every layer.
 - Reduced motion or performance mode: draw `reducedMotionSrc` (or `staticFrameSrc`) only.
-- Rustcord: effect layers stream (cache/images.rs `stream_apng`): the APNG stays compressed, a thread decodes each frame just before it is due (2 ahead), one texture per layer at the asset's 1× size (2× assets box-halved), paused while not drawn, freed when the card closes.
+- Rustcord: effect layers and profile banners stream (cache/images.rs `stream_frames`): the APNG / GIF stays compressed, a thread decodes each frame just before it is due (2 ahead; own compositor on the `png` / `gif` crates, ~1 ms an effect frame), one texture per layer at the asset's 1× size (2× assets box-halved), paused while not drawn, freed when the card closes.
 
 **Where:** profile popout and full profile modal. Picker preview uses `thumbnailPreviewSrc`.
 

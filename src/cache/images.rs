@@ -7,7 +7,7 @@
 //! - Decoding happens in `spawn_blocking`, downscaled so the longest side <= max_side.
 //!   GIF / APNG / animated WebP decode to multiple frames, capped by a memory budget
 //!   (fallback: first frame only); avatar decorations keep every frame and give up resolution
-//!   (down to half) instead; profile-effect APNGs stream instead (`stream_apng`).
+//!   (down to half) instead; profile effects and banners stream instead (`stream_frames`).
 //! - The same disk cache, client and host list serve the media player (`media::net`): the
 //!   "media cache" of small videos and gifv loops.
 //!
@@ -88,7 +88,10 @@ impl Inner {
         // Local profile overrides: only files inside the overrides folder, never the network.
         let keep = keeps_frames(url);
         let stream = streams(url);
-        let dec = move |b: &[u8]| if stream && apng_frames(b).is_some_and(|n| n > 1) { stream_apng(b, max_side) } else { decode(b, max_side, keep) };
+        let dec = move |b: &[u8]| match stream.then(|| stream_frames(b, max_side)).flatten() {
+            Some(img) => Ok(img),
+            None => decode(b, max_side, keep),
+        };
         if let Some(path) = crate::overrides::local_path(url) {
             return blocking(move || std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| dec(&b))).await?;
         }
@@ -229,47 +232,215 @@ fn keeps_frames(url: &str) -> bool {
     url.strip_prefix(crate::api::cdn::CDN).is_some_and(|p| p.starts_with("/avatar-decoration-presets/"))
 }
 
-/// Profile-effect layers (COSMETICS_NOTES §5): long APNGs far over MAX_ANIM_BYTES at the drawn size; they stream.
-// shortcut: matched by path; an effect served from elsewhere drops frames like any animation.
+/// Profile-effect layers (COSMETICS_NOTES §5) and profile banners: long animations far over
+/// MAX_ANIM_BYTES at the drawn size (a 240-frame banner kept 8 frames and played at 2 fps); they stream.
+// shortcut: matched by path; an animation served from elsewhere drops frames like any other.
 fn streams(url: &str) -> bool {
-    url.strip_prefix(crate::api::cdn::CDN).is_some_and(|p| p.starts_with("/assets/profile_effects/"))
+    url.strip_prefix(crate::api::cdn::CDN).is_some_and(|p| p.starts_with("/assets/profile_effects/") || p.contains("/banners/"))
 }
 
 /// Frames a stream decodes ahead of the shown one.
 const STREAM_AHEAD: usize = 2;
 
-/// An APNG decoded frame by frame on its own thread (`DecodedImage::stream`), each frame `shrink`-ed, at most
-/// STREAM_AHEAD waiting (a card that isn't drawn pulls nothing, so the thread waits); starts over at the end,
-/// ends when the receiver is dropped. Returns with the first frame.
-// shortcut: the compressed file stays in RAM (2-7 MB a layer); read it from the disk-cache file if layers turn out bigger.
-fn stream_apng(bytes: &[u8], max_side: u32) -> Result<DecodedImage, String> {
+/// One pass over an animation: each composited frame and its delay (ms) go to `frame` until it says stop.
+type Pass = fn(&[u8], &mut dyn FnMut(&Canvas, u32) -> bool) -> Result<(), String>;
+
+/// A multi-frame APNG or a GIF decoded frame by frame on its own thread (`DecodedImage::stream`), each frame
+/// box-shrunk by `Canvas::image`, at most STREAM_AHEAD waiting (a card that isn't drawn pulls nothing, so the
+/// thread waits); starts over at the end, ends when the receiver is dropped or after a single frame. Returns
+/// with the first frame; None for other formats (or a failed first frame: `decode` then tries).
+// shortcut: the compressed file stays in RAM (2-8 MB); read it from the disk-cache file if that turns out too much.
+fn stream_frames(bytes: &[u8], max_side: u32) -> Option<DecodedImage> {
+    let pass: Pass = if apng_frames(bytes).is_some_and(|n| n > 1) {
+        apng_pass
+    } else if bytes.starts_with(b"GIF8") {
+        gif_pass
+    } else {
+        return None;
+    };
     let bytes: Arc<[u8]> = bytes.into();
     let (tx, rx) = std::sync::mpsc::sync_channel(STREAM_AHEAD);
-    std::thread::Builder::new()
-        .name("rustcord-apng".into())
-        .spawn(move || {
-            loop {
-                let Ok(frames) = PngDecoder::with_limits(Cursor::new(bytes.clone()), anim_limits()).and_then(|d| d.apng()).map(|a| a.into_frames())
-                else {
-                    return;
-                };
-                let mut sent = false;
-                // A frame that fails ends the pass, like a truncated file.
-                for frame in frames.map_while(Result::ok) {
-                    let delay_ms = frame_delay_ms(frame.delay());
-                    if tx.send(ImageFrame { image: shrink(frame.into_buffer(), max_side), delay_ms }).is_err() {
-                        return; // card closed
-                    }
-                    sent = true;
-                }
-                if !sent {
-                    return;
+    let thread = std::thread::Builder::new().name("rustcord-anim".into()).spawn(move || {
+        loop {
+            let (mut sent, mut open) = (0, true);
+            // A frame that fails ends the pass, like a truncated file.
+            let _ = pass(&bytes, &mut |canvas, delay_ms| {
+                open = tx.send(ImageFrame { image: canvas.image(max_side), delay_ms }).is_ok();
+                sent += 1;
+                open
+            });
+            if !open || sent < 2 {
+                return; // card closed, or a still image: its frame stays
+            }
+        }
+    });
+    let first = rx.recv().ok().filter(|_| thread.is_ok())?;
+    Some(DecodedImage { frames: vec![first], stream: Some(rx) })
+}
+
+/// APNG frames through the `png` crate, composited here: `image`'s own compositor blends every pixel in
+/// floats and copies the canvas twice, 19 ms a 450x880 effect frame against 1 ms to decode it (measured).
+fn apng_pass(bytes: &[u8], frame: &mut dyn FnMut(&Canvas, u32) -> bool) -> Result<(), String> {
+    use png::{BlendOp, ColorType, DisposeOp, Transformations};
+    let mut dec = png::Decoder::new_with_limits(Cursor::new(bytes), png::Limits { bytes: 256 << 20 });
+    dec.set_transformations(Transformations::EXPAND | Transformations::STRIP_16 | Transformations::ALPHA);
+    let mut r = dec.read_info().map_err(|e| e.to_string())?;
+    if r.info().interlaced {
+        return Err("interlaced APNG".into()); // rare: `decode` handles it
+    }
+    let (w, h) = r.info().size();
+    let mut canvas = Canvas::new(w, h)?;
+    // A default image without its own fcTL is a still preview, not part of the animation.
+    let mut preview = r.info().frame_control.is_none();
+    let mut buf = vec![0; r.output_buffer_size().ok_or("APNG too large")?];
+    let mut first = true;
+    while let Ok(out) = r.next_frame(&mut buf) {
+        if std::mem::take(&mut preview) {
+            continue;
+        }
+        let Some(fc) = r.info().frame_control().copied() else { break };
+        let ch = match out.color_type {
+            ColorType::Rgba => 4,
+            ColorType::GrayscaleAlpha => 2,
+            _ => return Err("unexpected APNG colour type".into()),
+        };
+        let dispose = match fc.dispose_op {
+            DisposeOp::None => Dispose::Keep,
+            DisposeOp::Background => Dispose::Clear,
+            // The spec: on the first frame "previous" is the empty canvas.
+            DisposeOp::Previous if first => Dispose::Clear,
+            DisposeOp::Previous => Dispose::Restore,
+        };
+        let area = canvas.clip(fc.x_offset, fc.y_offset, fc.width, fc.height);
+        canvas.frame(area, dispose, &buf, out.line_size, ch, fc.blend_op == BlendOp::Over);
+        first = false;
+        let den = if fc.delay_den == 0 { 100 } else { u32::from(fc.delay_den) };
+        if !frame(&canvas, delay_ms((u32::from(fc.delay_num) * 1000 + den / 2) / den)) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// GIF frames through the `gif` crate (RGBA, transparent pixels 0), composited here: `image`'s path took
+/// 11 ms a 680x240 banner frame.
+fn gif_pass(bytes: &[u8], frame: &mut dyn FnMut(&Canvas, u32) -> bool) -> Result<(), String> {
+    let mut opts = gif::DecodeOptions::new();
+    opts.set_color_output(gif::ColorOutput::RGBA);
+    let mut dec = opts.read_info(Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    let mut canvas = Canvas::new(dec.width().into(), dec.height().into())?;
+    while let Ok(Some(f)) = dec.read_next_frame() {
+        let dispose = match f.dispose {
+            gif::DisposalMethod::Background => Dispose::Clear,
+            gif::DisposalMethod::Previous => Dispose::Restore,
+            _ => Dispose::Keep,
+        };
+        let area = canvas.clip(f.left.into(), f.top.into(), f.width.into(), f.height.into());
+        canvas.frame(area, dispose, &f.buffer, usize::from(f.width) * 4, 4, true);
+        if !frame(&canvas, delay_ms(u32::from(f.delay) * 10)) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// What becomes of a frame's area before the next frame is drawn.
+#[derive(Clone, Copy, PartialEq)]
+enum Dispose {
+    Keep,
+    /// Transparent again.
+    Clear,
+    /// Back to how it was before the frame.
+    Restore,
+}
+
+/// `(x, y, w, h)` inside a canvas.
+type Area = (usize, usize, usize, usize);
+
+/// A streamed animation's canvas: premultiplied RGBA, and the last frame's disposal.
+struct Canvas {
+    w: usize,
+    h: usize,
+    px: Vec<u8>,
+    last: Option<(Area, Dispose, Vec<u8>)>,
+}
+
+impl Canvas {
+    fn new(w: u32, h: u32) -> Result<Self, String> {
+        if w == 0 || h == 0 || w > 8192 || h > 8192 {
+            return Err(format!("animation canvas {w}x{h}"));
+        }
+        let (w, h) = (w as usize, h as usize);
+        Ok(Self { w, h, px: vec![0; w * h * 4], last: None })
+    }
+
+    /// A frame's rectangle, clipped to the canvas (files may say otherwise).
+    fn clip(&self, x: u32, y: u32, w: u32, h: u32) -> Area {
+        let (x, y) = ((x as usize).min(self.w), (y as usize).min(self.h));
+        (x, y, (w as usize).min(self.w - x), (h as usize).min(self.h - y))
+    }
+
+    /// Byte range of row `r` of `area`.
+    fn row(&self, (x, y, w, _): Area, r: usize) -> std::ops::Range<usize> {
+        let at = ((y + r) * self.w + x) * 4;
+        at..at + w * 4
+    }
+
+    /// Disposes of the last frame, then draws this one: `src` in straight alpha, `stride` bytes a row,
+    /// `ch` 4 (RGBA) or 2 (grey + alpha) bytes a pixel, replacing the area or `over` it.
+    fn frame(&mut self, area: Area, dispose: Dispose, src: &[u8], stride: usize, ch: usize, over: bool) {
+        match self.last.take() {
+            Some((a, Dispose::Clear, _)) => {
+                for r in 0..a.3 {
+                    let range = self.row(a, r);
+                    self.px[range].fill(0);
                 }
             }
-        })
-        .map_err(|e| e.to_string())?;
-    let first = rx.recv().map_err(|_| "APNG has no frames".to_owned())?;
-    Ok(DecodedImage { frames: vec![first], stream: Some(rx) })
+            Some((a, Dispose::Restore, saved)) => {
+                for (r, old) in saved.chunks_exact(a.2 * 4).enumerate() {
+                    let range = self.row(a, r);
+                    self.px[range].copy_from_slice(old);
+                }
+            }
+            _ => {}
+        }
+        let saved = if dispose == Dispose::Restore { (0..area.3).flat_map(|r| self.px[self.row(area, r)].to_vec()).collect() } else { Vec::new() };
+        for r in 0..area.3 {
+            let Some(s) = src.get(r * stride..r * stride + area.2 * ch) else { break };
+            let range = self.row(area, r);
+            for (d, s) in self.px[range].as_chunks_mut::<4>().0.iter_mut().zip(s.chunks_exact(ch)) {
+                let (c, a) = if ch == 4 { ([s[0], s[1], s[2]], s[3]) } else { ([s[0]; 3], s[1]) };
+                if !over || a == 255 {
+                    *d = [mul(c[0], a), mul(c[1], a), mul(c[2], a), a];
+                } else if a > 0 {
+                    // Premultiplied "over": src * a + dst * (1 - a), alpha alike.
+                    let (a, k) = (u32::from(a), 255 - u32::from(a));
+                    for i in 0..3 {
+                        d[i] = ((u32::from(c[i]) * a + u32::from(d[i]) * k + 127) / 255) as u8;
+                    }
+                    d[3] = ((a * 255 + u32::from(d[3]) * k + 127) / 255) as u8;
+                }
+            }
+        }
+        self.last = Some((area, dispose, saved));
+    }
+
+    /// The canvas scaled down by the whole factor that keeps the longest side >= max_side (box filter: cheap
+    /// enough for every frame; the GPU scales the rest). 450x880 and 900x1760 layers both end up 450x880 at 768.
+    fn image(&self, max_side: u32) -> egui::ColorImage {
+        let (w, h) = (self.w as u32, self.h as u32);
+        let f = (w.max(h) / max_side.max(1)).clamp(1, w.min(h));
+        if f == 1 {
+            return egui::ColorImage::from_rgba_premultiplied([self.w, self.h], &self.px);
+        }
+        let view = image::ImageBuffer::<image::Rgba<u8>, &[u8]>::from_raw(w, h, &self.px[..]).expect("canvas holds w x h pixels");
+        let small = image::imageops::thumbnail(&view, w / f, h / f);
+        egui::ColorImage::from_rgba_premultiplied([small.width() as usize, small.height() as usize], small.as_raw())
+    }
+}
+
+fn mul(c: u8, a: u8) -> u8 {
+    ((u32::from(c) * u32::from(a) + 127) / 255) as u8
 }
 
 /// Decode bytes (also used for local override images) into frames, longest side <= max_side.
@@ -399,11 +570,14 @@ fn halve(frames: Vec<ImageFrame>) -> Vec<ImageFrame> {
     out
 }
 
-/// Browsers show delays of 10 ms or less (often 0) as 100 ms; APNG / WebP delays are exact
-/// (60 fps = 17 ms) and must stay.
 fn frame_delay_ms(delay: image::Delay) -> u32 {
     let (n, d) = delay.numer_denom_ms();
-    let ms = (n + d / 2).checked_div(d).unwrap_or(0);
+    delay_ms((n + d / 2).checked_div(d).unwrap_or(0))
+}
+
+/// Browsers show delays of 10 ms or less (often 0) as 100 ms; APNG / WebP delays are exact
+/// (60 fps = 17 ms) and must stay.
+fn delay_ms(ms: u32) -> u32 {
     if ms <= 10 { 100 } else { ms }
 }
 
@@ -416,19 +590,6 @@ fn premultiply(img: &mut RgbaImage) {
             }
         }
     }
-}
-
-/// Premultiplied, scaled down by the whole factor that keeps the longest side >= max_side (box filter: cheap
-/// enough for every frame; the GPU scales the rest). 450x880 and 900x1760 layers both end up 450x880 at max_side 768.
-fn shrink(mut img: RgbaImage, max_side: u32) -> egui::ColorImage {
-    premultiply(&mut img);
-    let (w, h) = img.dimensions();
-    let f = (w.max(h) / max_side.max(1)).clamp(1, w.min(h).max(1));
-    if f > 1 {
-        img = image::imageops::thumbnail(&img, w / f, h / f);
-    }
-    let (w, h) = img.dimensions();
-    egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], img.as_raw())
 }
 
 /// Premultiply (imageops::resize assumes it; avoids dark fringes), downscale, convert.
@@ -669,9 +830,12 @@ mod tests {
     #[test]
     fn effect_apng_streams_frame_by_frame() {
         assert!(streams("https://cdn.discordapp.com/assets/profile_effects/x/intro.png"));
+        assert!(streams("https://cdn.discordapp.com/banners/3/a_h.gif?size=1024"));
+        assert!(streams("https://cdn.discordapp.com/guilds/1/users/3/banners/a_h.gif?size=1024"));
         assert!(!streams("https://cdn.discordapp.com/avatar-decoration-presets/a_x.png"));
+        assert!(!streams("https://media.discordapp.net/attachments/1/2/big.gif"));
         let (r, g, b) = ([255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]);
-        let img = stream_apng(&apng(8, 4, &[r, g, b], 40), 4).unwrap();
+        let img = stream_frames(&apng(8, 4, &[r, g, b], 40), 4).unwrap();
         assert_eq!(img.frames.len(), 1);
         assert_eq!((img.frames[0].image.size, img.frames[0].delay_ms), ([4, 2], 40));
         let rx = img.stream.unwrap();
@@ -682,10 +846,51 @@ mod tests {
     }
 
     #[test]
-    fn shrink_box_factor() {
-        let img = shrink(RgbaImage::from_pixel(90, 176, Rgba([200, 100, 50, 128])), 77);
+    fn canvas_box_factor() {
+        let mut c = Canvas::new(90, 176).unwrap();
+        c.frame(c.clip(0, 0, 90, 176), Dispose::Keep, &[200, 100, 50, 128].repeat(90 * 176), 90 * 4, 4, false);
+        let img = c.image(77);
         assert_eq!(img.size, [45, 88]);
         assert_eq!(img.pixels[0], egui::Color32::from_rgba_premultiplied(100, 50, 25, 128));
-        assert_eq!(shrink(RgbaImage::new(45, 88), 77).size, [45, 88]);
+        assert_eq!(Canvas::new(45, 88).unwrap().image(77).size, [45, 88]);
+    }
+
+    #[test]
+    fn canvas_blends_premultiplied_and_disposes() {
+        let px = |c: &Canvas, x: usize, y: usize| c.px[(y * c.w + x) * 4..][..4].to_vec();
+        let mut c = Canvas::new(4, 2).unwrap();
+        c.frame(c.clip(0, 0, 4, 2), Dispose::Keep, &[0, 0, 255, 255].repeat(8), 16, 4, false);
+        // Half-transparent red over blue: premultiplied 50/50; a transparent pixel keeps the blue.
+        c.frame(c.clip(1, 0, 2, 1), Dispose::Restore, &[255, 0, 0, 128, 255, 0, 0, 0], 8, 4, true);
+        assert_eq!((px(&c, 1, 0), px(&c, 2, 0)), (vec![128, 0, 127, 255], vec![0, 0, 255, 255]));
+        // Restore: back to blue before the next frame; grey + alpha, clipped at the edge, Clear after.
+        c.frame(c.clip(3, 1, 5, 5), Dispose::Clear, &[100, 255].repeat(25), 10, 2, false);
+        assert_eq!((px(&c, 1, 0), px(&c, 3, 1)), (vec![0, 0, 255, 255], vec![100, 100, 100, 255]));
+        c.frame(c.clip(0, 0, 1, 1), Dispose::Keep, &[0, 255, 0, 255], 4, 4, false);
+        assert_eq!((px(&c, 3, 1), px(&c, 0, 0)), (vec![0; 4], vec![0, 255, 0, 255]));
+    }
+
+    #[test]
+    fn gif_banner_streams_every_frame() {
+        // 3 frames of 4x2: blue, a red pixel on top (the rest transparent, kept), green after a clear.
+        let mut out = Vec::new();
+        {
+            let mut enc = gif::Encoder::new(&mut out, 4, 2, &[0, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 0]).unwrap();
+            let frame = |left, width, height, buffer: Vec<u8>, dispose| gif::Frame { left, width, height, buffer: buffer.into(), dispose, transparent: Some(3), delay: 2, ..Default::default() };
+            enc.write_frame(&frame(0, 4, 2, vec![0; 8], gif::DisposalMethod::Keep)).unwrap();
+            enc.write_frame(&frame(1, 2, 1, vec![1, 3], gif::DisposalMethod::Background)).unwrap();
+            enc.write_frame(&frame(0, 1, 1, vec![2], gif::DisposalMethod::Keep)).unwrap();
+        }
+        let img = stream_frames(&out, 600).unwrap();
+        assert_eq!((img.frames[0].image.size, img.frames[0].delay_ms), ([4, 2], 20));
+        let c = |r, g, b| egui::Color32::from_rgba_premultiplied(r, g, b, 255);
+        assert_eq!(img.frames[0].image.pixels[1], c(0, 0, 255));
+        let rx = img.stream.unwrap();
+        let second = rx.recv().unwrap().image.pixels;
+        assert_eq!((second[1], second[2]), (c(255, 0, 0), c(0, 0, 255)), "drawn over the first frame");
+        let third = rx.recv().unwrap().image.pixels;
+        assert_eq!((third[0], third[1]), (c(0, 255, 0), egui::Color32::TRANSPARENT), "the red pixel cleared");
+        assert_eq!(rx.recv().unwrap().image.pixels[1], c(0, 0, 255), "loops");
+        assert!(stream_frames(b"\x89PNG not animated", 600).is_none());
     }
 }

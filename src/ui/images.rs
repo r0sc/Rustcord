@@ -50,7 +50,8 @@ impl Stream {
                 // More than a frame late (the card was hidden): the clock restarts now.
                 (if now - due > self.delay { now } else { due }) + self.delay
             }
-            Err(std::sync::mpsc::TryRecvError::Empty) => now + self.delay, // decoder behind: look again one frame later
+            // Decoder behind: look again soon, not a whole frame later (this frame would show twice as long).
+            Err(std::sync::mpsc::TryRecvError::Empty) => now + (self.delay / 4.0).max(0.004),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => return None,
         };
         self.due = Some(next);
@@ -722,6 +723,9 @@ mod tests {
         let wake = pass(&mut cache, 10.0, true);
         assert!(tx.try_send(frame(50)).is_ok(), "pulled again");
         assert!((wake - 0.05).abs() < 1e-6, "late: the clock restarts now, got {wake}");
+        pass(&mut cache, 10.05, true); // takes the frame sent above
+        let wake = pass(&mut cache, 10.11, true);
+        assert!((wake - 0.0125).abs() < 1e-6, "decoder behind: again in a quarter frame, got {wake}");
         drop(cache);
         assert!(tx.send(frame(50)).is_err(), "dropping the cache stops the decoder");
     }

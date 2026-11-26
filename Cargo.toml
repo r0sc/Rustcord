@@ -24,6 +24,9 @@ flate2 = "1.1.11"
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 # OS RNG for the per-QR-code RSA key (already in the tree via rsa).
 getrandom = { version = "0.4", features = ["sys_rng"] }
+# png, gif: what image already decodes with; the streamed effect and banner frames use them directly (cache/images.rs).
+png = "0.18.1"
+gif = "0.14.2"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "ico"] }
 keyring = "4.2"
 # H.264 encode/decode for camera / screen share (approved; builds C++ with MSVC). docs/VIDEO_DESIGN.md
