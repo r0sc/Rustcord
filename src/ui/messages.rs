@@ -1017,7 +1017,7 @@ fn jump_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id) -> bool {
     // Reaches under the composer below, whose rounded top corners then show the bar's color:
     // bar and box read as one shape.
     let back = Rect::from_min_max(rect.min, rect.max + vec2(0.0, f32::from(r)));
-    // A neutral step above the composer; the action reads as a link (ember is not for this).
+    // A neutral step above the composer; the action reads as a link, not as the accent.
     let fill = pal.surface.blend(if resp.hovered() { pal.tk.selected } else { pal.tk.hover });
     ui.painter().rect_filled(back, CornerRadius { nw: r, ne: r, sw: 0, se: 0 }, fill);
     let font = FontId::proportional(pal.meta());
@@ -1133,7 +1133,7 @@ fn absorb_window(state: &mut AppState, ch: Id) {
 /// "N new messages since 14:03" over the top of the list while the first unread message is
 /// scrolled out above it: a click scrolls to that message, "Mark as read" acks the channel and
 /// closes the bar (the "New" divider stays for this visit). A calm `surface` bar; only its "New"
-/// tag is red-hot, like the divider's, so an unread channel doesn't read as an error.
+/// tag is red, like the divider's, so an unread channel doesn't read as an error.
 fn new_messages_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, list: Rect, (first, count, more): (Id, usize, bool)) {
     let pal = lc.pal;
     let rect = Rect::from_min_size(list.min + vec2(16.0, 0.0), vec2(list.width() - 32.0, 32.0));

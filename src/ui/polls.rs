@@ -306,7 +306,7 @@ fn footer(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, v: &View, (ch, mid): 
                     cx.view.polls_ui.peek = None;
                 }
             } else {
-                // Secondary, not Primary: one ember button per view.
+                // Secondary, not Primary: one purple button per view.
                 if button(ui, pal, Btn::Secondary, "Vote", !picked.is_empty()).clicked() {
                     send_vote(cx, ch, mid, picked.to_vec(), mine);
                 }

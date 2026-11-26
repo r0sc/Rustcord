@@ -199,7 +199,7 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
                     (false, Some(k)) => format(&k),
                     (false, None) => "None".to_owned(),
                 };
-                // Recording: temper blue, the keyboard-focus colour (never the accent).
+                // Recording: link blue, so it never reads as the accent.
                 let color = if recording == Some(i) { pal.link } else { pal.text };
                 let btn = egui::Button::new(RichText::new(text).color(color).monospace()).min_size(vec2(170.0, 30.0));
                 if ui.add(btn).on_hover_text("Record a new shortcut").clicked() {
