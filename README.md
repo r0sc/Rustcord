@@ -7,7 +7,8 @@
 <p align="center">
   A lightweight, unofficial desktop client for Discord that I built from scratch in Rust.<br>
   No Electron – egui + tokio, talking to the HTTP API and the Gateway directly.<br>
-  Made by me, <a href="https://github.com/r0sc">rosc</a>.
+  Made by me, <a href="https://github.com/r0sc">rosc</a>.<br>
+  Website: <a href="https://getrustcord.netlify.app/">getrustcord.netlify.app</a>
 </p>
 
 <p align="center">
@@ -247,8 +248,9 @@ memory after sending them. The QR login uses a new RSA key per code that only li
 
 ## Download
 
-The newest version is on the [latest release](https://github.com/r0sc/Rustcord/releases/latest)
-page. Pick the file for your system (`<version>` is the release's version, for example `0.1.0`):
+The newest version is on the [website](https://getrustcord.netlify.app/), which picks the file for
+your system, and on the [latest release](https://github.com/r0sc/Rustcord/releases/latest)
+page. There, pick the file for your system (`<version>` is the release's version, for example `0.1.0`):
 
 | System | File |
 |---|---|
