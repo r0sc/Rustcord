@@ -116,7 +116,8 @@ export function start(q) {
     const wx = cx + (bx - cx) * g * 0.75, wy = cy + (by - cy) * g * 0.75;
     // the light sits behind the window, else behind the lower Download button
     const onWin = wr.bottom > 0 && wr.top < H;
-    const tx = onWin ? wr.left + wr.width / 2 : br.left + br.width / 2, ty = onWin ? wr.top + wr.height * 0.45 : br.top + br.height / 2;
+    const hr = live ? null : lit[0].getBoundingClientRect(); // still: light the hero Download button, the window is a list item
+    const tx = hr ? hr.left + hr.width / 2 : onWin ? wr.left + wr.width / 2 : br.left + br.width / 2, ty = hr ? hr.top + hr.height / 2 : onWin ? wr.top + wr.height * 0.45 : br.top + br.height / 2;
     if (lx === null) { lx = tx; ly = ty; } else { lx = follow(lx, tx, dt, 70); ly = follow(ly, ty, dt, 70); }
     const ambient = live && !document.hidden && seen > 0 && tFix === null;
     if (ambient) time += dt / 1000;
