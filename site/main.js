@@ -62,6 +62,10 @@ function copy(btn, text, done) {
 $$('[data-copy-link]').forEach(b => b.addEventListener('click', () => copy(b, location.origin + location.pathname, 'Link copied')));
 $$('[data-copy]').forEach(b => b.addEventListener('click', () => copy(b, b.parentElement.querySelector('code').textContent, 'Copied')));
 
-// ---- screens ----
+// ---- screens, then the effects once the page is complete ----
 const tour = document.querySelector('.tour');
 if (tour) initStage(tour, q.get('view'));
+if (document.documentElement.classList.contains('fx')) {
+  const fx = () => import('./fx.js').then(m => m.start(q)).catch(() => document.documentElement.classList.add('nolight'));
+  document.readyState === 'complete' ? fx() : addEventListener('load', fx, { once: true });
+}

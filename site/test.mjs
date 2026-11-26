@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stageAt } from './stage.js';
+import { gate, renderScale, follow, ringAt, isSoftware } from './fx.js';
 import { detectOs, pickAssets, fetchLatest, buttonState, mb, LATEST, REPO } from './download.js';
 
 const UA = {
@@ -93,4 +94,35 @@ test('scroll stage', () => {
   assert.deepEqual(stageAt(400 + 4 * 512, 400, 512, 5), { p: 1, i: 4 });
   assert.deepEqual(stageAt(1e6, 400, 512, 5), { p: 1, i: 4 });
   assert.deepEqual(stageAt(-50, 400, 512, 5), { p: 0, i: 0 }); // overscroll at the top
+});
+
+test('effect gate', () => {
+  const on = { fx: true, webgl: true, motion: true, fine: true, software: false, hook: false };
+  assert.equal(gate(on), 'live');
+  assert.equal(gate({ ...on, motion: false }), 'still');               // reduced motion or ?static=1
+  assert.equal(gate({ ...on, motion: false, hook: true }), 'still');   // hooks never override reduced motion
+  assert.equal(gate({ ...on, fine: false }), 'still');                 // touch
+  assert.equal(gate({ ...on, software: true }), 'still');              // software GL
+  assert.equal(gate({ ...on, software: true, hook: true }), 'live');   // screenshot hooks in headless
+  assert.equal(gate({ ...on, fx: false }), 'off');
+  assert.equal(gate({ ...on, webgl: false }), 'off');
+});
+
+test('effect math', () => {
+  assert.equal(renderScale(1280, 800, 1), 0.75);
+  assert.equal(renderScale(1280, 800, 2.5), 0.75);
+  assert.ok(Math.abs(renderScale(1280, 800, 0.8) - 0.6) < 1e-9);
+  assert.ok(Math.abs(renderScale(3840, 2160, 1) - Math.sqrt(1.2e6 / (3840 * 2160))) < 1e-9);
+  assert.ok(Math.abs(follow(0, 1, 50, 50) - (1 - Math.exp(-1))) < 1e-9);
+  for (const dt of [0, -5, NaN]) { const v = follow(0, 1, dt, 70); assert.ok(v > 0 && v < 0.02); }
+  assert.equal(follow(0, 1, 1000, 70), follow(0, 1, 64, 70));
+  assert.deepEqual(ringAt(0), { r: 0, a: 1 });
+  assert.deepEqual(ringAt(1), { r: 1, a: 0 });
+  assert.equal(ringAt(0.5).r, 0.875);
+  assert.deepEqual(ringAt(2), ringAt(1));
+  assert.ok(isSoftware('ANGLE (Microsoft, Microsoft Basic Render Driver (0x0000008C) Direct3D11 vs_5_0 ps_5_0, D3D11)'));
+  assert.ok(isSoftware('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)'));
+  assert.ok(isSoftware('llvmpipe (LLVM 15.0.7, 256 bits)'));
+  assert.ok(!isSoftware('ANGLE (AMD, AMD Radeon (TM) Graphics (0x000015E7) Direct3D11 vs_5_0 ps_5_0, D3D11)'));
+  assert.ok(!isSoftware(''));
 });
