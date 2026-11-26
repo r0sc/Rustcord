@@ -204,11 +204,14 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
     let size = cx.theme.font.size;
     let tag = cosmetics::guild_tag(user, member);
     let chip_w = tag.map_or(0.0, |pg| cosmetics::tag_chip_width(ui, pg, size) + 4.0);
+    // Discord's role icon: after the name and tag, not on offline rows.
+    let role_icon = (!offline).then(|| super::messages::role_icon_of(ui, cx, guild_id, member)).flatten();
+    let icon_w = if role_icon.is_some() { 20.0 } else { 0.0 };
     // Plugin tags after the name get their room first: the name is cut with "…" instead.
     let plug_w = crate::plugins::people::member_row_width(ui, cx, guild_id, user, member);
     let style = fx.name_style.as_ref().filter(|_| !offline);
     // Body 15/500 (docs/DESIGN.md §10.4).
-    let g = cosmetics::name_galley(ui, &name, FontId::new(size, crate::theme::medium_family()), style, color, (max_w - chip_w - plug_w).max(24.0));
+    let g = cosmetics::name_galley(ui, &name, FontId::new(size, crate::theme::medium_family()), style, color, (max_w - chip_w - icon_w - plug_w).max(24.0));
     let status = user_status_text(cx.state, user.id).filter(|_| !offline);
     let tip = art_tip.or_else(|| status.as_ref().and_then(|st| status_tooltip(ui, st)));
     let under = ui.painter().add(Shape::Noop);
@@ -223,10 +226,14 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
             None => cosmetics::tag_chip(ui, cx.images, pg, at, size, chip_color),
         };
     }
+    if let Some(role) = &role_icon {
+        let at = pos2(name_rect.right() + 4.0 + chip_w, name_rect.center().y - 8.0);
+        super::messages::paint_role_icon(ui, cx.images, role, Rect::from_min_size(at, Vec2::splat(16.0)), chip_color);
+    }
     // Plugins: tags, platforms, voice, timeout after the name.
-    let plug_w = crate::plugins::people::member_row(ui, cx, guild_id, user, member, pos2(name_rect.right() + 4.0 + chip_w, name_rect.center().y), surface);
+    let plug_w = crate::plugins::people::member_row(ui, cx, guild_id, user, member, pos2(name_rect.right() + 4.0 + chip_w + icon_w, name_rect.center().y), surface);
     if let Some(np) = &fx.nameplate {
-        let end = text_end.max(name_rect.right() + 4.0 + chip_w + plug_w);
+        let end = text_end.max(name_rect.right() + 4.0 + chip_w + icon_w + plug_w);
         let (plate_rect, radius) = (row.shrink2(vec2(8.0, 1.0)), cx.theme.layout.corner_radius.round() as u8);
         let shape = cosmetics::nameplate(ui, cx.images, plate_rect, np, fx_anim, dim, radius, end);
         // A scrim keeps the name and status line off the plate: the art's bright spots (dark

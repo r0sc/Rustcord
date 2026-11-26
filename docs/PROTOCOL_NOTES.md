@@ -366,7 +366,7 @@ CDN base: `https://cdn.discordapp.com/`. Hashes beginning with `a_` are animated
 | User banner | `/banners/{user_id}/{banner}.{ext}` | png, jpg, webp, gif |
 | Default avatar | `/embed/avatars/{index}.png` | png only; `size` ignored |
 | Custom emoji | `/emojis/{emoji_id}.{ext}` | png, jpg, webp, gif |
-| Role icon | `/roles/{role_id}/icons/{icon}.{ext}` | png, jpg, webp |
+| Role icon | `/role-icons/{role_id}/{icon}.{ext}` | png, jpg, webp |
 | Sticker | `/stickers/{id}.png` (or `.json` for Lottie) | GIF stickers only via `https://media.discordapp.net/stickers/{id}.gif` |
 | Attachment | `/attachments/{channel_id}/{message_id}/{attachment_id}/{filename}` | As uploaded; signed |
 

@@ -53,6 +53,11 @@ pub fn guild_icon_hash_url(guild_id: Id, hash: &str, size: u32, animated: bool) 
     plain(hash).then(|| hashed_asset(&format!("icons/{guild_id}"), hash, size, animated))
 }
 
+/// A role's icon image (`Role::icon`), drawn at `size` px.
+pub fn role_icon_url(role_id: Id, hash: &str, size: u32) -> Option<String> {
+    plain(hash).then(|| hashed_asset(&format!("role-icons/{role_id}"), hash, size, false))
+}
+
 /// A guild profile's banner (`custom_banner_hash`), the tag card's band.
 pub fn discovery_splash_url(guild_id: Id, hash: &str, size: u32) -> Option<String> {
     plain(hash).then(|| format!("{CDN}/discovery-splashes/{guild_id}/{hash}.png?size={}", cdn_size(size)))
@@ -284,6 +289,13 @@ pub fn quest_video_url(quest_id: Id, url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn role_icon_urls() {
+        assert_eq!(role_icon_url(Id(7), "abc_1", 32).as_deref(), Some("https://cdn.discordapp.com/role-icons/7/abc_1.webp?size=32"));
+        assert_eq!(role_icon_url(Id(7), "a/b", 32), None);
+        assert_eq!(role_icon_url(Id(7), "..", 32), None);
+    }
 
     fn user(id: u64, avatar: Option<&str>, discriminator: Option<&str>) -> User {
         User {

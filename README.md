@@ -81,6 +81,7 @@ retakes the screenshots.</sub>
 - Polls: vote, remove your vote, see who voted and create one.
 - File uploads by button, drag and drop or paste. Emoji and GIF pickers and `@ # :`
   autocomplete.
+- Role icons next to names in chat and the member list, like Discord.
 - Typing indicator, pins, search and mark unread.
 - Threads: sidebar rows, the thread panel and creating threads.
 - Forum and media channels with posts, tags and creating a post.

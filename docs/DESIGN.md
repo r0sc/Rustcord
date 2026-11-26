@@ -926,7 +926,7 @@ fn tile_corners(t: f32) -> CornerRadius {
 - The Members toggle uses the icon-button on state.
 
 **Messages:**
-- Avatar 40, author body 15/600 in the role colour, time meta.
+- Avatar 40, author body 15/600 in the role colour, the server tag, the role icon 20 (the highest role with one; `ROLE_ICONS` servers; cozy only, like Discord), Bot, time meta.
 - ShowBadgesInChat (plugin): 16 `text_muted` badge glyphs in the decorations after the time (§8.7), 4 apart, tooltip with the badge title.
 - Body 15 with line height 21. 16 between groups. Compact mode unchanged.
 
@@ -1018,7 +1018,7 @@ fn tile_corners(t: f32) -> CornerRadius {
 - No em dash (members.rs:127 `group_row`).
 
 **Row:** 42 tall, avatar 32 with status, name body 15/500 in the role colour, line 2 meta
-`text_muted`.
+`text_muted`. Role icon 16 after the name and server tag, 4 px apart; not on offline rows.
 
 **Activities in rows (this fixes "no icons for some activities and music"):**
 

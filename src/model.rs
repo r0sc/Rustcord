@@ -354,6 +354,12 @@ pub struct Role {
     /// Anyone may @mention it (otherwise only with MENTION_EVERYONE).
     #[serde(deserialize_with = "null_default")]
     pub mentionable: bool,
+    /// Role icon image hash (`role-icons/{id}/{hash}`); servers with the `ROLE_ICONS` feature.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// Role icon as a unicode emoji, instead of an image.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unicode_emoji: Option<String>,
 }
 
 /// Custom (id = Some) or unicode (id = None, name = the emoji) emoji.
@@ -2082,6 +2088,14 @@ pub enum GatewayEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn role_icons_parse_and_stay_out_of_the_cache_when_unset() {
+        let r: Role = serde_json::from_str(r#"{"id":"1","name":"a","icon":"h","unicode_emoji":null}"#).unwrap();
+        assert_eq!((r.icon.as_deref(), r.unicode_emoji), (Some("h"), None));
+        let plain = serde_json::to_value(Role::default()).unwrap();
+        assert!(plain.get("icon").is_none() && plain.get("unicode_emoji").is_none());
+    }
 
     #[test]
     fn member_timeout_only_in_future() {

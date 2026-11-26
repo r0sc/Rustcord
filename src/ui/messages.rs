@@ -681,6 +681,29 @@ pub(super) fn message_member(state: &AppState, guild_id: Option<Id>, msg: &Messa
     msg.member.clone().or_else(|| state.find_member(guild_id?, msg.author.id).cloned())
 }
 
+/// The role icon beside a member's name (their highest role with one), unless it is an emoji
+/// the fonts can't draw.
+pub(super) fn role_icon_of(ui: &egui::Ui, cx: &UiCx<'_>, guild_id: Option<Id>, member: Option<&Member>) -> Option<crate::model::Role> {
+    let role = cx.state.role_icon(guild_id?, &member?.roles)?;
+    let has_image = role.icon.as_deref().is_some_and(|h| !h.is_empty());
+    let drawable = has_image || role.unicode_emoji.as_deref().is_some_and(|e| has_emoji_glyph(ui, e));
+    drawable.then(|| role.clone())
+}
+
+/// A role icon in `rect`: the image (nothing until it has loaded), else its emoji.
+pub(super) fn paint_role_icon(ui: &egui::Ui, images: &mut images::ImageCache, role: &crate::model::Role, rect: Rect, text: Color32) {
+    if let Some(hash) = role.icon.as_deref().filter(|h| !h.is_empty()) {
+        let px = (rect.width() * ui.ctx().pixels_per_point()).ceil() as u32;
+        if let Some(url) = cdn::role_icon_url(role.id, hash, px)
+            && let Some(tex) = images.get(ui.ctx(), &url, px, false)
+        {
+            Image::from_texture(tex).paint_at(ui, rect);
+        }
+    } else if let Some(emoji) = role.unicode_emoji.as_deref() {
+        ui.painter().text(rect.center(), Align2::CENTER_CENTER, emoji, FontId::proportional(rect.height() * 0.9), text);
+    }
+}
+
 /// The cached user behind a message author (me / `users`), else the author as stored: cosmetics
 /// (decoration, name style, guild tag) follow USER_UPDATE and "Apply to account" like the member
 /// and DM lists, not the copy saved with the message.
@@ -1182,7 +1205,8 @@ fn new_messages_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut M
 /// `indexing` (results panel with cached hits / its indexing state) and `detached` (the older
 /// half of the history shown as a jump window: "Jump to present" bar, highlighted target) and
 /// `online` (the composer without its "Offline" chip; README screenshots) and `mention` (QuickMention's
-/// click on the newest message not by me) and `badges` (public flags on the demo authors).
+/// click on the newest message not by me) `badges` (public flags on the demo authors) and
+/// `roleicons` / `roleicons-emoji` (the first hoisted role gets an image icon or an emoji, `ROLE_ICONS` on).
 pub(super) fn demo(flag: &str) -> bool {
     static FLAGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     FLAGS.get_or_init(|| std::env::var("RUSTCORD_MSG_DEMO").unwrap_or_default()).split(',').any(|f| f.trim() == flag)
@@ -1219,6 +1243,19 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>
             let member = message_member(cx.state, cx.state.channels.get(&ch).and_then(|c| c.guild_id), m);
             let name = cx.state.member_display_name(cx.state.channels.get(&ch).and_then(|c| c.guild_id), &m.author, member.as_ref());
             composer::queue_mention(ctx, ch, format!("@{name}"), format!("<@{}>", m.author.id.0));
+        }
+        if (demo("roleicons") || demo("roleicons-emoji"))
+            && let Some(g) = cx.state.channels.get(&ch).and_then(|c| c.guild_id)
+            && let Some(guild) = cx.state.guilds.iter_mut().find(|x| x.id == g)
+        {
+            guild.features.push("ROLE_ICONS".into());
+            if let Some(r) = guild.roles.iter_mut().find(|r| r.hoist) {
+                if demo("roleicons-emoji") {
+                    r.unicode_emoji = Some("🛠️".into());
+                } else {
+                    r.icon = Some("0demo0roleicon".into());
+                }
+            }
         }
         if demo("badges") && let Some(cm) = cx.state.messages.get_mut(&ch) {
             // ShowBadgesInChat: flags on the authors of the loaded messages.
@@ -1959,6 +1996,11 @@ fn author_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, user: &User, memb
         }
         if let Some(pg) = &tag {
             super::cosmetics::tag_button(ui, cx, pg, pal.size, h, pal.text);
+        }
+        if let Some(role) = role_icon_of(ui, cx, lc.guild_id, member) {
+            let (r, resp) = ui.allocate_exact_size(vec2(20.0, h), Sense::hover());
+            paint_role_icon(ui, cx.images, &role, Rect::from_center_size(r.center(), Vec2::splat(20.0)), pal.text);
+            resp.on_hover_text(&role.name);
         }
         if let Some(g) = bot_g {
             let (r, _) = ui.allocate_exact_size(vec2(g.size().x + 8.0, h), Sense::hover());

@@ -949,6 +949,14 @@ impl AppState {
             .map(|r| r.color)
     }
 
+    /// The icon a member's name carries: their highest role that has one (image or emoji), in
+    /// servers with the `ROLE_ICONS` feature. Ranked like `role_color`; not tied to its setting.
+    pub fn role_icon(&self, guild_id: Id, roles: &[Id]) -> Option<&Role> {
+        let g = self.guild(guild_id).filter(|g| g.features.iter().any(|f| f == "ROLE_ICONS"))?;
+        let set = |o: &Option<String>| o.as_deref().is_some_and(|s| !s.is_empty());
+        g.roles.iter().filter(|r| roles.contains(&r.id) && (set(&r.icon) || set(&r.unicode_emoji))).max_by_key(|r| (r.position, Reverse(r.id)))
+    }
+
     pub fn guild(&self, guild_id: Id) -> Option<&Guild> {
         self.guilds.iter().find(|g| g.id == guild_id)
     }
@@ -2429,6 +2437,22 @@ mod tests {
         s.apply_gateway(GatewayEvent::GuildRoleDelete { guild_id: G, role_id: ROLE_A }, None);
         assert_eq!(s.role_color(G, &[ROLE_A]), None);
         assert!(s.my_members[&G].roles.is_empty());
+    }
+
+    #[test]
+    fn role_icon_is_the_highest_role_that_has_one() {
+        let mut s = state();
+        let icon = |id, pos, img: Option<&str>, emoji: Option<&str>| Role { icon: img.map(Into::into), unicode_emoji: emoji.map(Into::into), ..role(Id(id), 0, pos, 0) };
+        for r in [icon(110, 9, None, None), icon(111, 5, Some("h"), None), icon(112, 3, None, Some("x")), icon(113, 3, Some(""), None), icon(114, 3, None, Some("y"))] {
+            s.apply_gateway(GatewayEvent::GuildRoleUpsert { guild_id: G, role: r }, None);
+        }
+        let all = [Id(110), Id(111), Id(112), Id(113), Id(114)];
+        assert!(s.role_icon(G, &all).is_none(), "needs ROLE_ICONS");
+        s.guilds.iter_mut().find(|g| g.id == G).unwrap().features.push("ROLE_ICONS".into());
+        assert_eq!(s.role_icon(G, &all).map(|r| r.id), Some(Id(111)), "above a higher role without one");
+        assert_eq!(s.role_icon(G, &[Id(110), Id(112)]).map(|r| r.id), Some(Id(112)), "a unicode-only role counts");
+        assert_eq!(s.role_icon(G, &[Id(113)]).map(|r| r.id), None, "an empty hash is none");
+        assert_eq!(s.role_icon(G, &[Id(112), Id(114)]).map(|r| r.id), Some(Id(112)), "equal positions: the lower id");
     }
 
     #[test]

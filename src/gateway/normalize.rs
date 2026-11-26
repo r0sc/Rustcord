@@ -340,7 +340,7 @@ impl GuildWire {
             g.rules_channel_id = p.rules_channel_id;
         }
         // Only what the UI reads: a big guild lists ~40 features.
-        g.features.retain(|f| matches!(f.as_str(), "VERIFIED" | "PARTNERED"));
+        g.features.retain(|f| matches!(f.as_str(), "VERIFIED" | "PARTNERED" | "ROLE_ICONS"));
         // Channels and voice states inside guild dispatches may lack guild_id.
         for c in &mut g.channels {
             c.guild_id = Some(g.id);
@@ -1161,10 +1161,10 @@ mod tests {
         let r = ready_of(
             r#"{"t":"READY","s":1,"op":0,"d":{"user":{"id":"1","username":"me"},"session_id":"s",
             "guilds":[{"id":"10","premium_subscription_count":9,
-              "properties":{"id":"10","name":"N","features":["VERIFIED","NEWS","COMMUNITY"],"premium_tier":2}}]}}"#,
+              "properties":{"id":"10","name":"N","features":["VERIFIED","NEWS","COMMUNITY","ROLE_ICONS"],"premium_tier":2}}]}}"#,
         );
         let g = &r.data.guilds[0];
-        assert_eq!((g.features.as_slice(), g.premium_tier, g.premium_subscription_count), (&["VERIFIED".to_owned()][..], 2, 9));
+        assert_eq!((g.features.as_slice(), g.premium_tier, g.premium_subscription_count), (&["VERIFIED".to_owned(), "ROLE_ICONS".to_owned()][..], 2, 9));
         let out = ev("GUILD_UPDATE", r#"{"id":"10","name":"N","features":["PARTNERED","BANNER"],"premium_tier":1,"premium_subscription_count":3}"#);
         let [GatewayEvent::GuildUpdate(g)] = &out[..] else { panic!("{out:?}") };
         assert_eq!((g.features.as_slice(), g.premium_tier, g.premium_subscription_count), (&["PARTNERED".to_owned()][..], 1, 3));
