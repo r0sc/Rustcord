@@ -166,7 +166,7 @@ impl Page {
             Page::GameOverlay => ("Game overlay", "overlay", "overlay in-game voice widget notifications corner position avatar names"),
             Page::Plugins => ("Plugins", "plugins", "vencord"),
             Page::LocalProfile => ("Local profile", "local-profile", "local banner avatar this device"),
-            Page::ThemeEditor => ("Theme editor", "theme-editor", "customize theme colours colors import export"),
+            Page::ThemeEditor => ("Theme editor", "theme-editor", "customize theme colours colors import export accent primary"),
         }
     }
 
@@ -217,7 +217,7 @@ impl Page {
             Page::Advanced => &["Hardware acceleration"],
             Page::GameOverlay => &["Enable in-game overlay", "Position", "Avatar size", "Show names", "Show users"],
             Page::ThemeEditor => &[
-                "Base", "Dark", "Light", "Gradient", "Background", "Sidebar", "Server bar", "Surface", "Text", "Muted text", "Accent", "Text on accent", "Message hover",
+                "Base", "Dark", "Light", "Gradient", "Background", "Sidebar", "Server bar", "Surface", "Text", "Muted text", "Primary", "Text on primary", "Message hover",
                 "Mention highlight", "Links", "Danger", "Code background", "UI font", "Monospace font", "Font size", "Corner radius", "Gradient angle", "Panel opacity",
             ],
             _ => &[],
@@ -910,6 +910,7 @@ mod tests {
         assert_eq!(hits("discord font"), [Page::Appearance]);
         assert!(hits("compact").contains(&Page::Appearance), "Message Display");
         assert!(hits("screen capture").contains(&Page::StreamerMode));
+        assert_eq!(hits("primary"), [Page::ThemeEditor]);
         assert!(hits("open inbox").contains(&Page::Keybinds), "a keybind action");
         assert!(hits("spoiler").contains(&Page::Chat), "a synced option's label");
         assert!(hits("developer").contains(&Page::Advanced));

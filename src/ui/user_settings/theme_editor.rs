@@ -101,8 +101,8 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
             ("Surface", &mut c.surface),
             ("Text", &mut c.text),
             ("Muted text", &mut c.text_muted),
-            ("Accent", &mut c.accent),
-            ("Text on accent", &mut c.accent_text),
+            ("Primary", &mut c.accent),
+            ("Text on primary", &mut c.accent_text),
             ("Message hover", &mut c.message_hover),
             ("Mention highlight", &mut c.mention_highlight),
             ("Links", &mut c.link),
@@ -206,7 +206,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     });
     if unsaved {
         ui.horizontal(|ui| {
-            // Straw: it needs attention, with its word (never the accent).
+            // Amber: it needs attention, with its word (never the primary).
             let hint = RichText::new("Unsaved changes").size(cx.theme.font.size - 3.0).color(cx.theme.tokens().attention);
             ui.label(hint).on_hover_text("Kept until restart or until you pick another theme; use Save as… to keep them.");
             if ui.small_button("Revert").clicked() {
@@ -379,8 +379,8 @@ mod tests {
 
     #[test]
     fn fits_the_narrowest_settings_page() {
-        // 720 px window - 226 nav column - 40 page margin - 60 tools column (`settings_layer`).
-        const W: f32 = 394.0;
+        // 720 px window - 2 x 12 inset - 208 nav column - 2 x 40 page margin (`settings_layer`).
+        const W: f32 = 408.0;
         let ctx = egui::Context::default();
         let mut applier = crate::theme::ThemeApplier::default();
         let (mut state, mut view, mut settings, mut theme) = (Default::default(), ViewState::default(), Default::default(), Theme::nightshade());
