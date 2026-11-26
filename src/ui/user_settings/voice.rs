@@ -251,8 +251,8 @@ fn sensitivity(ui: &mut egui::Ui, pal: &Pal, db: &mut f32, level: Option<f32>) -
     }
     let p = ui.painter();
     // Below the threshold amber, above it green (transmitting), like Discord's bar.
-    p.rect_filled(Rect::from_min_max(track.min, egui::pos2(x_of(*db), track.max.y)), 4.0, egui::Color32::from_rgb(0xe0, 0xa2, 0x1b).gamma_multiply(0.7));
-    p.rect_filled(Rect::from_min_max(egui::pos2(x_of(*db), track.min.y), track.max), 4.0, egui::Color32::from_rgb(0x3f, 0xb9, 0x50).gamma_multiply(0.7));
+    p.rect_filled(Rect::from_min_max(track.min, egui::pos2(x_of(*db), track.max.y)), 4.0, pal.tk.attention.gamma_multiply(0.7));
+    p.rect_filled(Rect::from_min_max(egui::pos2(x_of(*db), track.min.y), track.max), 4.0, pal.tk.positive.gamma_multiply(0.7));
     if let Some(l) = level {
         let lx = egui::lerp(track.left()..=track.right(), l.clamp(0.0, 1.0));
         p.rect_filled(Rect::from_min_max(track.min, egui::pos2(lx, track.max.y)), 4.0, pal.text.gamma_multiply(0.5));

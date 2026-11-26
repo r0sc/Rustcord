@@ -619,7 +619,7 @@ mod tests {
         let page: QuestsPage = serde_json::from_str(crate::ui::quests::DEMO_JSON).unwrap();
         assert_eq!(page.quests.len(), 6);
         let q = &page.quests[0];
-        assert_eq!((q.id, q.config.messages.quest_name.as_str()), (Id(101), "Forge three blades"));
+        assert_eq!((q.id, q.config.messages.quest_name.as_str()), (Id(101), "Finish three sketches"));
         assert_eq!(q.config.rewards_config.rewards[0].orb_quantity, Some(700));
         // Unknown fields, nulls, a bad quest (skipped) and one without task_config_v2.
         let odd = r#"{"quests":[{"id":"1","config":{"features":null,"new_thing":{"x":1},"messages":{"quest_name":null}},"user_status":null,"preview":null},

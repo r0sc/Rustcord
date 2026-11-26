@@ -288,13 +288,13 @@ fn column(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, copy: &ScreenCopy, busy: 
         ui.add(egui::Image::new(&tex).fit_to_exact_size(Vec2::splat(56.0)));
     }
     ui.add_space(24.0);
-    ui.add(egui::Label::new(RichText::new(&copy.title).font(semibold(pal.title())).color(pal.text)).wrap());
+    ui.add(egui::Label::new(pal.display_text(&copy.title)).wrap());
     ui.add_space(16.0);
     if let Some(t) = copy.bar {
         let (rect, _) = ui.allocate_exact_size(vec2(320.0f32.min(ui.available_width()), 4.0), Sense::hover());
         ui.painter().rect_filled(rect, 2.0, pal.tk.edge.gamma_multiply(0.5));
         if t > 0.0 {
-            ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(rect.width() * t, 4.0)), 2.0, pal.text);
+            ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(rect.width() * t, 4.0)), 2.0, pal.accent);
         }
         ui.add_space(8.0);
     }

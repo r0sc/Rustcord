@@ -837,7 +837,7 @@ fn error_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
 fn primary_button(ui: &mut egui::Ui, cx: &UiCx<'_>, label: &str, enabled: bool) -> egui::Response {
     let c = &cx.theme.colors;
     let busy = cx.view.login_busy;
-    // A faded accent button reads as muddy dark-on-rust; disabled gets the neutral fill instead.
+    // A faded accent button reads as a faded purple; disabled gets the neutral fill instead.
     let neutral = cx.theme.tokens().selected;
     let (fill, text) = if enabled || busy { (c.accent.to_color32(), c.accent_text) } else { (neutral, c.text_muted) };
     let label = RichText::new(label).font(FontId::new(cx.theme.font.size - 1.0, crate::theme::medium_family())).color(text.to_color32());

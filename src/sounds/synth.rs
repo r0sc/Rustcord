@@ -1,6 +1,6 @@
 //! The recipes of Rustcord's sounds (docs/DESIGN.md 7.1): additive sine partials with an eased
 //! attack and an exponential decay, mono at 48 kHz, rendered on demand in a few milliseconds.
-//! Bell for chat, rings and streams; anvil (bell plus a soft hammer tick) for voice presence;
+//! Bell for chat, rings and streams; knock (bell plus a soft hammer tick) for voice presence;
 //! click for switches. Pitches are D major pentatonic.
 
 use super::Sound;
@@ -18,7 +18,7 @@ struct Timbre {
 }
 
 const BELL: Timbre = Timbre { partials: &[(1.0, 1.0, 1.0), (2.0, 0.30, 0.6), (2.76, 0.18, 0.45), (5.40, 0.05, 0.25)], attack_ms: 3.0, tick: 0.0 };
-const ANVIL: Timbre = Timbre { partials: &[(1.0, 1.0, 1.0), (2.0, 0.45, 0.7), (3.0, 0.20, 0.5), (4.16, 0.10, 0.3)], attack_ms: 2.0, tick: 0.25 };
+const KNOCK: Timbre = Timbre { partials: &[(1.0, 1.0, 1.0), (2.0, 0.45, 0.7), (3.0, 0.20, 0.5), (4.16, 0.10, 0.3)], attack_ms: 2.0, tick: 0.25 };
 const CLICK: Timbre = Timbre { partials: &[(1.0, 1.0, 1.0), (2.0, 0.25, 0.5)], attack_ms: 1.5, tick: 0.0 };
 
 const D4: f32 = 293.66;
@@ -60,14 +60,14 @@ fn recipe(sound: Sound) -> Recipe {
             -4.0,
         ),
         Sound::OutgoingRing => (
-            &ANVIL,
+            &KNOCK,
             vec![n(0.0, A4, 350.0, 0.6), n(0.0, D5, 350.0, 0.6), n(450.0, A4, 600.0, 0.6), n(450.0, D5, 600.0, 0.6)],
             Some(3000.0),
             -10.0,
         ),
-        Sound::Join => (&ANVIL, vec![n(0.0, D5, 80.0, 0.8), n(85.0, A5, 160.0, 1.0)], None, -8.0),
-        Sound::Leave => (&ANVIL, vec![n(0.0, A5, 60.0, 0.9), n(60.0, D5, 100.0, 1.0)], None, -10.0),
-        Sound::Disconnect => (&ANVIL, vec![n(0.0, A4, 80.0, 0.8), n(70.0, FS4, 80.0, 0.8), n(140.0, D4, 260.0, 1.0)], None, -8.0),
+        Sound::Join => (&KNOCK, vec![n(0.0, D5, 80.0, 0.8), n(85.0, A5, 160.0, 1.0)], None, -8.0),
+        Sound::Leave => (&KNOCK, vec![n(0.0, A5, 60.0, 0.9), n(60.0, D5, 100.0, 1.0)], None, -10.0),
+        Sound::Disconnect => (&KNOCK, vec![n(0.0, A4, 80.0, 0.8), n(70.0, FS4, 80.0, 0.8), n(140.0, D4, 260.0, 1.0)], None, -8.0),
         Sound::Mute => (&CLICK, vec![Note(0.0, A5, D5, 35.0, 1.0)], None, -12.0),
         Sound::Unmute => (&CLICK, vec![Note(0.0, D5, A5, 45.0, 1.0)], None, -12.0),
         Sound::Deafen => (&CLICK, vec![n(0.0, E5, 40.0, 0.9), n(45.0, B4, 70.0, 1.0)], None, -10.0),
