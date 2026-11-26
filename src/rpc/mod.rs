@@ -945,6 +945,15 @@ mod tests {
         for g in &mut held {
             assert_eq!(read_frame(g).await.op, frame::CLOSE);
         }
-        assert!(pipe::connect(&base, 0).await.is_err(), "the pipe is gone");
+        // The listening instance closes once its cancelled connect completes on the server's runtime, a moment later under load.
+        let gone = async {
+            while pipe::connect(&base, 0).await.is_ok() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        };
+        assert!(
+            tokio::time::timeout(Duration::from_secs(5), gone).await.is_ok(),
+            "the pipe is gone"
+        );
     }
 }
