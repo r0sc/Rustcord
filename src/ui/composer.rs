@@ -356,6 +356,11 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
     });
     let resp = shown.inner;
     let frame_rect = shown.response.rect;
+    if !panel {
+        // Toasts sit above it (ui/mod.rs `show_toasts`).
+        let pass = ctx.cumulative_pass_nr();
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("rc_composer_top"), (frame_rect.top(), pass)));
+    }
     super::messages::sheen(ui.painter(), frame_rect, f32::from(r), &pal.tk);
     // The popup and the row it accepted (Enter / Tab this pass, or a click).
     let mut ac_open = false;

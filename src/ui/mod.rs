@@ -754,8 +754,11 @@ impl RustcordApp {
             Screen::Login => 0.0,
         };
         let right = right_column + 16.0;
+        // 8 px above the composer's top when it is on screen this pass, else 80 px from the bottom.
+        let pass = ctx.cumulative_pass_nr();
+        let above = ctx.data(|d| d.get_temp::<(f32, u64)>(egui::Id::unique("rc_composer_top"))).filter(|c| c.1 == pass).map(|c| ctx.content_rect().bottom() - c.0 + 8.0);
         egui::Area::new(egui::Id::unique("toasts"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-right, -80.0))
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-right, -above.unwrap_or(80.0)))
             .order(egui::Order::Foreground)
             .interactable(false)
             .fade_in(false)
