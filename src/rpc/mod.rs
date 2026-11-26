@@ -29,6 +29,8 @@ pub type ConnId = u64;
 const THROTTLE: Duration = Duration::from_secs(4);
 /// The ninth game is turned away (CLOSE 4002).
 const MAX_CONNS: usize = 8;
+/// A game's image URLs wait this long for the media proxy, then go without.
+pub const IMAGE_WAIT: Duration = Duration::from_secs(5);
 
 /// Who READY says is logged in.
 #[derive(Clone, Debug, PartialEq)]
@@ -79,6 +81,13 @@ pub enum RpcCommand {
     Enable(bool),
 }
 
+/// UI -> backend (`Command::RpcRequest`): the requests the game connection causes.
+#[derive(Debug)]
+pub enum RpcRequest {
+    /// The newest game's image URLs (1-2) -> `RpcEvent::Images`.
+    ProxyImages { app: Id, urls: Vec<String> },
+}
+
 /// Server -> UI (`BackendEvent::Rpc`).
 #[derive(Debug)]
 pub enum RpcEvent {
@@ -103,6 +112,9 @@ pub enum RpcEvent {
     },
     /// A `/applications/public` answer (from the backend, not the server): None = unknown.
     AppName(Id, Option<String>),
+    /// The answer to `ProxyImages` (from the backend): each asked URL with its `mp:` path, None =
+    /// failed, so that image goes without.
+    Images(Id, Vec<(String, Option<String>)>),
 }
 
 /// One game's connection as the UI knows it.
@@ -128,6 +140,10 @@ pub struct RpcState {
     pub conns: HashMap<ConnId, ConnInfo>,
     /// Application names from `/applications/public`; None: asked, not known (or not answered).
     names: HashMap<Id, Option<String>>,
+    /// Image URLs given to the media proxy, per application (§3.4).
+    proxy_asked: HashSet<(Id, String)>,
+    /// The proxy's answers: the path, None = failed.
+    proxied: HashMap<(Id, String), Option<String>>,
 }
 
 impl RpcState {
@@ -161,7 +177,27 @@ impl RpcState {
             RpcEvent::AppName(id, name) => {
                 self.names.insert(id, name);
             }
+            RpcEvent::Images(app, found) => self.proxied.extend(found.into_iter().map(|(url, path)| ((app, url), path))),
         }
+    }
+
+    /// The newest game's image URLs that were never asked about, now marked as asked: the
+    /// caller sends the one request (a URL goes to the proxy once per session).
+    pub fn proxy_wanted(&mut self) -> Option<(Id, Vec<String>)> {
+        let (app, a) = self.newest()?;
+        let new: Vec<String> = a.image_urls().into_iter().filter(|u| !self.proxy_asked.contains(&(app, (*u).to_owned()))).map(str::to_owned).collect();
+        self.proxy_asked.extend(new.iter().map(|u| (app, u.clone())));
+        (!new.is_empty()).then_some((app, new))
+    }
+
+    /// `url`'s `mp:` path as the proxy gave it.
+    pub fn proxy_path(&self, app: Id, url: &str) -> Option<String> {
+        self.proxied.get(&(app, url.to_owned())).cloned().flatten()
+    }
+
+    /// False while the newest game's images wait for the proxy: its op 3 change is held.
+    pub fn images_ready(&self) -> bool {
+        self.newest().is_none_or(|(app, a)| a.image_urls().iter().all(|u| self.proxied.contains_key(&(app, (*u).to_owned()))))
     }
 
     /// What survives a logout: the server's state, not the session's games.

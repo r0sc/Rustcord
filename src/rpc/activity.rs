@@ -144,6 +144,22 @@ impl Presence {
 }
 
 impl Activity {
+    /// The https image URLs (large, small) that need the media proxy before op 3.
+    pub fn image_urls(&self) -> Vec<&str> {
+        let urls = [&self.large_image, &self.small_image].into_iter().flatten().map(String::as_str).filter(|s| s.starts_with("https://"));
+        urls.collect()
+    }
+
+    /// Each https image becomes `mp:<path>` as `path` gives it, or goes when it has none.
+    pub fn proxied(mut self, path: impl Fn(&str) -> Option<String>) -> Self {
+        for img in [&mut self.large_image, &mut self.small_image] {
+            if let Some(url) = img.as_deref().filter(|s| s.starts_with("https://")) {
+                *img = path(url).map(|p| format!("mp:{p}"));
+            }
+        }
+        self
+    }
+
     /// `INSTANCE`; `JOIN` with a join secret and a party id; the privacy flags with `JOIN`, a
     /// public party and the matching setting. Unverified against Discord: RPC_DESIGN §10.1.
     pub fn flags(&self, p: Privacy) -> u32 {
@@ -260,11 +276,13 @@ fn https(v: Option<String>, field: &str, max: usize) -> Result<Option<String>, S
     }
 }
 
-/// An asset key or `mp:…` as is. Anything with a scheme is dropped for now.
-// shortcut: https:// images are dropped; the media-proxy path (RPC_DESIGN §3.4) is the next slice.
+/// An asset key, `mp:…` or an https URL (proxied before it goes out, §3.4) as is; any other
+/// scheme is dropped.
 fn image(v: Option<String>) -> Option<String> {
-    v.map(|s| s.trim().to_owned())
-        .filter(|s| !s.is_empty() && s.len() <= 256 && (s.starts_with("mp:") || !s.contains("://")))
+    v.map(|s| s.trim().to_owned()).filter(|s| {
+        let url = s.starts_with("https://") && Url::parse(s).is_ok_and(|u| u.host().is_some());
+        !s.is_empty() && s.len() <= 256 && (url || s.starts_with("mp:") || !s.contains("://"))
+    })
 }
 
 /// Seconds (below 10^11) or ms to ms; 0 is none.
@@ -446,10 +464,10 @@ mod tests {
 
     #[test]
     fn limits_and_odd_values() {
-        // Short texts, zero times, scheme images and the game's name go; seconds become ms.
+        // Short texts, zero times, other schemes and the game's name go; seconds become ms.
         let a = ok(
             json!({"details":"a","state":"  ok  ","timestamps":{"start":0,"end":99_999_999_999u64},
-            "assets":{"large_image":"https://x.example/a.png","small_image":"mp:external/abc","large_text":""}}),
+            "assets":{"large_image":"ftp://x.example/a.png","small_image":"mp:external/abc","large_text":""}}),
         );
         let j = a.op3(Id(1), "G", ON, true);
         assert_eq!((j.get("details"), &j["state"]), (None, &json!("ok")));
@@ -508,6 +526,21 @@ mod tests {
             ok(json!({})).op3(Id(1), "G", ON, true),
             json!({"type":0,"name":"G","application_id":"1","flags":0})
         );
+    }
+
+    #[test]
+    fn https_images_are_kept_for_the_proxy_and_become_mp_paths() {
+        let long = format!("https://x.example/{}", "a".repeat(250));
+        let a = ok(json!({"assets":{"large_image":" https://x.example/a.png ","small_image":"https://y.example/b.png"}}));
+        assert_eq!(a.image_urls(), ["https://x.example/a.png", "https://y.example/b.png"]);
+        let b = a.proxied(|u| u.contains("x.example").then(|| "app/https/x.example/a.png".to_owned()));
+        assert_eq!(b.op3(Id(1), "G", ON, true)["assets"], json!({"large_image":"mp:app/https/x.example/a.png"}), "the failed one goes");
+        assert!(b.image_urls().is_empty());
+        let c = ok(json!({"assets":{"large_image":"key","small_image":"mp:x/y"}}));
+        assert!(c.image_urls().is_empty() && c.clone().proxied(|_| None) == c, "keys and mp: paths are not proxied");
+        for bad in [long.as_str(), "https://", "http://x.example/a.png"] {
+            assert!(ok(json!({"assets":{"large_image":bad}})).image_urls().is_empty(), "{bad}");
+        }
     }
 
     #[test]

@@ -24,6 +24,7 @@ pub(crate) use scan::{image as process_image, processes};
 use crate::api::cdn;
 use crate::backend::{Command, CommandSender, ConnState};
 use crate::model::{Activity, Id, RichPresence};
+use crate::rpc::RpcRequest;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -241,7 +242,9 @@ fn my_rpc(state: &AppState) -> Option<crate::rpc::Presence> {
     // "Friends can join my activities" (8.1) and "Voice channel members can join" (8.2), default on.
     let allowed = |field| state.account.settings.proto_varint(8, &[field], true).is_none_or(|v| v != 0);
     let privacy = crate::rpc::Privacy { friends: allowed(1), voice: allowed(2) };
-    Some(crate::rpc::Presence { app, name, privacy, activity: Box::new(activity.clone()) })
+    // https images are what the media proxy answered; those it has not (yet) are left out.
+    let activity = activity.clone().proxied(|url| state.rpc.proxy_path(app, url));
+    Some(crate::rpc::Presence { app, name, privacy, activity: Box::new(activity) })
 }
 
 /// Someone's activity as rows and cards show it: their presence's; mine falls back to my game's
@@ -315,11 +318,15 @@ pub fn logic(state: &mut AppState, settings: &crate::config::Settings, cmd: &Com
     {
         cmd.send(Command::Activity(ActivityCommand::FetchAppName(app)));
     }
+    // Its https images go to the media proxy once; the op 3 change waits for the answer.
+    if let Some((app, urls)) = state.rpc.proxy_wanted() {
+        cmd.send(Command::RpcRequest(RpcRequest::ProxyImages { app, urls }));
+    }
     // The game's own presence replaces my detected game of the same application, or one found by name only (no application id) when it plays.
     let rpc = my_rpc(state);
     let replaced = |g: &GameActivity| rpc.as_ref().is_some_and(|r| g.application_id == Some(r.app) || (g.application_id.is_none() && r.activity.kind == 0));
     let want = (state.activity.detected.clone().filter(|g| sharing(state) && !replaced(g)), state.activity.app.clone(), rpc.clone());
-    if want != state.activity.sent {
+    if state.rpc.images_ready() && want != state.activity.sent {
         state.activity.sent = want.clone();
         cmd.send(Command::Activity(ActivityCommand::SetActivities { game: want.0, app: want.1, rpc: want.2 }));
     }
@@ -461,6 +468,55 @@ mod tests {
         s.me = None;
         logic(&mut s, &cfg, &cmd);
         assert_eq!(sent(&mut rx), ["Rpc(Me(None))"]);
+    }
+
+    #[test]
+    fn a_games_image_urls_wait_for_the_media_proxy() {
+        use crate::rpc::{RpcEvent, test_presence};
+        use serde_json::json;
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let cmd = CommandSender(tx);
+        let mut s = AppState::default();
+        let cfg = crate::config::Settings { rustcord_presence: crate::config::RustcordPresence { enabled: false, ..Default::default() }, ..Default::default() };
+        s.me = Some(crate::model::User { id: Id(1), ..Default::default() });
+        s.conn = ConnState::Connected;
+        s.rpc.apply(RpcEvent::AppName(Id(77), Some("Halo".into())));
+        let game = |large: &str| test_presence(Id(77), "Halo", json!({"state": "In a match", "assets": {"large_image": large, "small_image": "key"}})).activity;
+        let (a, b) = ("https://x.example/a.png", "https://x.example/b.png");
+        let at = std::time::Instant::now();
+        let set_sent = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<Command>| sent(rx).into_iter().filter(|c| c.contains("SetActivities") || c.contains("ProxyImages")).collect::<Vec<_>>();
+        logic(&mut s, &cfg, &cmd);
+        sent(&mut rx);
+        s.rpc.apply(RpcEvent::Connected { conn: 1, app: Id(77) });
+        s.rpc.apply(RpcEvent::Activity { conn: 1, activity: Some(game(a)), at });
+        logic(&mut s, &cfg, &cmd);
+        logic(&mut s, &cfg, &cmd);
+        let out = set_sent(&mut rx);
+        assert_eq!(out.len(), 1, "one request, and the op 3 change is held until it is answered: {out:?}");
+        assert!(out[0].contains("ProxyImages") && out[0].contains(a), "{out:?}");
+        assert!(s.activity.sent.2.is_none());
+        // The answer: op 3 carries the mp: path, the key stays.
+        s.rpc.apply(RpcEvent::Images(Id(77), vec![(a.into(), Some("77/https/x.example/a.png".into()))]));
+        logic(&mut s, &cfg, &cmd);
+        let out = set_sent(&mut rx);
+        assert!(out.len() == 1 && out[0].contains("SetActivities") && out[0].contains("mp:77/https/x.example/a.png") && !out[0].contains("https://x.example"), "{out:?}");
+        // The same URL is not asked again; another one is, once, and is held.
+        s.rpc.apply(RpcEvent::Activity { conn: 1, activity: Some(game(a)), at: at + std::time::Duration::from_secs(1) });
+        logic(&mut s, &cfg, &cmd);
+        assert!(set_sent(&mut rx).is_empty());
+        s.rpc.apply(RpcEvent::Activity { conn: 1, activity: Some(game(b)), at: at + std::time::Duration::from_secs(5) });
+        logic(&mut s, &cfg, &cmd);
+        logic(&mut s, &cfg, &cmd);
+        let out = set_sent(&mut rx);
+        assert!(out.len() == 1 && out[0].contains("ProxyImages") && out[0].contains(b), "{out:?}");
+        // A failed request: the image goes, the rest of the activity is sent.
+        s.rpc.apply(RpcEvent::Images(Id(77), vec![(b.into(), None)]));
+        logic(&mut s, &cfg, &cmd);
+        let out = set_sent(&mut rx);
+        assert!(out.len() == 1 && out[0].contains("SetActivities") && out[0].contains("In a match") && !out[0].contains("x.example") && !out[0].contains("mp:"), "{out:?}");
+        // Logging out forgets the answers.
+        s.rpc = std::mem::take(&mut s.rpc).after_logout();
+        assert!(s.rpc.proxy_path(Id(77), a).is_none());
     }
 
     #[test]

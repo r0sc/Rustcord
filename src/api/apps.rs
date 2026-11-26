@@ -42,6 +42,27 @@ impl ApiClient {
     pub async fn public_apps(&self, ids: &[Id]) -> Result<Vec<PublicApp>, ApiError> {
         self.send_json(Method::GET, public_apps_url(ids), None).await
     }
+
+    /// `POST /applications/{app}/external-assets {"urls":[…]}` (1-2 https URLs): the media-proxy
+    /// path of each one it accepted, as `(url, path)`. A path that is not plain is left out.
+    pub async fn external_assets(&self, app: Id, urls: &[String]) -> Result<Vec<(String, String)>, ApiError> {
+        let url = Self::url(&["applications", &app.to_string(), "external-assets"]);
+        let answer: Vec<ExternalAsset> = self.send_json(Method::POST, url, Some(serde_json::json!({ "urls": urls }))).await?;
+        Ok(proxied_paths(answer, urls))
+    }
+}
+
+#[derive(Deserialize)]
+struct ExternalAsset {
+    url: String,
+    external_asset_path: Option<String>,
+}
+
+/// What Discord answers for the asked `urls`, minus anything that is not a plain relative path
+/// (it becomes `mp:<path>` in my presence, so it is Discord's text only after this check).
+fn proxied_paths(answer: Vec<ExternalAsset>, asked: &[String]) -> Vec<(String, String)> {
+    let plain = |p: &str| !p.is_empty() && p.len() <= 512 && p.bytes().all(|b| b.is_ascii_graphic()) && !p.starts_with('/') && !p.contains("..");
+    answer.into_iter().filter_map(|a| Some((a.url, a.external_asset_path?))).filter(|(u, p)| asked.contains(u) && plain(p)).collect()
 }
 
 /// None for a session id that is not plain letters and digits (it comes from other users).
@@ -80,5 +101,20 @@ mod tests {
         }
         assert_eq!(button_urls(br#"{"button_urls":["https://a.example",5,"https://b.example","https://c.example"]}"#), ["https://a.example", "https://b.example"]);
         assert!(button_urls(b"").is_empty() && button_urls(b"{}").is_empty());
+    }
+
+    #[test]
+    fn proxy_answers_are_checked() {
+        let asked = ["https://a.example/1.png".to_owned(), "https://a.example/2.png".to_owned()];
+        let answer = |url: &str, p: Option<&str>| vec![ExternalAsset { url: url.into(), external_asset_path: p.map(Into::into) }];
+        let ok = proxied_paths(answer("https://a.example/1.png", Some("app/https/a.example/1.png")), &asked);
+        assert_eq!(ok, [("https://a.example/1.png".to_owned(), "app/https/a.example/1.png".to_owned())]);
+        let long = "x".repeat(513);
+        for bad in [None, Some(""), Some("/abs"), Some("a/../b"), Some("a b"), Some("a\nb"), Some("é"), Some(long.as_str())] {
+            assert!(proxied_paths(answer("https://a.example/2.png", bad), &asked).is_empty(), "{bad:?}");
+        }
+        assert!(proxied_paths(answer("https://other.example/x", Some("p/x")), &asked).is_empty(), "an answer for a URL nobody asked");
+        let wire: Vec<ExternalAsset> = serde_json::from_str(r#"[{"url":"u","external_asset_path":"p"},{"url":"v","external_asset_path":null}]"#).unwrap();
+        assert_eq!((wire[0].external_asset_path.as_deref(), wire[1].external_asset_path.as_deref()), (Some("p"), None));
     }
 }

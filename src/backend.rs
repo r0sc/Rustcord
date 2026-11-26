@@ -98,6 +98,9 @@ pub enum Command {
     Activity(crate::activity::ActivityCommand),
     /// The game connection (`crate::rpc`): the setting and the logged-in user.
     Rpc(crate::rpc::RpcCommand),
+    /// What the game connection asks of Discord (image proxy; joining); answered with
+    /// `BackendEvent::Rpc` or `ActionFailed`.
+    RpcRequest(crate::rpc::RpcRequest),
     /// Quests list, accept, claim, reward code, video progress (`crate::quests`); answered
     /// with `BackendEvent::Quests`. docs/QUESTS_NOTES.md.
     Quests(crate::quests::QuestCommand),
@@ -2298,6 +2301,25 @@ fn handle_activity(cmd: crate::activity::ActivityCommand, session: &mut Option<S
     }
 }
 
+/// `Command::RpcRequest`: through the limiter, one request per game URL set or per click.
+fn handle_rpc(req: crate::rpc::RpcRequest, session: &mut Option<Session>, sink: &EventSink) {
+    use crate::rpc::{RpcEvent, RpcRequest as R};
+    match req {
+        // A failed or late answer still answers (None per URL): the held op 3 goes without the pictures.
+        R::ProxyImages { app, urls } => {
+            let asked = urls.clone();
+            let call = move |api: Arc<ApiClient>| async move {
+                tokio::time::timeout(crate::rpc::IMAGE_WAIT, api.external_assets(app, &asked)).await.unwrap_or_else(|_| Err(ApiError::Network("timed out".into())))
+            };
+            rest(session, sink, call, move |r| {
+                let found = r.map_err(|e| eprintln!("rustcord: game images: {e}")).unwrap_or_default();
+                let path = |u: &String| found.iter().find(|f| f.0 == *u).map(|f| f.1.clone());
+                Some(BackendEvent::Rpc(RpcEvent::Images(app, urls.iter().map(|u| (u.clone(), path(u))).collect())))
+            });
+        }
+    }
+}
+
 /// `Command::Quests` (docs/QUESTS_NOTES.md): one request per click, the page open's fetch, or one
 /// video progress send per 10 s of real play. Logged out: every one is answered "Not connected".
 /// Errors are already quest copy (`api::quests`: captcha, 401 without logout).
@@ -2718,6 +2740,7 @@ async fn run(
             Command::Account(c) => handle_account(c, &mut session, &sink, None),
             Command::Activity(c) => handle_activity(c, &mut session, &sink, &activity),
             Command::Rpc(c) => rpc.send(c),
+            Command::RpcRequest(r) => handle_rpc(r, &mut session, &sink),
             Command::Quests(c) => handle_quests(c, &mut session, &sink),
         }
     }
