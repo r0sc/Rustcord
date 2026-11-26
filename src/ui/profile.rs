@@ -195,6 +195,10 @@ fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Op
     let animate = overrides::my_avatar_animates(user.id, ui.rect_contains_pointer(avatar_rect)).unwrap_or(true);
     let name = cx.state.member_display_name(guild_id, user, member);
     super::sidebar::user_avatar_at(ui, cx.images, &avatar_url, avatar_rect, animate, 1.0, (user.id, &name));
+    // ViewIcons (below), when on, opens the picture instead.
+    if !crate::plugins::enabled(crate::plugins::Plugin::ViewIcons) {
+        avatar_link(ui, cx, pal, avatar_rect, user.id, guild_id);
+    }
     // ViewIcons: the avatar and banner open in full size.
     crate::plugins::media::icon_link(ui, cx, rect, "View Banner", 2.5, || crate::plugins::media::banner_full(user));
     crate::plugins::media::icon_link(ui, cx, avatar_rect, "View Avatar", 1.0, || Some(crate::plugins::media::avatar_full(user)));
@@ -665,6 +669,26 @@ pub(super) fn friend_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, use
             super::friends::add_friend(cx, user_id, ContextLocation::UserProfile);
         }
         _ => {}
+    }
+}
+
+/// The card's avatar opens the full profile, like Discord's: pointing hand, Tab focus with a ring,
+/// Enter / Space, a veil that fades in over FAST on hover (principle 8), and the modal grows from
+/// the avatar (principle 11).
+fn avatar_link(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, avatar: Rect, user_id: Id, guild_id: Option<Id>) {
+    let resp = ui.interact(avatar, ui.make_persistent_id("rc_card_avatar"), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "View full profile"));
+    let hot = resp.hovered() || resp.has_focus();
+    let veil = super::motion::anim(ui.ctx(), resp.id, hot, super::motion::FAST, super::motion::FAST * super::motion::OUT);
+    if veil > 0.0 {
+        ui.painter().circle_filled(avatar.center(), avatar.width() / 2.0, Color32::from_black_alpha((veil * 56.0) as u8));
+    }
+    if resp.has_focus() {
+        super::messages::focus_ring(ui, pal, avatar, avatar.width() / 2.0);
+    }
+    if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+        super::motion::modal_origin(ui.ctx(), avatar.center());
+        profile_modal::open(cx, user_id, guild_id);
     }
 }
 

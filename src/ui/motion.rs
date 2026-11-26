@@ -262,9 +262,19 @@ fn ghosts(ctx: &Context) {
     ctx.data_mut(|d| d.insert_temp(ghosts_id(), all));
 }
 
+fn origin_id() -> Id {
+    Id::unique("rc_modal_origin")
+}
+
+/// The next modal grows from `pos` (its trigger), also when a key opened it.
+pub fn modal_origin(ctx: &Context, pos: Pos2) {
+    ctx.data_mut(|d| d.insert_temp(origin_id(), pos));
+}
+
 /// egui's Modal with Rustcord's motion (principles 5, 11, 18): the scrim fades in; the panel
-/// fades in and grows GROW -> 1 over BASE from the click that opened it (else the window
-/// centre); closed, its last frame fades out (`leave`). `area` / `frame` / `scrim` as before.
+/// fades in and grows GROW -> 1 over BASE from its trigger (`modal_origin`), else the click that
+/// opened it, else the window centre; closed, its last frame fades out (`leave`). `area` /
+/// `frame` / `scrim` as before.
 pub fn modal<R>(ctx: &Context, area: egui::Area, frame: egui::Frame, scrim: Color32, add: impl FnOnce(&mut Ui) -> R) -> egui::ModalResponse<R> {
     let layer = area.layer();
     let t = opened(ctx, layer, BASE);
@@ -272,7 +282,8 @@ pub fn modal<R>(ctx: &Context, area: egui::Area, frame: egui::Frame, scrim: Colo
     let from = if ctx.memory(|m| m.areas().visible_last_frame(&layer)) {
         ctx.data(|d| d.get_temp::<Pos2>(from_id))
     } else {
-        let click = ctx.input(|i| i.pointer.any_click().then(|| i.pointer.interact_pos()).flatten());
+        let origin = ctx.data_mut(|d| d.remove_temp::<Pos2>(origin_id()));
+        let click = origin.or_else(|| ctx.input(|i| i.pointer.any_click().then(|| i.pointer.interact_pos()).flatten()));
         ctx.data_mut(|d| match click {
             Some(p) => drop(d.insert_temp(from_id, p)),
             None => d.remove::<Pos2>(from_id),
@@ -400,6 +411,21 @@ mod tests {
         assert!(mid > 0.0 && mid < 1.0 && busy);
         let (end, busy) = run(&ctx, 0.1, 0.5, show);
         assert!(end == 1.0 && !busy);
+    }
+
+    #[test]
+    fn a_modal_grows_from_its_trigger_once() {
+        let ctx = Context::default();
+        let area = || egui::Area::new(Id::unique("rc_test_modal"));
+        let from = |c: &Context| c.data(|d| d.get_temp::<Pos2>(area().layer().id.with("rc_from")));
+        let p = Pos2::new(40.0, 60.0);
+        run(&ctx, 0.0, 0.0, |c| {
+            modal_origin(c, p);
+            modal(c, area(), egui::Frame::NONE, Color32::BLACK, block);
+            0.0
+        });
+        assert_eq!(from(&ctx), Some(p), "opened by a key: grows from the trigger, not the centre");
+        assert_eq!(ctx.data(|d| d.get_temp::<Pos2>(origin_id())), None, "used up");
     }
 
     #[test]
