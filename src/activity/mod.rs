@@ -64,6 +64,8 @@ impl GameActivity {
 
 /// What op 3 says about Rustcord itself (type 0, after my game): see `FEATURES_NOTES` §1.3.
 pub const APP_DETAILS: &str = "Third-party client, built in Rust";
+/// Rustcord's presence button: label and link.
+pub const APP_BUTTON: (&str, &str) = ("Get Rustcord", "https://getrustcord.netlify.app/");
 
 /// When this process started (unix ms): a reconnect keeps the timer.
 static STARTED: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
@@ -77,14 +79,18 @@ pub struct AppActivity {
 }
 
 impl AppActivity {
-    /// As a presence shows it.
+    /// As a presence shows it. The "Get Rustcord" button only with an Application ID: others'
+    /// clients look its link up by application (`FEATURES_NOTES` §1.3).
     pub fn to_activity(&self) -> Activity {
         let state = format!("Version {}", env!("CARGO_PKG_VERSION"));
+        let button = |s: &str| self.application_id.map(|_| s.to_owned()).into_iter().collect();
         let rich = RichPresence {
             details: Some(APP_DETAILS.into()),
             state: Some(state),
             start: Some(self.start_ms),
             application_id: self.application_id,
+            buttons: button(APP_BUTTON.0),
+            button_urls: button(APP_BUTTON.1),
             ..Default::default()
         };
         Activity { kind: 0, name: crate::config::APP_NAME.into(), rich: Some(Box::new(rich)) }
@@ -361,6 +367,11 @@ mod tests {
         assert!(is_rustcord(&a));
         let rich = a.rich.as_deref().unwrap();
         assert_eq!((rich.details.as_deref(), rich.state.as_deref(), rich.start), (Some(APP_DETAILS), Some(concat!("Version ", env!("CARGO_PKG_VERSION"))), Some(9)));
+        assert!(rich.buttons.is_empty() && rich.button_urls.is_empty(), "no app id: others could not open it");
+        let with_id = AppActivity { application_id: Some(Id(5)), ..app.clone() }.to_activity();
+        let rich = with_id.rich.as_deref().unwrap();
+        assert_eq!((&rich.buttons[..], &rich.button_urls[..]), (&["Get Rustcord".to_owned()][..], &["https://getrustcord.netlify.app/".to_owned()][..]));
+        assert!(is_rustcord(&with_id));
         let game = GameActivity { name: "Rustcord".into(), application_id: None, start_ms: 1 }.to_activity();
         assert!(!is_rustcord(&game), "a game named Rustcord is not it");
         let mut s = AppState::default();

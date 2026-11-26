@@ -215,7 +215,8 @@ Errors: 40005/413, 50045, 50046, 50146, 400001. Pre-check sizes client-side, tru
 - `SESSIONS_REPLACE` (and READY `sessions[]`): `[{session_id, client_info{client,os,version}, status, activities, hidden_activities, active?}]`, max 15 plus `session_id:"all"` = what others see. Use `all` for your own effective status.
 
 **Rustcord presence** (`activity::AppActivity`, local switch `rustcord_presence.enabled`, default on)
-- One more entry in op 3's list, after the custom status and my game: `{"type":0,"name":"Rustcord","details":"Third-party client, built in Rust","state":"Version <x.y.z>","timestamps":{"start":<process start, unix ms>}}`, plus `application_id` only when the user set one (Settings > Activity privacy). No assets, buttons, party or secrets. Left out while Invisible.
+- One more entry in op 3's list, after the custom status and my game: `{"type":0,"name":"Rustcord","details":"Third-party client, built in Rust","state":"Version <x.y.z>","timestamps":{"start":<process start, unix ms>}}`, plus `application_id` only when the user set one (Settings > Activity privacy), and with it the button `"buttons":["Get Rustcord"],"metadata":{"button_urls":["https://getrustcord.netlify.app/"]}`. No assets, party or secrets. Left out while Invisible.
+- Why the button needs the application id: presences reach others with button **labels** only (`metadata` and `secrets` are send-only); a click fetches the links from `GET /users/{user}/sessions/{session}/activities/{application}/metadata` (application `0` covers only Listening activities). Vencord's CustomRPC sends the same two fields through the official client's op 3. Settings shows the button disabled with a note while no ID is set.
 - Sent only on change, through the existing debounce and limiter: the first time the UI is connected, a new session (READY), a switch or Application ID change. A status change or a game start carries it in the op 3 that goes out anyway. RESUME sends nothing.
 - My own user panel ignores it (`activity::is_rustcord`), so it still shows my status; my profile and member row show it.
 
@@ -224,7 +225,9 @@ Errors: 40005/413, 50045, 50046, 50146, 400001. Pre-check sizes client-side, tru
 | Op 3 is 5 per 20 s and replaces the whole activity list | confirmed | UD gateway-events |
 | `name` 1-128, `details`/`state` max 128, `buttons` max 2 | confirmed | UD presence |
 | Image keys: app asset id, `mp:`, `spotify:`, `twitch:`, `youtube:` | confirmed | UD presence |
-| Buttons need `metadata.button_urls` and a real application id; you never see your own | endpoint confirmed, "needs an app id" inferred | UD presence, Discord docs |
+| Buttons need `metadata.button_urls` and a real application id; you never see your own | endpoint confirmed, "needs an app id" inferred (the metadata route is per application) | UD presence (docs.discord.food), Vencord CustomRPC |
+| Others' buttons: labels in the presence, links on a click from the metadata route (204 = none) | confirmed (docs), built | UD presence |
+| Join / Ask to Join: `flags` JOIN (1<<1) plus PARTY_PRIVACY_FRIENDS (1<<6) / _VOICE_CHANNEL (1<<7); the secret (`GET …/activities/{app}/1`) reaches the game only over the local RPC pipe | docs; Rustcord shows the buttons disabled (no RPC pipe) | UD presence |
 | Bots may send only `name`, `type`, `state`, `url` | confirmed (bots) | UD presence |
 | `details`, `state` and the timer show for a user op 3 without an application id | UNCONFIRMED (live check) | - |
 | With an application id and no image, Discord shows the app's icon | UNCONFIRMED for a third-party session | Discord docs (Social SDK) |

@@ -11,6 +11,8 @@ use crate::ui::messages::{self, Btn, Callout, callout};
 use egui::{RichText, TextEdit, vec2};
 
 const PORTAL: &str = "https://discord.com/developers/applications";
+/// Discord looks a presence button's link up by application, so without one nobody sees it.
+const NO_BUTTON: &str = "Others see the Get Rustcord button once you add an Application ID below.";
 
 /// "" -> no ID; 17 to 20 digits (spaces around are ignored) -> that ID; anything else -> Err.
 fn parse_app_id(text: &str) -> Result<Option<Id>, ()> {
@@ -50,8 +52,16 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
             ui.set_width(ui.available_width());
             let me = cx.state.me.as_ref().map_or(Id(0), |m| m.id);
             super::super::profile::activity_section(ui, cx, &pal, me, &app.to_activity(), 64.0, pal.surface);
+            if app.application_id.is_none() {
+                ui.add_space(8.0);
+                messages::button(ui, &pal, Btn::Secondary, crate::activity::APP_BUTTON.0, false).on_disabled_hover_text(NO_BUTTON);
+            }
         });
     });
+    if enabled && app.application_id.is_none() {
+        ui.add_space(8.0);
+        callout(ui, &pal, Callout::Info, NO_BUTTON);
+    }
     if cx.state.chat.my_status == Some(UserStatus::Invisible) {
         ui.add_space(8.0);
         callout(ui, &pal, Callout::Info, "Hidden while you are invisible.");
@@ -69,7 +79,7 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         ui,
         cx.theme,
         "Application ID (optional)",
-        Some("Make an app in the Discord Developer Portal, give it the Rustcord icon and paste its ID here. Its icon becomes the picture. Empty: no picture."),
+        Some("Make an app in the Discord Developer Portal, give it the Rustcord icon and paste its ID here. Its icon becomes the picture and others see the Get Rustcord button. Empty: neither."),
         vec2(260.0, 32.0),
         |ui| {
             let r = ui.add(TextEdit::singleline(&mut draft).hint_text("18-digit ID").char_limit(32).desired_width(260.0));

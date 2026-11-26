@@ -1068,8 +1068,11 @@ fn presence_payload(
                 "state": format!("Version {}", env!("CARGO_PKG_VERSION")),
                 "timestamps": {"start": g.start_ms},
             });
+            // Buttons need the application: others' clients fetch the link by its id.
             if let Some(id) = g.application_id {
                 a["application_id"] = json!(id);
+                a["buttons"] = json!([crate::activity::APP_BUTTON.0]);
+                a["metadata"] = json!({"button_urls": [crate::activity::APP_BUTTON.1]});
             }
             a
         }))
@@ -1179,7 +1182,12 @@ mod tests {
         let list = v(presence_payload(UserStatus::Online, false, Some(&custom), Some(&game), Some(&app), 5))["d"]["activities"].clone();
         assert_eq!((list[0]["type"].clone(), list[1]["name"].clone(), list[2].clone()), (json!(4), json!("Factorio"), own.clone()));
         let with_id = crate::activity::AppActivity { application_id: Some(Id(123456789012345678)), ..app.clone() };
-        assert_eq!(v(presence_payload(UserStatus::Idle, false, None, None, Some(&with_id), 5))["d"]["activities"][0]["application_id"], json!("123456789012345678"));
+        let own_with_id = v(presence_payload(UserStatus::Idle, false, None, None, Some(&with_id), 5))["d"]["activities"][0].clone();
+        assert_eq!(
+            [&own_with_id["application_id"], &own_with_id["buttons"], &own_with_id["metadata"]],
+            [&json!("123456789012345678"), &json!(["Get Rustcord"]), &json!({"button_urls": ["https://getrustcord.netlify.app/"]})],
+            "the button goes along with an application id only (own above has none)"
+        );
         assert_eq!(v(presence_payload(UserStatus::Invisible, false, None, Some(&game), Some(&app), 5))["d"]["activities"].as_array().map(Vec::len), Some(1));
 
         let q = MemberQuery { guild_id: Id(10), query: "ab".into(), limit: 50, due: Instant::now(), retried: false };
