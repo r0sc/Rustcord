@@ -208,11 +208,11 @@ retakes the screenshots.</sub>
 
 ### Plugins
 
-- 52 plugins in Settings → Plugins, modeled on Vencord's. All of them are off by default and
+- 53 plugins in Settings → Plugins, modeled on Vencord's. All of them are off by default and
   only change this app. Their options are stored in `plugins.toml`.
 
 <details>
-<summary>The 52 plugins</summary>
+<summary>The 53 plugins</summary>
 
 AccountPanelServerProfile, BetterFolders, BetterRoleDot, CallTimer, CharacterCounter,
 ClearURLs, ClientDiagnostics (frame, memory and connection numbers in Settings → Advanced),
@@ -222,7 +222,7 @@ MutualGroupDMs, NoBlockedMessages, NoReplyMention, NotificationLog (a Recent tab
 with the silenced ones), OnePingPerDM, OpenInApp, PermissionsViewer, PinDMs, PlatformIndicators,
 QuickMention (a Mention button in the hover bar), QuickReply (Ctrl+Up and Ctrl+Down to reply, with Shift to edit your own),
 ReadAllNotificationsButton, RelationshipNotifier, ReplyTimestamp, ReverseImageSearch, ServerInfo, ShowConnections,
-ShowHiddenChannels, ShowMeYourName, ShowTimeoutDuration, SilentMessageToggle, SilentTyping,
+ShowBadgesInChat (grey badge marks after names), ShowHiddenChannels, ShowMeYourName, ShowTimeoutDuration, SilentMessageToggle, SilentTyping,
 TextReplace, Translate, TypingIndicator, TypingTweaks, UserVoiceShow, ValidUser, VcNarrator
 (Windows speech, `say` on macOS, `spd-say` on Linux), ViewIcons, ViewRaw, VoiceMessages
 (playback), VolumeBooster (up to 400 %, local mix only), WhoReacted.

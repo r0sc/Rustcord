@@ -654,6 +654,44 @@ Puzzle => {
 
 Check with `RUSTCORD_NAV_DEMO=icons` (the icon sheet) at 16, 18 and 20 px.
 
+### 8.7 Two badge icons (ShowBadgesInChat)
+
+`Bug` and `Code`, added after `Puzzle` in `Icon` and `ALL`, same pen rules as §8.6:
+
+```rust
+Bug => {
+    k.rrect_line(8.0, 8.5, 16.0, 20.0, 4.0);          // body
+    k.line(&arc(12.0, 8.5, 3.0, 180.0, 360.0));      // head
+    k.line(&[(12.0, 11.5), (12.0, 20.0)]);           // wing split
+    for (y0, y1) in [(12.0, 10.5), (15.0, 15.0), (18.0, 19.5)] {
+        k.line(&[(8.0, y0), (4.5, y1)]);
+        k.line(&[(16.0, y0), (19.5, y1)]);
+    }
+    k.line(&[(10.0, 5.75), (8.5, 3.5)]);
+    k.line(&[(14.0, 5.75), (15.5, 3.5)]);
+}
+Code => {
+    k.line(&[(8.0, 6.5), (3.0, 12.0), (8.0, 17.5)]);
+    k.line(&[(16.0, 6.5), (21.0, 12.0), (16.0, 17.5)]);
+    k.line(&[(13.75, 4.5), (10.25, 19.5)]);
+}
+```
+
+Which glyph a `public_flags` badge gets (all monochrome, `text_muted`, never purple):
+
+| Badge | Icon |
+|---|---|
+| staff | `IdCard` |
+| partner | `Star` |
+| hypesquad, houses 1 to 3 | `Flag` |
+| bug hunter 1 and 2 | `Bug` |
+| early supporter | `Heart` |
+| verified developer, active developer | `Code` |
+| certified moderator | `Shield` |
+
+`Verified` and `Partnered` are not used: they cut their marks out in the background colour,
+and the author line doesn't know the row's current fill.
+
 ---
 
 ## 9. Components
@@ -889,6 +927,7 @@ fn tile_corners(t: f32) -> CornerRadius {
 
 **Messages:**
 - Avatar 40, author body 15/600 in the role colour, time meta.
+- ShowBadgesInChat (plugin): 16 `text_muted` badge glyphs in the decorations after the time (§8.7), 4 apart, tooltip with the badge title.
 - Body 15 with line height 21. 16 between groups. Compact mode unchanged.
 
 **Mentions of me:** `mention_highlight` row fill plus a 2 px `attention` bar on the left

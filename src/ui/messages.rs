@@ -1182,7 +1182,7 @@ fn new_messages_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut M
 /// `indexing` (results panel with cached hits / its indexing state) and `detached` (the older
 /// half of the history shown as a jump window: "Jump to present" bar, highlighted target) and
 /// `online` (the composer without its "Offline" chip; README screenshots) and `mention` (QuickMention's
-/// click on the newest message not by me).
+/// click on the newest message not by me) and `badges` (public flags on the demo authors).
 pub(super) fn demo(flag: &str) -> bool {
     static FLAGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     FLAGS.get_or_init(|| std::env::var("RUSTCORD_MSG_DEMO").unwrap_or_default()).split(',').any(|f| f.trim() == flag)
@@ -1219,6 +1219,18 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>
             let member = message_member(cx.state, cx.state.channels.get(&ch).and_then(|c| c.guild_id), m);
             let name = cx.state.member_display_name(cx.state.channels.get(&ch).and_then(|c| c.guild_id), &m.author, member.as_ref());
             composer::queue_mention(ctx, ch, format!("@{name}"), format!("<@{}>", m.author.id.0));
+        }
+        if demo("badges") && let Some(cm) = cx.state.messages.get_mut(&ch) {
+            // ShowBadgesInChat: flags on the authors of the loaded messages.
+            for m in &mut cm.msgs {
+                m.author.public_flags = match m.author.username.as_str() {
+                    "alice" => 1 | 1 << 6,
+                    "bobby" => 1 << 3 | 1 << 22,
+                    "cara.k" => 1 << 1 | 1 << 9,
+                    "dan_ops" => 1 << 17 | 1 << 18,
+                    _ => m.author.public_flags,
+                };
+            }
         }
         if demo("failed") {
             let content = "This one didn't make it".to_string();

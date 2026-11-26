@@ -42,7 +42,7 @@ CHAT = [
     "btw I'm on Rustcord now, my own client. it barely touches my RAM",
     f"<@{ME}> wait, the one you built? post it in <#{SHOWCASE}>", "does it do voice?",
     "voice, video and streams. we used it last night",
-    "# Rustcord\n- voice, video & streams\n- 51 built-in plugins\n-# Windows · Linux · macOS",
+    "# Rustcord\n- voice, video & streams\n- 53 built-in plugins\n-# Windows · Linux · macOS",
     "ok that's sick, downloading now", f"let me know what you think <@{ALICE}>!",
 ]
 

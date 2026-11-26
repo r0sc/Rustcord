@@ -138,6 +138,9 @@ pub(crate) enum Icon {
     Accessibility,
     Keyboard,
     Puzzle,
+    // Badges in chat (ShowBadgesInChat).
+    Bug,
+    Code,
 }
 
 /// Small mark at the bottom right of a channel icon: private (`Lock`) or age-restricted
@@ -150,7 +153,7 @@ pub(crate) enum Badge {
 
 impl Icon {
     /// Every icon, in declaration order (the icon sheet hook, tests).
-    pub(crate) const ALL: [Icon; 108] = {
+    pub(crate) const ALL: [Icon; 110] = {
         use Icon::*;
         [
             Text, Voice, Announcement, Stage, Forum, Media, Thread, Rules, Directory, Playing, Listening, Streaming, Watching, Competing, Mic, MicOff, Headphones,
@@ -159,7 +162,7 @@ impl Icon {
             SplitView, File, Attach, Hourglass, Key, Desktop, Card, Video, Eye, EyeOff, Lock, Unlock, Boost, Clock, Star, Globe, Info, Poll, Quest, Orb, Gift, Verified, Partnered, BoostTier1, BoostTier2, BoostTier3, Play, Pause, Download, VoiceOff, Expand, Collapse, ArrowLeft, ArrowRight, ChevronUp,
             ChevronDown,
             ChevronLeft, ChevronRight, Smile, Leaf, Food, Ball, Car, Bulb, Heart, Flag,
-            Palette, Accessibility, Keyboard, Puzzle,
+            Palette, Accessibility, Keyboard, Puzzle, Bug, Code,
         ]
     };
 
@@ -832,6 +835,22 @@ fn draw(k: &mut Pen, icon: Icon, locked: bool) {
             pts.extend([(16.5, 19.5), (4.5, 19.5)]);
             k.closed(&pts);
         }
+        Bug => {
+            k.rrect_line(8.0, 8.5, 16.0, 20.0, 4.0);
+            k.line(&arc(12.0, 8.5, 3.0, 180.0, 360.0));
+            k.line(&[(12.0, 11.5), (12.0, 20.0)]);
+            for (y0, y1) in [(12.0, 10.5), (15.0, 15.0), (18.0, 19.5)] {
+                k.line(&[(8.0, y0), (4.5, y1)]);
+                k.line(&[(16.0, y0), (19.5, y1)]);
+            }
+            k.line(&[(10.0, 5.75), (8.5, 3.5)]);
+            k.line(&[(14.0, 5.75), (15.5, 3.5)]);
+        }
+        Code => {
+            k.line(&[(8.0, 6.5), (3.0, 12.0), (8.0, 17.5)]);
+            k.line(&[(16.0, 6.5), (21.0, 12.0), (16.0, 17.5)]);
+            k.line(&[(13.75, 4.5), (10.25, 19.5)]);
+        }
         Trash => {
             k.line(&[(3.5, 6.0), (20.5, 6.0)]);
             k.line(&[(9.0, 6.0), (9.5, 3.0), (14.5, 3.0), (15.0, 6.0)]);
@@ -1338,8 +1357,8 @@ mod tests {
         assert_eq!(guild_mark(&[], 1).map(|m| m.0), Some(Icon::BoostTier1));
         assert_eq!(guild_mark(&[], 0), None);
         assert_eq!(guild_mark(&[], 4), None, "no such level");
-        // `ALL` lists every variant in order (`Puzzle` stays last).
-        assert_eq!(Icon::ALL.len(), Icon::Puzzle as usize + 1);
+        // `ALL` lists every variant in order (`Code` stays last).
+        assert_eq!(Icon::ALL.len(), Icon::Code as usize + 1);
         assert!(Icon::ALL.iter().enumerate().all(|(i, x)| *x as usize == i));
     }
 }

@@ -85,6 +85,7 @@ pub enum Plugin {
     QuickReply,
     NotificationLog,
     QuickMention,
+    ShowBadgesInChat,
 }
 
 /// One option of a plugin (the settings page draws it from this).
@@ -218,6 +219,7 @@ pub const META: &[Meta] = &[
     meta(P::QuickReply, "QuickReply", "Ctrl+Up / Ctrl+Down pick the message to reply to; Ctrl+Shift+Up / Down pick one of yours to edit. Down past the newest cancels.", &[]),
     meta(P::NotificationLog, "NotificationLog", "The Inbox gets a Recent tab with this session's notifications, also the ones Do Not Disturb, quiet hours or one ping per DM silenced. Kept in memory only.", &[]),
     meta(P::QuickMention, "QuickMention", "A Mention button on messages puts @name into your message box. Nothing is sent until you send it.", &[]),
+    meta(P::ShowBadgesInChat, "ShowBadgesInChat", "Small grey Discord badges after names in chat: Staff, Partner, HypeSquad, Bug Hunter, Early Supporter and more.", &[]),
 ];
 
 pub fn meta_of(p: Plugin) -> &'static Meta {
@@ -320,7 +322,7 @@ const FILES: &[(&str, &[Plugin])] = &[
     ("message_logger", &[P::MessageLogger]),
     ("notifier", &[P::RelationshipNotifier, P::OnePingPerDm, P::NotificationLog]),
     ("panel", &[P::GameActivityToggle, P::AccountPanelServerProfile]),
-    ("people", &[P::UserVoiceShow, P::PlatformIndicators, P::ShowMeYourName, P::MoreUserTags, P::ShowTimeoutDuration, P::IrcColors, P::ValidUser, P::ShowConnections, P::PermissionsViewer, P::MutualGroupDms, P::MemberCount, P::FriendsSince, P::BetterRoleDot]),
+    ("people", &[P::UserVoiceShow, P::PlatformIndicators, P::ShowMeYourName, P::MoreUserTags, P::ShowTimeoutDuration, P::IrcColors, P::ValidUser, P::ShowConnections, P::PermissionsViewer, P::MutualGroupDms, P::MemberCount, P::FriendsSince, P::BetterRoleDot, P::ShowBadgesInChat]),
     ("sidebar", &[P::PinDms, P::BetterFolders, P::TypingIndicator, P::CallTimer, P::ShowHiddenChannels, P::ReadAllNotificationsButton]),
     ("voice", &[P::VolumeBooster, P::VcNarrator]),
     ("voice_messages", &[P::VoiceMessages]),

@@ -191,6 +191,15 @@ fn decorations(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user:
             x += g.size().x + 6.0;
         }
     }
+    // ShowBadgesInChat: grey glyphs for the badges `public_flags` carries (no profile fetch).
+    if enabled(Plugin::ShowBadgesInChat) && !list {
+        for (icon, title) in chat_badges(user.public_flags) {
+            let r = Rect::from_center_size(pos2(x + 8.0, y), Vec2::splat(16.0));
+            crate::ui::icons::paint(ui.painter(), icon, r, muted, Color32::TRANSPARENT);
+            hover(ui, r, "rc_badge", &title);
+            x = r.right() + 4.0;
+        }
+    }
     if enabled(Plugin::MoreUserTags) && opt_bool(Plugin::MoreUserTags, if list { "list" } else { "messages" })
         && let Some((tag, color)) = user_tag(cx.state, guild_id, user.id, member)
     {
@@ -236,6 +245,28 @@ fn decorations(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user:
     x - left_center.x
 }
 
+/// ShowBadgesInChat: one monochrome glyph and tooltip per public-flag badge, in profile order.
+fn chat_badges(flags: u64) -> Vec<(crate::ui::icons::Icon, String)> {
+    use crate::ui::icons::Icon;
+    crate::ui::cosmetics::flag_badges(flags)
+        .into_iter()
+        .filter_map(|b| {
+            let icon = match b.id.as_str() {
+                "staff" => Icon::IdCard,
+                "partner" => Icon::Star,
+                "hypesquad" | "hypesquad_house_1" | "hypesquad_house_2" | "hypesquad_house_3" => Icon::Flag,
+                "bug_hunter_level_1" | "bug_hunter_level_2" => Icon::Bug,
+                "early_supporter" => Icon::Heart,
+                "verified_developer" | "active_developer" => Icon::Code,
+                "certified_moderator" => Icon::Shield,
+                _ => return None,
+            };
+            let title = crate::ui::cosmetics::badge_info(&b.id).map_or(b.description, |(t, _)| t);
+            Some((icon, title))
+        })
+        .collect()
+}
+
 /// Message header hook (`messages.rs` author_line, inside its row of height `h`).
 pub fn after_name(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: &User, member: Option<&Member>, h: f32) {
     if !any_name_plugin() {
@@ -269,7 +300,7 @@ pub fn member_row_width(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<I
 }
 
 fn any_name_plugin() -> bool {
-    [Plugin::ShowMeYourName, Plugin::MoreUserTags, Plugin::PlatformIndicators, Plugin::UserVoiceShow, Plugin::ShowTimeoutDuration].into_iter().any(enabled)
+    [Plugin::ShowMeYourName, Plugin::ShowBadgesInChat, Plugin::MoreUserTags, Plugin::PlatformIndicators, Plugin::UserVoiceShow, Plugin::ShowTimeoutDuration].into_iter().any(enabled)
 }
 
 /// ValidUser: the name of a mentioned user the cache lacks, from their profile once a click on
@@ -450,6 +481,16 @@ pub fn member_count(ui: &mut egui::Ui, cx: &UiCx<'_>, guild_id: Id) {
 mod tests {
     use super::*;
     use crate::model::{Perms, Role};
+
+    #[test]
+    fn chat_badges_follow_the_flags() {
+        use crate::ui::icons::Icon;
+        let got = chat_badges(1 | 1 << 6 | 1 << 22);
+        let want = [(Icon::IdCard, "Discord staff"), (Icon::Flag, "HypeSquad Bravery"), (Icon::Code, "Active developer")];
+        assert_eq!(got.iter().map(|(i, t)| (*i, t.as_str())).collect::<Vec<_>>(), want);
+        assert!(chat_badges(1 << 20).is_empty());
+        assert!(chat_badges(0).is_empty());
+    }
 
     #[test]
     fn platforms_from_client_status() {
