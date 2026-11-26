@@ -1,24 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
 <defs>
 <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
-<stop offset="0" stop-color="#1A1513"/><stop offset="1" stop-color="#0C0A0A"/>
+<stop offset="0" stop-color="#1E1A2B"/><stop offset="1" stop-color="#0B0A10"/>
 </linearGradient>
-<linearGradient id="ember" gradientUnits="userSpaceOnUse" x1="123" y1="114" x2="379" y2="390">
-<stop offset="0" stop-color="#FFA24A"/><stop offset="0.55" stop-color="#FF5A2E"/><stop offset="1" stop-color="#E8403F"/>
-</linearGradient>
-<radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="256" cy="240" r="250">
-<stop offset="0" stop-color="#FF6A3D" stop-opacity="0.18"/><stop offset="1" stop-color="#FF6A3D" stop-opacity="0"/>
+<radialGradient id="light" gradientUnits="userSpaceOnUse" cx="256" cy="176" r="300">
+<stop offset="0" stop-color="#A42BEA" stop-opacity="0.20"/><stop offset="1" stop-color="#A42BEA" stop-opacity="0"/>
 </radialGradient>
 <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
-<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.03"/>
+<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.04"/>
 </linearGradient>
-<linearGradient id="sheen" gradientUnits="userSpaceOnUse" x1="0" y1="114" x2="0" y2="264">
-<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.20"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+<linearGradient id="glyph" gradientUnits="userSpaceOnUse" x1="136" y1="112" x2="394" y2="400">
+<stop offset="0" stop-color="#E6CCFF"/><stop offset="0.5" stop-color="#BE6BF7"/><stop offset="1" stop-color="#A42BEA"/>
 </linearGradient>
 </defs>
-<rect width="512" height="512" rx="112.64" fill="url(#tile)"/>
-<rect width="512" height="512" rx="112.64" fill="url(#glow)"/>
-<rect x="1" y="1" width="510" height="510" rx="111.64" fill="none" stroke="url(#edge)" stroke-width="2"/>
-<path fill="url(#ember)" fill-rule="evenodd" d="M191.12 114H295.12A68 68 0 0 1 363.12 182V212A68 68 0 0 1 345.65 257.5A232.42 232.42 0 0 0 377.51 374.95A10 10 0 0 1 368.88 390H367.12A110 110 0 0 1 257.12 280H229.12A22 22 0 0 0 207.12 302V368A22 22 0 0 1 185.12 390H145.12A22 22 0 0 1 123.12 368V182A68 68 0 0 1 191.12 114ZM229.12 168A22 22 0 0 0 207.12 190V252L237.12 226H269.12A22 22 0 0 0 291.12 204V190A22 22 0 0 0 269.12 168Z"/>
-<path fill="url(#sheen)" fill-rule="evenodd" d="M191.12 114H295.12A68 68 0 0 1 363.12 182V212A68 68 0 0 1 345.65 257.5A232.42 232.42 0 0 0 377.51 374.95A10 10 0 0 1 368.88 390H367.12A110 110 0 0 1 257.12 280H229.12A22 22 0 0 0 207.12 302V368A22 22 0 0 1 185.12 390H145.12A22 22 0 0 1 123.12 368V182A68 68 0 0 1 191.12 114ZM229.12 168A22 22 0 0 0 207.12 190V252L237.12 226H269.12A22 22 0 0 0 291.12 204V190A22 22 0 0 0 269.12 168Z"/>
+<path fill="url(#tile)" d="M112.64 0H399.36A112.64 112.64 0 0 1 512 112.64V399.36A112.64 112.64 0 0 1 399.36 512H24A24 24 0 0 1 0 488V112.64A112.64 112.64 0 0 1 112.64 0Z"/>
+<path fill="url(#light)" d="M112.64 0H399.36A112.64 112.64 0 0 1 512 112.64V399.36A112.64 112.64 0 0 1 399.36 512H24A24 24 0 0 1 0 488V112.64A112.64 112.64 0 0 1 112.64 0Z"/>
+<path fill="none" stroke="url(#edge)" stroke-width="2" d="M112.64 1H399.36A111.64 111.64 0 0 1 511 112.64V399.36A111.64 111.64 0 0 1 399.36 511H24A23 23 0 0 1 1 488V112.64A111.64 111.64 0 0 1 112.64 1Z"/>
+<path fill="url(#glyph)" fill-rule="evenodd" d="M136 400V160A48 48 0 0 1 184 112H278A90 90 0 0 1 308.07 286.83L394 400H310L228 292H204V400ZM204 180H278A22 22 0 0 1 278 224H204Z"/>
 </svg>
