@@ -445,6 +445,7 @@ async fn serve(mut cmds: UnboundedReceiver<RpcCommand>, sink: EventSink, base: S
     let (up_tx, mut up) = unbounded_channel::<(ConnId, RpcEvent)>();
     let mut listener: Option<pipe::Listener> = None;
     let mut games: HashMap<ConnId, UnboundedSender<ToConn>> = HashMap::new();
+    let mut greeted = std::collections::HashSet::new();
     let (mut me, mut next_id, mut throttle) = (None::<RpcUser>, 0, Throttle::default());
     loop {
         let wake = throttle.due();
@@ -485,10 +486,19 @@ async fn serve(mut cmds: UnboundedReceiver<RpcCommand>, sink: EventSink, base: S
                 }
             },
             Some((conn, ev)) = up.recv() => {
-                if matches!(ev, RpcEvent::Closed { .. }) {
-                    games.remove(&conn);
+                // Only a handshake makes a game: a connection that closes before one (another
+                // server's probe of this socket on Unix, §5) is not reported.
+                let report = match ev {
+                    RpcEvent::Connected { .. } => greeted.insert(conn),
+                    RpcEvent::Closed { .. } => {
+                        games.remove(&conn);
+                        greeted.remove(&conn)
+                    }
+                    _ => true,
+                };
+                if report {
+                    throttle.push(ev, Instant::now()).into_iter().for_each(send);
                 }
-                throttle.push(ev, Instant::now()).into_iter().for_each(send);
             }
             () = tokio::time::sleep_until(wake.unwrap_or_else(Instant::now).into()), if wake.is_some() => {
                 throttle.take(Instant::now()).into_iter().for_each(send);
@@ -890,6 +900,8 @@ mod tests {
             "a second server takes the next pipe"
         );
 
+        // A connection that closes before its handshake (a probe) is not reported, on every OS.
+        drop(client(&base, 0).await);
         // Handshake: READY waits for the user.
         let mut game = client(&base, 0).await;
         send(
@@ -898,13 +910,11 @@ mod tests {
             json!({"v": 1, "client_id": "1575590836601753835"}),
         )
         .await;
-        assert!(matches!(
-            next(&rx1).await,
-            RpcEvent::Connected {
-                conn: 1,
-                app: Id(1575590836601753835)
-            }
-        ));
+        // The first event: `two`'s probe of pipe 0 (Unix) took an id but is not reported.
+        let id = match next(&rx1).await {
+            RpcEvent::Connected { conn, app: Id(1575590836601753835) } => conn,
+            e => panic!("expected Connected, got {e:?}"),
+        };
         one.send(RpcCommand::Me(Some(me())));
         let ready = read_frame(&mut game).await;
         assert_eq!(
@@ -921,10 +931,10 @@ mod tests {
         assert!(matches!(
             next(&rx1).await,
             RpcEvent::Activity {
-                conn: 1,
+                conn,
                 activity: Some(_),
                 ..
-            }
+            } if conn == id
         ));
         send(
             &mut game,
@@ -934,13 +944,13 @@ mod tests {
         .await;
         read_frame(&mut game).await;
         assert!(
-            matches!(next(&rx1).await, RpcEvent::Subscribed { conn: 1, ref events } if events == &["ACTIVITY_JOIN"])
+            matches!(next(&rx1).await, RpcEvent::Subscribed { conn, ref events } if conn == id && events == &["ACTIVITY_JOIN"])
         );
         send(&mut game, frame::PING, json!({"nonce": "p"})).await;
         assert_eq!(read_frame(&mut game).await.op, frame::PONG);
         // Closing the pipe: the activity goes (a change, so after the throttle).
         drop(game);
-        assert!(matches!(next(&rx1).await, RpcEvent::Closed { conn: 1 }));
+        assert!(matches!(next(&rx1).await, RpcEvent::Closed { conn } if conn == id));
 
         // A bad frame closes with 1003; logging out closes with 1000.
         let mut bad = client(&base, 0).await;
