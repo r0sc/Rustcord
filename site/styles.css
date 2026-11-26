@@ -87,6 +87,8 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
 .link-plain { font-weight: 600; }
 [data-dl-other] { color: var(--muted); font-weight: 400; }
 [data-dl-other]:hover { color: var(--text); }
+/* small grey text over lit lines: a ground-coloured halo keeps the glyph edges clean */
+.cta .meta, .risk, [data-dl-other], .notes > li:not(.warn), .after-list { text-shadow: 0 0 2px var(--ground), 0 0 8px var(--ground); }
 .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 12px; }
 @media (max-width: 479.98px) { .cta-row .btn-primary { width: 100%; } }
 
@@ -129,7 +131,7 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
 .frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
 @media (min-width: 720px) { .frame { border-radius: var(--r-layer); } }
 .shot figcaption { margin-top: 16px; }
-.shot h2 { font-size: 1.375rem; font-stretch: 80%; font-weight: 700; line-height: 1.2; letter-spacing: -.01em; color: var(--text); max-width: 32ch; }
+.shot h2 { text-wrap: balance; font-size: 1.375rem; font-stretch: 80%; font-weight: 700; line-height: 1.2; letter-spacing: -.01em; color: var(--text); max-width: 32ch; }
 .pills { display: none; }
 @media (min-width: 960px) {
   html:not(.stage) .win { grid-template-columns: 1fr 1fr; column-gap: 32px; row-gap: 48px; }
@@ -177,7 +179,6 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
 .notes .warn .icon { width: 20px; height: 20px; color: var(--amber); margin-top: 3px; }
 .dl-panel { position: relative; padding: 24px; background: var(--raised); border: 1px solid var(--rule); border-radius: var(--r-layer); box-shadow: inset 0 1px 0 var(--sheen), var(--e3); margin-bottom: 40px; }
 @media (min-width: 720px) { .dl-panel { padding: 32px; } }
-.dl-panel [data-dl-title] { margin-bottom: 8px; font-size: 1.5rem; }
 .dl-panel .meta { margin: 0 0 20px; }
 .dl-panel .cta-row { margin: 0; }
 .dl-first { margin: 16px 0 0; font-size: .9375rem; color: var(--muted); }

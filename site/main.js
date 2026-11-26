@@ -37,6 +37,7 @@ function paint(rel, failed) {
       first.hidden = !ok; if (ok) first.textContent = FIRST[os](v);
     }
   });
+  document.querySelector('.dl-panel').hidden = mobile; // the hero already says it
   $$('[data-row]').forEach(a => {
     const k = a.dataset.row, s = SYSTEMS[k], f = rel && rel.files[k];
     a.href = f ? f.url : LATEST;
