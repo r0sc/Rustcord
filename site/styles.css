@@ -100,6 +100,9 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
 }
 
 /* the screens: a plain list, or (html.stage) one window that rises, sticks and changes screens */
+/* the cursor tilt changes every frame; not inherited, so the window's children skip the style recalc */
+@property --rx { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --ry { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .tour { --w: min(var(--max), 100vw - 2 * var(--gutter)); --cap: 80px; }
 .stack { width: var(--w); margin: 0 auto; position: relative; }
 .win { display: grid; gap: 56px; }
@@ -115,6 +118,38 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
   html:not(.stage) .win { grid-template-columns: 1fr 1fr; column-gap: 32px; row-gap: 48px; }
   html:not(.stage) .shot:first-child { grid-column: 1 / -1; }
 }
+
+.stage .tour { --w: min(var(--max), 100vw - 2 * var(--gutter), (100vh - 220px) * 1.6); margin-top: calc(var(--w) / -11); /* the tilt drops the window's top edge; pull it back up */
+}
+/* the scroll room the stuck window needs: up to 55vh to finish the rise, 64vh per screen (stage.js), a short dwell */
+.stage .tour::after { content: ""; display: block; height: calc(4 * 64vh + 55vh); }
+.stage .stack { --p: 0; position: sticky; z-index: 1; padding-bottom: var(--cap);
+  top: calc(var(--hdr) + var(--header-h) + max(8px, (100vh - var(--hdr) - var(--header-h) - var(--w) / 1.6 - var(--cap)) / 2)); }
+.stage .win { position: relative; gap: 0; border-radius: var(--r-layer); transform-origin: 50% 100%; will-change: transform;
+  transform: perspective(1600px) rotateX(calc((1 - var(--p)) * 20deg + var(--rx, 0deg))) rotateY(var(--ry, 0deg)) scale(calc(.88 + .12 * var(--p))); }
+.stage .shot { grid-area: 1 / 1; opacity: 0; }
+.stage .shot.is-prev { opacity: 1; z-index: 1; }
+.stage .shot.is-on { opacity: 1; z-index: 2; }
+.motion.stage .shot.is-on { animation: swap var(--t-swap) var(--ease-out); }
+@keyframes swap { from { opacity: 0; } }
+.stage .shot figcaption { position: absolute; left: 0; right: 200px; top: calc(100% + 24px); margin: 0; opacity: 0; }
+.stage .shot.is-prev figcaption { visibility: hidden; }
+.stage .shot.is-on figcaption { opacity: clamp(0, (var(--p) - .8) * 5, 1); }
+.stage .shot h2 { font-size: 2rem; font-stretch: 72%; font-weight: 800; letter-spacing: -.015em; line-height: 1.1; max-width: none; }
+.stage .pills { display: flex; position: absolute; right: 0; bottom: 16px; opacity: clamp(0, (var(--p) - .8) * 5, 1); }
+.pills button { width: 36px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; place-items: center; font-size: 0; color: transparent; }
+.pills button::before { content: ""; width: 24px; height: 4px; border-radius: 2px; background: rgb(240 238 246 / .24); transition: background-color var(--t-fast), width var(--t-base) var(--ease-out); }
+.pills button:hover::before { background: rgb(240 238 246 / .5); }
+.pills button[aria-current="true"]::before { width: 32px; background: var(--ink); }
+.pills button:focus-visible { outline-offset: -4px; border-radius: var(--r-control); }
+@media (forced-colors: active) { .pills button::before { background: CanvasText; } .pills button[aria-current="true"]::before { background: Highlight; } }
+/* the window lands once, when the page opens */
+.motion.fx.stage .win { opacity: 0; }
+.motion.fx.stage .win.go, .motion.fx.stage.go .win { opacity: 1; animation: land calc(700ms * var(--fx-scale, 1)) var(--ease-out) both; }
+@keyframes land { from { opacity: 0; translate: 0 64px; } }
+
+.fx-shot .win { animation: none !important; opacity: 1 !important; }
+.fx-shot .field { transition: none; }
 
 /* download */
 .dl { padding: clamp(96px, 16vh, 176px) 0 clamp(80px, 12vh, 128px); }

@@ -1,3 +1,4 @@
+import { initStage } from './stage.js';
 import { SYSTEMS, LATEST, detectOs, fetchLatest, buttonState, mb } from './download.js';
 
 const q = new URLSearchParams(location.search);
@@ -60,3 +61,7 @@ function copy(btn, text, done) {
 }
 $$('[data-copy-link]').forEach(b => b.addEventListener('click', () => copy(b, location.origin + location.pathname, 'Link copied')));
 $$('[data-copy]').forEach(b => b.addEventListener('click', () => copy(b, b.parentElement.querySelector('code').textContent, 'Copied')));
+
+// ---- screens ----
+const tour = document.querySelector('.tour');
+if (tour) initStage(tour, q.get('view'));

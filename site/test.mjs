@@ -1,6 +1,7 @@
 // Run: node --test site/test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { stageAt } from './stage.js';
 import { detectOs, pickAssets, fetchLatest, buttonState, mb, LATEST, REPO } from './download.js';
 
 const UA = {
@@ -83,3 +84,13 @@ test('API failure and bad status fall back', async () => {
   assert.equal(r.v, '0.1.2');
 });
 
+test('scroll stage', () => {
+  // the window sticks after 400 px of scroll; each screen gets 512 px (64vh of 800)
+  assert.deepEqual(stageAt(0, 400, 512, 5), { p: 0, i: 0 });
+  assert.deepEqual(stageAt(200, 400, 512, 5), { p: 0.5, i: 0 });
+  assert.deepEqual(stageAt(400 + 511, 400, 512, 5), { p: 1, i: 0 });
+  assert.deepEqual(stageAt(400 + 512, 400, 512, 5), { p: 1, i: 1 });
+  assert.deepEqual(stageAt(400 + 4 * 512, 400, 512, 5), { p: 1, i: 4 });
+  assert.deepEqual(stageAt(1e6, 400, 512, 5), { p: 1, i: 4 });
+  assert.deepEqual(stageAt(-50, 400, 512, 5), { p: 0, i: 0 }); // overscroll at the top
+});
