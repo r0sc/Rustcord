@@ -186,7 +186,8 @@ What's in it so far:
   ClearURLs, ClientDiagnostics (frame, memory and connection numbers in Settings → Advanced),
   CopyUserURLs, CustomIdle, FavoriteEmojiFirst, FriendsSince, GameActivityToggle,
   ImageZoom, IrcColors, MemberCount, MessageLinkEmbeds, MessageLogger (memory only),
-  MoreUserTags, MutualGroupDMs, NoBlockedMessages, NoReplyMention, OnePingPerDM, OpenInApp,
+  MoreUserTags, MutualGroupDMs, NoBlockedMessages, NoReplyMention, NotificationLog (a Recent
+  tab in the Inbox, with the silenced ones), OnePingPerDM, OpenInApp,
   PermissionsViewer, PinDMs, PlatformIndicators, QuickReply (Ctrl+Up / Down to reply, with
   Shift to edit your own), ReadAllNotificationsButton, RelationshipNotifier, ReplyTimestamp,
   ReverseImageSearch, ServerInfo, ShowConnections, ShowHiddenChannels, ShowMeYourName, ShowTimeoutDuration, SilentMessageToggle, SilentTyping,

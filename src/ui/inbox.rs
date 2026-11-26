@@ -23,6 +23,8 @@ pub enum Tab {
     Mentions,
     Unreads,
     Keywords,
+    /// NotificationLog plugin: this session's notifications, also the silenced ones.
+    Recent,
 }
 
 /// Inbox state (in `ViewState::inbox_ui`).
@@ -33,6 +35,8 @@ pub struct InboxUi {
     heights: HashMap<Id, f32>,
     /// This session's keyword matches, newest first (`crate::alerts`; memory only).
     pub(super) keyword_hits: std::collections::VecDeque<crate::alerts::Hit>,
+    /// The Recent tab's rows, newest first (`plugins::notifier::log`; memory only, gone on logout).
+    pub(super) recent: std::collections::VecDeque<crate::plugins::notifier::Entry>,
     /// (channel, message) of the keyword notification shown last: a click on it jumps there.
     pub(super) notified: Option<(Id, Id)>,
     /// A keyword notification was clicked: jump there once the title bar is drawn (`button`).
@@ -85,16 +89,28 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
     let screen = ui.ctx().content_rect();
     ui.set_width(480.0f32.min(screen.width() - 32.0));
     ui.set_min_height(320.0f32.min(screen.height() - 96.0));
+    let log = crate::plugins::enabled(crate::plugins::Plugin::NotificationLog);
+    // The plugin was switched off with its tab open.
+    if cx.view.inbox_ui.tab == Tab::Recent && !log {
+        cx.view.inbox_ui.tab = Tab::Mentions;
+    }
     let unread = (cx.view.inbox_ui.tab == Tab::Unreads).then(|| cx.state.unread_channels());
-    Frame::new().inner_margin(Margin { left: 16, right: 12, top: 10, bottom: 10 }).show(ui, |ui| {
+    let header = Frame::new().inner_margin(Margin { left: 16, right: 12, top: 10, bottom: 10 }).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             ui.add(Label::new(RichText::new("Inbox").font(bold(pal.size + 2.0)).color(pal.text)).selectable(false));
             ui.add_space(8.0);
-            for (tab, label) in [(Tab::Mentions, "Mentions"), (Tab::Unreads, "Unreads"), (Tab::Keywords, "Keywords")] {
-                if tab_pill(ui, pal, label, cx.view.inbox_ui.tab == tab).clicked() {
+            for (tab, label) in [(Tab::Mentions, "Mentions"), (Tab::Unreads, "Unreads"), (Tab::Keywords, "Keywords"), (Tab::Recent, "Recent")] {
+                if (tab != Tab::Recent || log) && tab_pill(ui, pal, label, cx.view.inbox_ui.tab == tab).clicked() {
                     cx.view.inbox_ui.tab = tab;
                 }
+            }
+            if cx.view.inbox_ui.tab == Tab::Recent && !cx.view.inbox_ui.recent.is_empty() {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if small_button(ui, pal, "Clear", pal.text).clicked() {
+                        cx.view.inbox_ui.recent.clear();
+                    }
+                });
             }
             if let Some(ids) = unread.as_ref().filter(|ids| !ids.is_empty()) {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -105,7 +121,8 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
             }
         });
     });
-    let r = ui.min_rect();
+    // Under the header itself: `ui.min_rect()` would include the popup's minimum height.
+    let r = header.response.rect;
     ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, pal.tk.rule));
     sheen(ui.painter(), r, f32::from(pal.float_radius()), &pal.tk);
     ScrollArea::vertical()
@@ -117,6 +134,7 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
                 ui.set_width(ui.available_width());
                 match (cx.view.inbox_ui.tab, unread) {
                     (Tab::Keywords, _) => keywords(ui, cx, pal),
+                    (Tab::Recent, _) => recent(ui, cx, pal),
                     (_, Some(ids)) => unreads(ui, cx, pal, &ids),
                     _ => mentions(ui, cx, pal),
                 }
@@ -336,6 +354,108 @@ fn keywords(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
         cx.view.inbox_open = false;
         jump_to(ui.ctx(), cx, ch, mid);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Recent (NotificationLog)
+// ---------------------------------------------------------------------------
+
+fn recent(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
+    if cx.view.inbox_ui.recent.is_empty() {
+        empty_state(ui, cx, 48.0, "No notifications yet. They stay here until you quit Rustcord, the silenced ones too.");
+        return;
+    }
+    ui.spacing_mut().item_spacing.y = 4.0;
+    let mut jump = None;
+    let rows = std::mem::take(&mut cx.view.inbox_ui.recent);
+    for (i, e) in rows.iter().enumerate() {
+        if recent_row(ui, cx, pal, e, i).clicked() {
+            jump = Some((e.channel_id, e.message_id));
+        }
+    }
+    cx.view.inbox_ui.recent = rows;
+    if let Some((ch, mid)) = jump {
+        cx.view.inbox_open = false;
+        jump_to(ui.ctx(), cx, ch, mid);
+    }
+}
+
+/// A notification: the sender's picture, title and time, one line of text and, when it was
+/// silenced, the reason as a tag (the word, never colour alone). A click jumps to the message.
+fn recent_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, e: &crate::plugins::notifier::Entry, i: usize) -> egui::Response {
+    let guild_id = cx.state.channels.get(&e.channel_id).and_then(|c| c.guild_id);
+    let author = e.author_id.and_then(|id| cx.state.users.get(&id).cloned().or_else(|| cx.state.me.clone().filter(|m| m.id == id)));
+    let bg = ui.painter().add(egui::Shape::Noop);
+    let rect = Frame::new()
+        .inner_margin(Margin::symmetric(12, 10))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 12.0;
+                match &author {
+                    Some(u) => {
+                        let name = cx.state.member_display_name(guild_id, u, None);
+                        super::images::avatar(ui, cx.images, &super::images::user_avatar_url(guild_id, u, None, 64, false), 32.0, false, Some((u.id, &name)));
+                    }
+                    None => {
+                        let (r, _) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::hover());
+                        ui.painter().circle_filled(r.center(), 16.0, pal.tk.selected);
+                    }
+                }
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                        let time = super::messages::local_at(ui.ctx(), e.at_ms as i64).map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
+                        let time_w = ui.painter().layout_no_wrap(time.clone(), FontId::proportional(pal.meta()), pal.muted).size().x;
+                        ui.scope(|ui| {
+                            ui.set_max_width((ui.available_width() - time_w - 8.0).max(24.0));
+                            ui.add(Label::new(RichText::new(&e.title).font(bold(pal.size)).color(pal.text)).selectable(false).truncate());
+                        });
+                        ui.add(Label::new(RichText::new(time).size(pal.meta()).color(pal.muted)).selectable(false));
+                    });
+                    ui.add(Label::new(RichText::new(&e.body).color(pal.muted)).selectable(false).truncate());
+                    if let Some(s) = e.silenced {
+                        super::messages::tag(ui, s.label(), pal.tk.selected, pal.text);
+                    }
+                });
+            });
+        })
+        .response
+        .rect;
+    // Registered after the content, so it wins the click anywhere on the row.
+    let resp = ui.interact(rect, ui.make_persistent_id(("rc_recent", i)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+    let fill = if ui.rect_contains_pointer(rect) { pal.surface.blend(pal.tint()) } else { egui::Color32::TRANSPARENT };
+    ui.painter().set(bg, egui::Shape::rect_filled(rect, pal.card_radius(), fill));
+    resp
+}
+
+/// `RUSTCORD_NAV_DEMO=recent`: this session's rows from the cached messages, three of them
+/// silenced for the three reasons. In memory only.
+pub(super) fn demo_recent(state: &crate::state::AppState, view: &mut super::ViewState) {
+    use crate::plugins::notifier::Silenced;
+    let me = state.me.as_ref().map(|u| u.id);
+    let reasons = [None, Some(Silenced::QuietHours), None, Some(Silenced::DoNotDisturb), Some(Silenced::OnePing)];
+    let msgs = state.recent_channels.iter().filter_map(|ch| state.messages.get(ch)).flat_map(|cm| cm.msgs.iter().rev()).filter(|m| Some(m.author.id) != me);
+    for (i, (msg, silenced)) in msgs.zip(reasons).enumerate() {
+        let guild_id = state.channels.get(&msg.channel_id).and_then(|c| c.guild_id);
+        let author = state.member_display_name(guild_id, &msg.author, None);
+        let title = match guild_id {
+            Some(g) => format!("{author} (#{}, {})", state.channel_name(msg.channel_id), state.guild(g).map_or("", |g| g.name.as_str())),
+            None => author.clone(),
+        };
+        let body = crate::state::notification_body(msg);
+        view.inbox_ui.recent.push_back(crate::plugins::notifier::Entry {
+            channel_id: msg.channel_id,
+            message_id: msg.id,
+            author_id: Some(msg.author.id),
+            title,
+            body,
+            at_ms: crate::activity::now_ms().saturating_sub(i as u64 * 7 * 60_000),
+            silenced,
+        });
+    }
+    view.inbox_ui.tab = Tab::Recent;
 }
 
 /// A click on a keyword notification: jump to its message once the title bar is drawn again.

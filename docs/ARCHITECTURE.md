@@ -319,7 +319,7 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
 - App sounds: runs with `RUSTCORD_SCREENSHOT` set never play anything. Without it the hooks are audible: `RUSTCORD_OPEN=ring:<dm id>` (incoming ring loops until Decline), `outgoing:<dm id>`, `voice:<channel id>` (join), `muted` / `deafened`, and the preview buttons in `settings:notifications`. `cargo test export_wavs -- --ignored` writes every sound as a WAV (`RUSTCORD_SOUND_OUT=<dir>`) for listening.
 - `RUSTCORD_NAV_DEMO=<comma list>` (ui/sidebar.rs `nav_demo`): navigation / social states
   offline mode can't reach, none sends a request: `folders` / `folder-open` (server bar
-  folders), `mentions` (inbox mentions from cached messages), `keywords` (keyword alerts for words from cached server messages, their matches in the inbox Keywords tab, quiet hours on with a one-hour pause; in memory, never saved), `profile` (loaded profiles; with
+  folders), `mentions` (inbox mentions from cached messages), `keywords` (keyword alerts for words from cached server messages, their matches in the inbox Keywords tab, quiet hours on with a one-hour pause; in memory, never saved), `recent` (rows for the NotificationLog plugin's Recent tab from cached messages, three of them silenced; in memory), `profile` (loaded profiles; with
   `badge:<i>` the i-th shown badge's info popover opens once; with
   `tag-card:<member|join|apply|applied|invite|private|loading|error>` and
   `RUSTCORD_OPEN=card:<user id>` that user wears a server tag whose card opens once in that

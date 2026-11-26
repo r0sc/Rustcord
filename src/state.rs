@@ -85,6 +85,8 @@ pub enum SidebarItem {
 pub struct Notification {
     #[allow(dead_code)] // for click-to-open once notify supports a click callback
     pub channel_id: Id,
+    /// The message it is about (None: a ringing call); the notification log jumps to it.
+    pub message_id: Option<Id>,
     pub title: String,
     pub body: String,
     /// The sender, for the avatar on the overlay toast (None: a ringing call).
@@ -1367,7 +1369,7 @@ impl AppState {
             Some(c) if c.kind == channel_type::GROUP_DM => format!("{author} ({})", self.channel_name(c.id)),
             _ => author,
         };
-        Notification { channel_id: msg.channel_id, title, body: notification_body(msg), author_id: Some(msg.author.id), mentioned }
+        Notification { channel_id: msg.channel_id, message_id: Some(msg.id), title, body: notification_body(msg), author_id: Some(msg.author.id), mentioned }
     }
 
     fn on_message_update(&mut self, u: MessageUpdate) {

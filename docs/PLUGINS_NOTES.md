@@ -647,6 +647,7 @@ Picked from Illegalcord's plugin list. Already in Rustcord: BetterFolders, Relat
 |---|---|---|---|
 | CrashHandlerEnhanced | built in, always on | A panic writes `<config>/crash/crash-<time>.txt` (newest 5 kept); the next start shows a card with Copy report, Report on GitHub, Dismiss and, for a panic in `src/plugins/<file>.rs`, Turn them off | `src/crash.rs`, `src/ui/crash_card.rs`, `plugins::FILES` |
 | QuickReply | plugin, off | Ctrl+Up / Down in the composer pick the message to reply to (newest first; Down past the newest cancels); Ctrl+Shift+Up / Down do the same over my own messages and open the edit. Skips system, deleted and hidden messages; the key is taken before the text box and Ctrl+Alt is left to the server shortcuts | `src/plugins/compose.rs`, `src/ui/composer.rs` |
+| Notification Log | plugin, off | The Inbox gets a Recent tab: this session's notifications (50, newest first, memory only), also those Do Not Disturb, quiet hours or OnePingPerDM silenced, tagged with the reason; a click jumps to the message, Clear empties it. Streamer Mode's hiding applies to the rows | `src/plugins/notifier.rs`, `src/ui/inbox.rs`, `ui/mod.rs` `drain_events` |
 | ClientDiagnostics | plugin, off | Settings → Advanced: frames, slowest sections, memory, connection, Copy report. Times frames only while that section is on screen | `src/plugins/diagnostics.rs`, `src/ui/user_settings/diagnostics.rs`, `ui/frame_stats.rs` |
 
 ## 5. Equicord extras (205 in `src/equicordplugins`)

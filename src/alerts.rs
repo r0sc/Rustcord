@@ -162,6 +162,7 @@ fn notification(state: &AppState, msg: &Message, keyword: &str) -> Notification 
     let guild = guild_id.and_then(|g| state.guild(g)).map_or("", |g| g.name.as_str());
     Notification {
         channel_id: msg.channel_id,
+        message_id: Some(msg.id),
         title: format!("\"{keyword}\" in #{} ({guild})", state.channel_name(msg.channel_id)),
         body: format!("{author}: {}", crate::state::notification_body(msg)),
         author_id: Some(msg.author.id),

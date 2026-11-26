@@ -292,7 +292,7 @@ fn demo_boost(state: &mut AppState) {
 
 /// Test hook `RUSTCORD_NAV_DEMO=<comma list>`: navigation / social states offline mode can't
 /// reach, none sends a request. `folders` / `folder-open` (server-bar folders), `mentions`
-/// (inbox mentions from cached messages), `profile` (loaded profiles: bio, pronouns, mutual
+/// (inbox mentions from cached messages), `recent` (the NotificationLog plugin's Recent tab rows from cached messages, three silenced), `profile` (loaded profiles: bio, pronouns, mutual
 /// servers and friends, a note), `tab:<online|all|pending|blocked|add>` (Friends tab), `icons`
 /// (every vector icon over the window, `icons::sheet`), `no-tray` (Linux: the settings page as
 /// without a tray host, `user_settings/app.rs`), `press:<shortcut>` (that key combination,

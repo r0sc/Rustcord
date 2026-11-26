@@ -523,12 +523,20 @@ impl RustcordApp {
                     let jump = keyword.as_ref().map(|(n, id)| (n.channel_id, *id));
                     // Do Not Disturb and quiet hours: unread state still updates, but no toast, sound or taskbar flash.
                     // Discord's rules first; a keyword alert speaks where they stay silent (muted, mentions only).
-                    if let Some(n) = self.state.apply_gateway(ev, focused_channel).or(keyword.map(|k| k.0))
-                        && self.state.chat.my_status != Some(crate::model::UserStatus::Dnd)
-                        && !self.settings.quiet_hours.quiet_now()
+                    if let Some(n) = self.state.apply_gateway(ev, focused_channel).or(keyword.map(|k| k.0)) {
                         // Plugins (OnePingPerDM): one per DM until it is read.
-                        && crate::plugins::notifier::one_ping(&self.state, n.channel_id)
-                    {
+                        let silenced = crate::plugins::notifier::silenced_by(
+                            self.state.chat.my_status == Some(crate::model::UserStatus::Dnd),
+                            || self.settings.quiet_hours.quiet_now(),
+                            || crate::plugins::notifier::one_ping(&self.state, n.channel_id),
+                        );
+                        // Plugins (NotificationLog): the Inbox's Recent tab also lists the silenced ones.
+                        if let Some(e) = crate::plugins::notifier::entry(&n, &self.settings, silenced) {
+                            crate::plugins::notifier::log(&mut self.view.inbox_ui.recent, e);
+                        }
+                        if silenced.is_some() {
+                            continue;
+                        }
                         // A ringing call (no author) rings from `sound_cues` instead; my own messages never get here.
                         if n.author_id.is_some() {
                             let deaf = crate::sounds::deafened(&self.state, self.view.self_deaf);
@@ -811,6 +819,9 @@ impl RustcordApp {
             // None of them sends a request.
             if sidebar::nav_demo("keywords") {
                 inbox::demo(&self.state, &mut self.view, &mut self.settings);
+            }
+            if sidebar::nav_demo("recent") {
+                inbox::demo_recent(&self.state, &mut self.view);
             }
             let open = std::env::var("RUSTCORD_OPEN").unwrap_or_default();
             for open in open.split(',') {

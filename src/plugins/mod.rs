@@ -83,6 +83,7 @@ pub enum Plugin {
     PinDms,
     ClientDiagnostics,
     QuickReply,
+    NotificationLog,
 }
 
 /// One option of a plugin (the settings page draws it from this).
@@ -214,6 +215,7 @@ pub const META: &[Meta] = &[
     meta(P::PinDms, "PinDMs", "Pin DMs to the top of the list from their menu.", &[]),
     meta(P::ClientDiagnostics, "ClientDiagnostics", "Settings → Advanced shows frame times, memory and the connection, with a button that copies them as text. Nothing is sent.", &[]),
     meta(P::QuickReply, "QuickReply", "Ctrl+Up / Ctrl+Down pick the message to reply to; Ctrl+Shift+Up / Down pick one of yours to edit. Down past the newest cancels.", &[]),
+    meta(P::NotificationLog, "NotificationLog", "The Inbox gets a Recent tab with this session's notifications, also the ones Do Not Disturb, quiet hours or one ping per DM silenced. Kept in memory only.", &[]),
 ];
 
 pub fn meta_of(p: Plugin) -> &'static Meta {
@@ -314,7 +316,7 @@ const FILES: &[(&str, &[Plugin])] = &[
     ("media", &[P::ImageZoom, P::ViewIcons, P::OpenInApp, P::Translate, P::ClearUrls]),
     ("menus", &[P::ViewIcons, P::PermissionsViewer, P::CopyUserUrls, P::ViewRaw, P::Translate, P::ServerInfo, P::ReverseImageSearch]),
     ("message_logger", &[P::MessageLogger]),
-    ("notifier", &[P::RelationshipNotifier, P::OnePingPerDm]),
+    ("notifier", &[P::RelationshipNotifier, P::OnePingPerDm, P::NotificationLog]),
     ("panel", &[P::GameActivityToggle, P::AccountPanelServerProfile]),
     ("people", &[P::UserVoiceShow, P::PlatformIndicators, P::ShowMeYourName, P::MoreUserTags, P::ShowTimeoutDuration, P::IrcColors, P::ValidUser, P::ShowConnections, P::PermissionsViewer, P::MutualGroupDms, P::MemberCount, P::FriendsSince, P::BetterRoleDot]),
     ("sidebar", &[P::PinDms, P::BetterFolders, P::TypingIndicator, P::CallTimer, P::ShowHiddenChannels, P::ReadAllNotificationsButton]),

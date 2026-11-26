@@ -143,6 +143,7 @@ impl AppState {
         self.calls.ringing.insert(channel_id, ringing);
         (now && !was && self.incoming_call().is_some()).then(|| Notification {
             channel_id,
+            message_id: None,
             title: self.channel_name(channel_id),
             body: "Incoming call".into(),
             author_id: None,
