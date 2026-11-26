@@ -1976,7 +1976,7 @@ fn voice_panel(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect) {
     }
     // Two equal buttons, 8 px apart, on a resting tint so they read as buttons.
     let w = (row.width() - 8.0) / 2.0;
-    let colors = (base.blend(c.text.to_color32().gamma_multiply(0.06)), c.text.to_color32(), c.danger.to_color32());
+    let colors = (base.blend(c.text.to_color32().gamma_multiply(0.06)), c.text.to_color32(), c.danger.to_color32(), (Color32::TRANSPARENT, Color32::TRANSPARENT));
     let cam = cx.state.voice.video.camera_on;
     // Linux / macOS: no camera or screen capture yet (disabled with the reason).
     use crate::voice::video::capture::{NO_CAMERA, NO_SHARE, SUPPORTED};

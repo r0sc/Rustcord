@@ -623,7 +623,7 @@ fn name_pill(ui: &egui::Ui, p: &egui::Painter, t: &Tile, rect: Rect, red: Color3
 }
 
 /// A media button: an icon in `fg` on `base`; lit (`fg` fill, icon in `base`) while `on` (camera,
-/// screen share), danger-filled with a white icon while `red` (only Disconnect), the icon
+/// screen share), `danger_fill` with a `danger_label` icon while `red` (only Disconnect), the icon
 /// slashed in the danger colour while `slashed` (mute, deafen), dimmed and inert unless
 /// `enabled`. Used by the call bar and the voice panel. The tooltip is also the accessible name.
 pub(super) struct MediaButton<'a> {
@@ -636,22 +636,24 @@ pub(super) struct MediaButton<'a> {
 }
 
 impl MediaButton<'_> {
-    /// `colors` = (base, fg, danger); the icon is half the button's height, at least 20 px.
-    pub(super) fn show(&self, ui: &mut egui::Ui, rect: Rect, radius: f32, salt: &str, (base, fg, danger): (Color32, Color32, Color32)) -> egui::Response {
+    /// `colors` = (base, fg, danger, (hang-up fill, glyph): `danger_fill` / `danger_label`); the icon is
+    /// half the button's height, at least 20 px.
+    pub(super) fn show(&self, ui: &mut egui::Ui, rect: Rect, radius: f32, salt: &str, (base, fg, danger, (red_fill, red_label)): (Color32, Color32, Color32, (Color32, Color32))) -> egui::Response {
         let resp = ui.interact(rect, ui.make_persistent_id(salt), if self.enabled { Sense::click() } else { Sense::hover() });
         let rect = super::motion::pressed(&resp, rect);
         let hot = self.enabled && (resp.hovered() || resp.has_focus());
         // Muted: the danger icon on a faint danger wash.
-        let fill = if self.red { danger } else if self.on { fg } else if self.slashed { base.blend(danger.gamma_multiply(0.12)) } else { base };
+        let fill = if self.red { red_fill } else if self.on { fg } else if self.slashed { base.blend(danger.gamma_multiply(0.12)) } else { base };
         let bg = match (self.red || self.on, hot) {
             (_, false) => fill,
+            (true, true) if self.red => fill.lerp_to_gamma(Color32::BLACK, 0.1),
             (true, true) => fill.lerp_to_gamma(base, 0.15),
             (false, true) => fill.lerp_to_gamma(fg, 0.12),
         };
         let alpha = if self.enabled { 1.0 } else { 0.4 };
         let p = ui.painter();
         p.rect_filled(rect, radius, bg.gamma_multiply(alpha));
-        let icon = if self.red { Color32::WHITE } else if self.on { base } else if self.slashed { danger } else { fg };
+        let icon = if self.red { red_label } else if self.on { base } else if self.slashed { danger } else { fg };
         let side = (rect.height() * 0.5).max(20.0);
         let shape = if self.slashed { self.icon.off() } else { self.icon };
         icons::paint(p, shape, Rect::from_center_size(rect.center(), Vec2::splat(side)), icon.gamma_multiply(alpha), bg.gamma_multiply(alpha));
@@ -718,7 +720,8 @@ fn controls(ui: &mut egui::Ui, cx: &mut UiCx<'_>, bar: Rect) {
     let gaps = [12.0, 24.0, 12.0, 24.0].map(|g| g * s);
     let total: f32 = widths.iter().sum::<f32>() + gaps.iter().sum::<f32>();
     let mut x = bar.center().x - total / 2.0;
-    let colors = (BUTTON, FG, cx.theme.colors.danger.to_color32());
+    let tk = cx.theme.tokens();
+    let colors = (BUTTON, FG, cx.theme.colors.danger.to_color32(), (tk.danger_fill, tk.danger_label));
     // The dock: a pill behind the row, 8 px wider on each side (a floating video-player bar).
     let dock = Rect::from_center_size(bar.center(), vec2(total + 16.0 * s, 48.0 * s + 8.0));
     let round = dock.height() / 2.0;
