@@ -1,4 +1,3 @@
-import { initViewer } from './viewer.js';
 import { SYSTEMS, LATEST, detectOs, fetchLatest, buttonState, mb } from './download.js';
 
 const q = new URLSearchParams(location.search);
@@ -10,10 +9,10 @@ const os = detectOs({ force: q.get('os'), ua: navigator.userAgent, platform: (ua
   mobile: !!(uad && uad.mobile), touch: navigator.maxTouchPoints });
 const ALT = { deb: ['tar', 'Other Linux: .tar.gz for any distribution'], tar: ['deb', '.deb for Debian, Ubuntu and Mint'] };
 const FIRST = {
-  windows: () => 'First start: if Windows SmartScreen says “Windows protected your PC”, select More info, then Run anyway. The setup isn’t code-signed.',
-  mac: () => 'First start: macOS blocks Rustcord once because Apple hasn’t notarized it. Open it, then click Open Anyway in System Settings, Privacy & Security.',
-  deb: v => `Then install it from the folder you saved it to: sudo apt install ./rustcord_${v}_amd64.deb`,
-  tar: () => 'Then unpack it and run install.sh; the commands are under Install on Linux.',
+  windows: () => 'If SmartScreen warns you, select More info, then Run anyway.',
+  mac: () => 'macOS blocks it once: click Open Anyway in System Settings, Privacy & Security.',
+  deb: v => `Then run: sudo apt install ./rustcord_${v}_amd64.deb`,
+  tar: () => 'Then unpack it and run install.sh (see Install on Linux).',
 };
 const set = (el, p, v) => { if (el) el[p] = v; };
 
@@ -61,7 +60,3 @@ function copy(btn, text, done) {
 }
 $$('[data-copy-link]').forEach(b => b.addEventListener('click', () => copy(b, location.origin + location.pathname, 'Link copied')));
 $$('[data-copy]').forEach(b => b.addEventListener('click', () => copy(b, b.parentElement.querySelector('code').textContent, 'Copied')));
-
-// ---- screen viewer ----
-const viewer = document.querySelector('[data-viewer]');
-if (viewer) initViewer(viewer, q.get('view'));

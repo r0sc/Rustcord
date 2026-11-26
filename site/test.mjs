@@ -1,7 +1,6 @@
 // Run: node --test site/test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tabStep } from './viewer.js';
 import { detectOs, pickAssets, fetchLatest, buttonState, mb, LATEST, REPO } from './download.js';
 
 const UA = {
@@ -84,11 +83,3 @@ test('API failure and bad status fall back', async () => {
   assert.equal(r.v, '0.1.2');
 });
 
-test('viewer keys', () => {
-  assert.equal(tabStep('ArrowDown', 3, 4), 0);
-  assert.equal(tabStep('ArrowRight', 1, 4), 2);
-  assert.equal(tabStep('ArrowUp', 0, 4), 3);
-  assert.equal(tabStep('Home', 2, 4), 0);
-  assert.equal(tabStep('End', 0, 4), 3);
-  assert.equal(tabStep('a', 1, 4), -1);
-});
