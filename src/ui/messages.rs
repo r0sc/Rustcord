@@ -2250,9 +2250,9 @@ fn translation_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, msg: &Messa
         translate::View::Failed(reason) => reason.clone(),
     };
     let (mut retry, mut dismiss) = (false, false);
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
-        ui.set_height(18.0);
+        ui.set_row_height(18.0);
         let (r, _) = ui.allocate_exact_size(vec2(14.0, 18.0), Sense::hover());
         icons::paint(ui.painter(), icon, Rect::from_center_size(r.center(), Vec2::splat(14.0)), color, pal.bg);
         ui.add(Label::new(RichText::new(label).size(pal.meta()).color(color)).selectable(false));
