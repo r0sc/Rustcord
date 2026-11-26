@@ -148,9 +148,6 @@ fn row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, m: &Meta, open_first: bo
         });
         if open {
             ui.add_space(4.0);
-            if m.id == plugins::Plugin::Translate {
-                hint(ui, cx.theme, "When you pick Translate, the message's text is sent to Google Translate, or to DeepL when a key is saved. Nothing else is sent, and nothing is sent on its own.");
-            }
             for o in m.opts {
                 option(ui, cx, pal, m, o);
             }
@@ -225,20 +222,23 @@ fn translate_key(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
     let mut draft: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
     let mut error: Option<String> = ui.data(|d| d.get_temp(id.with("error")));
     let saved = translate::has_key();
+    let mut resp_slot = None;
     ui.add_space(8.0);
+    ui.label(RichText::new("DeepL API key").color(pal.text));
+    let mut remove = false;
     ui.horizontal(|ui| {
-        ui.label(RichText::new("DeepL API key").color(pal.text));
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if saved && small_button(ui, pal, "Remove key", pal.danger).clicked() {
-                match translate::clear_key() {
-                    Ok(()) => error = None,
-                    Err(e) => cx.view.toast(format!("Could not remove the key: {e}"), true),
-                }
-            }
-            ui.label(RichText::new(if saved { "Saved" } else { "Optional" }).size(pal.meta()).color(pal.muted));
-        });
+        let w = if saved { ui.available_width() - 96.0 } else { f32::INFINITY };
+        let hint = if saved { "Saved" } else { "Optional" };
+        resp_slot = Some(ui.add(TextEdit::singleline(&mut draft).password(true).hint_text(hint).id_salt("rc_deepl_key_field").desired_width(w)));
+        remove = saved && small_button(ui, pal, "Remove key", pal.danger).clicked();
     });
-    let resp = ui.add(TextEdit::singleline(&mut draft).password(true).id_salt("rc_deepl_key_field").desired_width(f32::INFINITY));
+    if remove {
+        match translate::clear_key() {
+            Ok(()) => error = None,
+            Err(e) => cx.view.toast(format!("Could not remove the key: {e}"), true),
+        }
+    }
+    let resp = resp_slot.expect("field drawn");
     if resp.changed() {
         error = None;
     }
