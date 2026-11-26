@@ -573,17 +573,21 @@ pub fn product_item(cx: &mut UiCx<'_>, sku: Id, kind: u16) -> Option<Collectible
 /// What a shown profile draws around its card: theme colours, profile effect and frame.
 pub struct ProfileLook {
     pub theme: Option<(u32, u32)>,
+    /// `theme` is the person's aura (ui/aura.rs), not a Nitro theme: no gradient outline.
+    pub aura: bool,
     effect: Option<CollectibleItem>,
     frame: Option<CollectibleItem>,
 }
 
 /// The look of `user_id`'s profile (`with_profile`: the loaded profile counts; the account
-/// popout shows only my local picks).
-pub fn profile_look(cx: &mut UiCx<'_>, user_id: Id, guild_id: Option<Id>, with_profile: bool) -> ProfileLook {
+/// popout shows only my local picks). Without a Nitro theme, their aura is the theme.
+pub fn profile_look(ctx: &egui::Context, cx: &mut UiCx<'_>, user_id: Id, guild_id: Option<Id>, with_profile: bool) -> ProfileLook {
     let profile = super::profile_modal::loaded(cx, user_id, guild_id).filter(|_| with_profile);
     let theme = theme_colors(user_id, profile);
     let (effect, frame) = (item_sku(user_id, profile, 1), item_sku(user_id, profile, 3));
-    ProfileLook { theme, effect: effect.and_then(|s| product_item(cx, s, 1)), frame: frame.and_then(|s| product_item(cx, s, 3)) }
+    let aura = theme.is_none().then(|| cx.state.users.get(&user_id).cloned()).flatten().and_then(|u| super::aura::of(ctx, cx, &u, guild_id));
+    let aura = aura.map(|c| super::aura::theme_pair(c, cx.settings.people_colors, cx.theme.tokens().mode));
+    ProfileLook { theme: theme.or(aura), aura: aura.is_some(), effect: effect.and_then(|s| product_item(cx, s, 1)), frame: frame.and_then(|s| product_item(cx, s, 3)) }
 }
 
 impl ProfileLook {

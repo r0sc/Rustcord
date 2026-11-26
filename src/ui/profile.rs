@@ -85,7 +85,7 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     }
     let member = card_member(cx, guild_id, t.user_id);
     // Theme, effect and frame (ui/cosmetics.rs; the account popout: only my local picks).
-    let look = cosmetics::profile_look(cx, user.id, guild_id, !account);
+    let look = cosmetics::profile_look(ctx, cx, user.id, guild_id, !account);
     // A themed card has its own colours and light / dark mode (§8), whatever the app's.
     let app = Pal::new(cx.theme);
     // A float (E2, docs/DESIGN.md §6): `raised`, which the avatar ring and art tiles follow.
@@ -107,8 +107,8 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
         .constrain_to(bounds)
         .show(ctx, |ui| {
             let behind = ui.ctx().layer_painter(ui.layer_id()).add(egui::Shape::Noop);
-            // A themed card gets the theme's gradient outline instead (`theme_outline`).
-            let stroke = match look.theme {
+            // A themed card gets the theme's gradient outline instead (`theme_outline`); an aura the edge.
+            let stroke = match look.theme.filter(|_| !look.aura) {
                 Some(_) => Stroke::NONE,
                 // High contrast floats have no shadow, a 1.5 px muted edge instead.
                 None if pal.tk.mode == crate::theme::Mode::HighContrast => Stroke::new(1.5, pal.muted),
@@ -142,7 +142,7 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
                     }
                 });
             let rect = framed.response.rect;
-            if let Some(colors) = look.theme {
+            if let Some(colors) = look.theme.filter(|_| !look.aura) {
                 ui.painter().add(cosmetics::theme_outline(rect, r, colors));
             } else {
                 sheen(ui.painter(), rect, f32::from(r), &pal.tk);

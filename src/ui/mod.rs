@@ -6,6 +6,7 @@
 //! the sub-module `pub fn` signatures are a shared contract between the ui implementers; add
 //! fields freely, don't remove/rename. Which file owns which surface: docs/SOCIAL_UI_DESIGN.md.
 
+pub mod aura;
 pub mod autocomplete;
 pub mod call;
 pub mod chrome;

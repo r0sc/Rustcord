@@ -40,7 +40,7 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
 
 /// A setting row with a dropdown, like `synced::pick_row`. `id` tells apart rows with the same label.
 /// A value the list lacks (a settings file edited by hand) shows as the first option.
-fn choice_row<T: Copy + PartialEq>(ui: &mut egui::Ui, theme: &Theme, id: &str, label: &str, hint_text: Option<&str>, value: &mut T, options: &[(T, &str)]) -> bool {
+pub(super) fn choice_row<T: Copy + PartialEq>(ui: &mut egui::Ui, theme: &Theme, id: &str, label: &str, hint_text: Option<&str>, value: &mut T, options: &[(T, &str)]) -> bool {
     const WIDTH: f32 = 220.0;
     // egui's combo box: one line of button text and the button padding.
     let height = ui.text_style_height(&egui::TextStyle::Button) + 2.0 * ui.spacing().button_padding.y;

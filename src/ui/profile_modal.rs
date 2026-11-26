@@ -80,7 +80,7 @@ pub fn show(ctx: &egui::Context, cx: &mut UiCx<'_>, user_id: Id, guild_id: Optio
         return;
     };
     // Cosmetics (ui/cosmetics.rs): theme, effect, frame, decoration, name style, tag, badges.
-    let look = cosmetics::profile_look(cx, user_id, guild_id, true);
+    let look = cosmetics::profile_look(ctx, cx, user_id, guild_id, true);
     // A themed profile has its own colours and light / dark mode (§8), whatever the app's.
     let app = Pal::new(cx.theme);
     // A modal (E3): `raised`, which the avatar ring and art tiles follow.
@@ -101,8 +101,8 @@ pub fn show(ctx: &egui::Context, cx: &mut UiCx<'_>, user_id: Id, guild_id: Optio
     let short = room - rest < 80.0;
     let body_h = (room - rest).clamp(80.0, 320.0);
     let style = ctx.global_style();
-    let edge = match look.theme {
-        // The theme's gradient outline instead (`cosmetics::theme_outline`).
+    let edge = match look.theme.filter(|_| !look.aura) {
+        // The theme's gradient outline instead (`cosmetics::theme_outline`); an aura keeps the edge.
         Some(_) => Stroke::NONE,
         // High contrast floats have no shadow, a 1.5 px muted edge instead.
         None if pal.tk.mode == crate::theme::Mode::HighContrast => Stroke::new(1.5, pal.muted),
@@ -203,7 +203,9 @@ pub fn show(ctx: &egui::Context, cx: &mut UiCx<'_>, user_id: Id, guild_id: Optio
         let card = ui.min_rect();
         if let Some(colors) = look.theme {
             ui.painter().set(theme_slot, cosmetics::theme_shapes(ui.ctx(), "modal", card, r, colors, banner_bottom, pal.dark));
-            ui.painter().add(cosmetics::theme_outline(card, r, colors));
+            if !look.aura {
+                ui.painter().add(cosmetics::theme_outline(card, r, colors));
+            }
         }
         look.finish(ui, cx.images, card, r, behind, cosmetics::shown_for(ui.ctx(), ("modal", user_id)), fx_anim);
     });

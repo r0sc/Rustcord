@@ -73,6 +73,17 @@ pub fn offline_mode() -> bool {
     std::env::var_os("RUSTCORD_OFFLINE").is_some_and(|v| v != "0")
 }
 
+/// People's colours (ui/aura.rs): how strongly each person's own colour shows on their
+/// profile, rows and cards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PeopleColors {
+    #[default]
+    Bold,
+    Subtle,
+    Off,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AnimateMode {
@@ -92,6 +103,8 @@ pub struct Settings {
     pub show_member_list: bool,
     /// Animate GIF avatars/emoji of other users always or only on hover.
     pub animate_others: AnimateMode,
+    /// Settings > Appearance > People's colours.
+    pub people_colors: PeopleColors,
     /// Optional overrides of the identify/super-properties (see README).
     pub client_build_number: Option<u64>,
     pub system_locale: Option<String>,
@@ -282,6 +295,7 @@ impl Default for Settings {
             send_read_acks: true,
             show_member_list: true,
             animate_others: AnimateMode::Hover,
+            people_colors: PeopleColors::default(),
             client_build_number: None,
             system_locale: None,
             voice_input: None,

@@ -164,10 +164,20 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
 
     let c = &cx.theme.colors;
     let mut ring = c.sidebar.to_color32();
-    if hot {
+    // Hovered, or its popout is open (like Discord's): the row's fill and the person's aura.
+    let open = cx.view.profile_card.is_some_and(|t| t.user_id == user.id);
+    if hot || open {
         ring = row_fills(ui, c).1;
         let bg = row.shrink2(vec2(8.0, 1.0));
-        ui.painter().set(bg_slot, Shape::rect_filled(bg, CornerRadius::from(cx.theme.layout.corner_radius), ring));
+        let radius = cx.theme.layout.corner_radius;
+        let mut shapes = vec![Shape::rect_filled(bg, CornerRadius::from(radius), ring)];
+        if let Some(a) = super::aura::of(ui.ctx(), cx, user, guild_id) {
+            let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if open { 1.0 } else { 0.75 };
+            shapes.push(super::aura::row_wash(ui.ctx(), bg, radius as u8, a, alpha));
+            // Under the status dot: the wash near its strong end.
+            ring = ring.blend(a.gamma_multiply(alpha * 0.85));
+        }
+        ui.painter().set(bg_slot, Shape::Vec(shapes));
     }
     match own_listed {
         _ if offline => {}

@@ -1693,3 +1693,20 @@ whole-word search so "member" and "November" stay out). The only hits are `theme
 test, config tests that parse old settings files, and the history notes in this file.
 
 ---
+
+## 17. Aura: people's colours (ui/aura.rs)
+
+Each person brings their own colour; the chrome stays Nightshade and purple stays "you".
+Setting: Appearance > People's colours > Strength: **Bold** (default), Subtle, Off. High Contrast
+has none.
+
+| | |
+|---|---|
+| Colour, in order | Nitro profile theme primary; profile accent (banner) colour; the avatar's dominant colour (12 hue bins weighted by chroma², heaviest bin's mean, from the 64 px avatar already in the disk cache, decoded once on a worker thread); none (today's look). Default avatars give none. Servers: the icon's dominant colour. |
+| Normalised | HSV saturation 45-72 %, value 38-72 %; greys (s < 12 %) give none; a hue within 20° of the accent's 278° is set to 18 % saturation. Dark app themes: luma capped at 0.42 so the card stays dark. |
+| Popout, full profile | the aura as a profile theme (`cosmetics::theme_*`: gradient, contrast-checked text, avatar ring); dark themes: colour over 55 % darker, light themes: 72 % / 55 % toward white. Unlike a Nitro theme: the normal 1 px edge and sheen, no gradient outline. Subtle: colour half toward grey. |
+| Member and DM rows | hovered (75 %) or popout open / DM selected (100 %): the aura from the left edge fading out at 75 % of the width, over the row fill, at 55 % (light themes 35 %, Subtle half). The status-dot ring takes the wash colour. At rest: unchanged. |
+| User panel | my aura the same way, at full strength. |
+| Server | a band under the server name, the icon's aura fading out downward over 150 px, in the card's 12 px corner. |
+| Paint | one shared two-texel ramp texture per direction, tinted per shape: no texture per colour, no new traffic. |
+| Motion | none of its own: rows wash instantly on hover (ux-motion: frequent, no delay). A colour decoded while its card is open appears on the next frame. |

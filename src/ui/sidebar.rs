@@ -1061,6 +1061,13 @@ pub fn channel_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     let guild = cx.state.selected_guild;
     let title = guild.map(|g| cx.state.guild(g).map(|g| g.name.clone()).unwrap_or_default());
 
+    // The server's aura from its icon: a band under its name that fades out over 150 px, in the
+    // card's 12 px corner (`paint_card`).
+    if let Some(a) = guild.and_then(|g| super::aura::of_guild(ui.ctx(), cx, g)) {
+        let band = ui.max_rect().with_max_y(ui.max_rect().top() + 150.0);
+        let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode);
+        ui.painter().add(super::aura::ramp(ui.ctx(), band, CornerRadius { nw: 12, ..Default::default() }, a.gamma_multiply(alpha), false));
+    }
     // No fill: the card's rounded corner shows through.
     egui::Panel::top("channel_header")
         .exact_size(HEADER_H)
@@ -1723,6 +1730,7 @@ fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     let mentions = cx.state.mention_count(id);
 
     let bg_slot = ui.painter().add(Shape::Noop);
+    let wash_slot = ui.painter().add(Shape::Noop);
     // Also while the pointer is on the close button (a widget on top of the row).
     let hot = ui.rect_contains_pointer(row);
     // 1:1 DMs: the other user's cosmetics (ui/cosmetics.rs), the nameplate under the row.
@@ -1737,11 +1745,20 @@ fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     // Registered after the avatar widget so the whole row stays clickable.
     let resp = ui.interact(row, ui.make_persistent_id(("dm", id)), Sense::click());
     let fill = row_chrome(ui, cx, bg_slot, row, selected, hot, unread);
+    // Selected or hovered: the other person's aura washes in from the left (ui/aura.rs).
+    let aura = other.filter(|_| selected || hot).and_then(|u| cx.state.users.get(&u).cloned()).and_then(|u| super::aura::of(ui.ctx(), cx, &u, None));
 
     let c = &cx.theme.colors;
     let size = cx.theme.font.size;
     if let Some(u) = other {
-        user_dot(ui.painter(), avatar, cx.state, u, c, if fill == Color32::TRANSPARENT { c.sidebar.to_color32() } else { fill });
+        let mut ring = if fill == Color32::TRANSPARENT { c.sidebar.to_color32() } else { fill };
+        if let Some(a) = aura {
+            let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if selected { 1.0 } else { 0.75 };
+            let radius = cx.theme.layout.corner_radius as u8;
+            ui.painter().set(wash_slot, super::aura::row_wash(ui.ctx(), row.shrink2(vec2(ROW_INSET, 0.0)), radius, a, alpha));
+            ring = ring.blend(a.gamma_multiply(alpha * 0.85));
+        }
+        user_dot(ui.painter(), avatar, cx.state, u, c, ring);
     }
     let color = row_text_color(c, muted, selected || unread || hot);
     let chip_under = if fill == Color32::TRANSPARENT { c.sidebar.to_color32() } else { fill };
@@ -1905,6 +1922,11 @@ pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32) {
     egui::Area::new(egui::Id::unique("user_panel")).order(egui::Order::Middle).fixed_pos(pos).fade_in(false).show(ctx, |ui| {
         let (rect, _) = ui.allocate_exact_size(vec2(width - 2.0 * PANEL_MARGIN, h), Sense::hover());
         ui.painter().rect_filled(rect, panel_r(cx.theme), user_panel_fill(&c));
+        // My aura from the left, fading out at 75 % (ui/aura.rs).
+        if let Some(a) = cx.state.me.clone().and_then(|me| super::aura::of(ctx, cx, &me, None)) {
+            let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode);
+            ui.painter().add(super::aura::row_wash(ctx, rect, panel_r(cx.theme), a, alpha));
+        }
         let quest_h = quest_h(cx.view);
         let voice_h = h - account_h(cx.theme) - quest_h;
         if quest_h > 0.0 {

@@ -149,7 +149,7 @@ impl Page {
             Page::Connections => ("Connections", "connections", "accounts spotify steam github twitch xbox"),
             Page::FriendRequests => ("Friend requests", "friend-requests", "friends"),
             Page::Billing => ("Nitro & billing", "billing", "nitro boost subscriptions gift payment"),
-            Page::Appearance => ("Appearance", "appearance", "theme dark light gradient font member list colours colors density"),
+            Page::Appearance => ("Appearance", "appearance", "theme dark light gradient font member list colours colors density people aura profile colour"),
             Page::Accessibility => {
                 ("Accessibility", "accessibility", "saturation role colours colors font size scaling zoom spacing reduced motion animation gif tts")
             }
@@ -176,7 +176,7 @@ impl Page {
     /// shortcut: kept by hand next to the pages' code; move the labels into shared consts if they drift.
     fn local_labels(self) -> &'static [&'static str] {
         match self {
-            Page::Appearance => &["Theme", "Gradients", "Message display", "Cozy", "Compact", "Use Discord font (gg sans)", "Show member list"],
+            Page::Appearance => &["Theme", "Gradients", "People's colours", "Message display", "Cozy", "Compact", "Use Discord font (gg sans)", "Show member list"],
             Page::Accessibility => &[
                 "Saturation",
                 "Show role colours in names",
@@ -550,6 +550,17 @@ fn page(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
         Page::ThemeEditor => changed |= theme_editor::show(ui, cx),
         Page::Appearance => {
             changed |= appearance(ui, cx);
+            section(ui, cx.theme, "People's colours");
+            use crate::config::PeopleColors as P;
+            changed |= overlay::choice_row(
+                ui,
+                cx.theme,
+                "people_colors",
+                "Strength",
+                Some("Profiles, member rows, DMs and server headers take each person's or server's own colour."),
+                &mut cx.settings.people_colors,
+                &[(P::Bold, "Bold"), (P::Subtle, "Subtle"), (P::Off, "Off")],
+            );
             section(ui, cx.theme, "Message display");
             synced::message_display(ui, cx);
             section(ui, cx.theme, "Font");
