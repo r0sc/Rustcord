@@ -427,7 +427,7 @@ fn process_counters() -> String {
     String::new()
 }
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(windows)]
 const MB: f64 = 1024.0 * 1024.0;
 
 fn upload(ctx: &egui::Context, name: &str, img: DecodedImage) -> State {
