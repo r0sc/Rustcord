@@ -1524,6 +1524,8 @@ pub struct RichPresence {
     pub button_urls: Vec<String>,
     /// The presence session the activity belongs to (the metadata endpoint's path).
     pub session_id: Option<String>,
+    /// `party.id` (≤ 128 chars): what Ask to Join names.
+    pub party_id: Option<String>,
     /// `flags`: `JOIN`, `PARTY_PRIVACY_FRIENDS`, `PARTY_PRIVACY_VOICE_CHANNEL`, …
     pub flags: u32,
 }
@@ -1893,6 +1895,8 @@ pub struct ReadyData {
     pub relationships: Vec<Relationship>,
     /// `auth_session_id_hash`: this login's entry in `GET /auth/sessions` (Settings → Devices).
     pub auth_session_id_hash: String,
+    /// The gateway `session_id` (Ask to Join names it, `crate::rpc`).
+    pub session_id: String,
 }
 
 #[derive(Clone, Debug)]

@@ -316,7 +316,7 @@ fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Op
 /// - Spotify: song, "by" artist, "on" album, a progress bar with both times, "Play on Spotify";
 /// - stream: "Live" tag and title, the game, "Watch".
 ///
-/// Then its buttons: "Join" / "Ask to Join" (disabled), the custom ones, Spotify's or the stream's.
+/// Then its buttons: "Join" / "Ask to Join" (`RpcState::join_button`), the custom ones, Spotify's or the stream's.
 /// The links open in the browser on a click only. Clocks repaint once a second while shown.
 /// `user`: whose activity (custom button links are fetched per user).
 pub(super) fn activity_section(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: Id, a: &Activity, side: f32, bg: egui::Color32) {
@@ -433,8 +433,16 @@ pub(super) fn activity_section(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, 
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
         if let Some(label) = join {
-            // The join secret goes to the game over Discord's local game connection (RPC), which Rustcord lacks.
-            super::messages::button(ui, pal, Btn::Secondary, label, false).on_disabled_hover_text("Rustcord can't connect to games yet, so joining isn't possible here.");
+            // Only a click sends: "Join" asks Discord for the secret and hands it to my game over the local game connection; "Ask to Join" sends one message.
+            let online = crate::activity::online(cx.state);
+            let b = cx.state.rpc.join_button(label, online, user, a);
+            let mut r = super::messages::button(ui, pal, Btn::Secondary, b.label, b.enabled);
+            if let Some(h) = &b.hover {
+                r = r.on_disabled_hover_text(h);
+            }
+            if r.clicked() {
+                cx.state.rpc.join_click(cx.cmd, label, online, user, a, super::composer::new_nonce);
+            }
         }
         for (i, label) in custom.iter().enumerate() {
             let known = rich.and_then(|r| r.button_urls.get(i));

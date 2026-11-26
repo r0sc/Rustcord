@@ -2302,7 +2302,7 @@ fn handle_activity(cmd: crate::activity::ActivityCommand, session: &mut Option<S
 }
 
 /// `Command::RpcRequest`: through the limiter, one request per game URL set or per click.
-fn handle_rpc(req: crate::rpc::RpcRequest, session: &mut Option<Session>, sink: &EventSink) {
+fn handle_rpc(req: crate::rpc::RpcRequest, session: &mut Option<Session>, sink: &EventSink, rpc: &crate::rpc::Service) {
     use crate::rpc::{RpcEvent, RpcRequest as R};
     match req {
         // A failed or late answer still answers (None per URL): the held op 3 goes without the pictures.
@@ -2317,6 +2317,22 @@ fn handle_rpc(req: crate::rpc::RpcRequest, session: &mut Option<Session>, sink: 
                 Some(BackendEvent::Rpc(RpcEvent::Images(app, urls.iter().map(|u| (u.clone(), path(u))).collect())))
             });
         }
+        // The secret never leaves the `Secret`: from the answer to the pipe write.
+        R::Join { user, session_id, app, invite } => {
+            let rpc = rpc.clone();
+            rest(session, sink, move |api| async move { api.activity_secret(user, &session_id, app, invite).await }, move |r| {
+                failed("Couldn't join")(r.map(|secret| rpc.send(crate::rpc::RpcCommand::Dispatch { app, secret })))
+            });
+        }
+        R::AskToJoin { user, app, party_id, session_id, nonce } => rest(
+            session,
+            sink,
+            move |api| async move {
+                let dm = api.open_dm(user).await?;
+                api.ask_to_join(dm.id, app, &session_id, &party_id, &nonce).await
+            },
+            failed("Couldn't ask to join"),
+        ),
     }
 }
 
@@ -2740,7 +2756,7 @@ async fn run(
             Command::Account(c) => handle_account(c, &mut session, &sink, None),
             Command::Activity(c) => handle_activity(c, &mut session, &sink, &activity),
             Command::Rpc(c) => rpc.send(c),
-            Command::RpcRequest(r) => handle_rpc(r, &mut session, &sink),
+            Command::RpcRequest(r) => handle_rpc(r, &mut session, &sink, &rpc),
             Command::Quests(c) => handle_quests(c, &mut session, &sink),
         }
     }

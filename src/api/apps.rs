@@ -3,7 +3,8 @@
 //!
 //! OWNERSHIP: activities engineer.
 
-use super::{ApiClient, ApiError, net_err};
+use super::{ApiClient, ApiError, net_err, send_body};
+use crate::auth::Secret;
 use crate::model::Id;
 use reqwest::{Method, Url};
 use serde::Deserialize;
@@ -43,6 +44,20 @@ impl ApiClient {
         self.send_json(Method::GET, public_apps_url(ids), None).await
     }
 
+    /// `GET /users/{user}/sessions/{session}/activities/{app}/1` (+ `?channel_id&message_id` for a
+    /// rich-presence invite): the secret that joins their activity, handed to my game.
+    pub async fn activity_secret(&self, user: Id, session: &str, app: Id, invite: Option<(Id, Id)>) -> Result<Secret, ApiError> {
+        let url = secret_url(user, session, app, invite).ok_or(ApiError::NotFound)?;
+        secret_of(&self.send(Method::GET, url, None).await?.bytes().await.map_err(net_err)?)
+    }
+
+    /// Ask to Join: `POST /channels/{dm}/messages` with a type 5 activity naming my gateway session
+    /// and their party (the DM comes from `open_dm`).
+    pub async fn ask_to_join(&self, dm: Id, app: Id, my_session: &str, party_id: &str, nonce: &str) -> Result<(), ApiError> {
+        let url = Self::url(&["channels", &dm.to_string(), "messages"]);
+        self.send(Method::POST, url, Some(ask_body(dm, app, my_session, party_id, nonce))).await.map(drop)
+    }
+
     /// `POST /applications/{app}/external-assets {"urls":[…]}` (1-2 https URLs): the media-proxy
     /// path of each one it accepted, as `(url, path)`. A path that is not plain is left out.
     pub async fn external_assets(&self, app: Id, urls: &[String]) -> Result<Vec<(String, String)>, ApiError> {
@@ -69,6 +84,33 @@ fn proxied_paths(answer: Vec<ExternalAsset>, asked: &[String]) -> Vec<(String, S
 fn metadata_url(user: Id, session: &str, app: Id) -> Option<Url> {
     let plain = !session.is_empty() && session.len() <= 64 && session.bytes().all(|b| b.is_ascii_alphanumeric());
     plain.then(|| ApiClient::url(&["users", &user.to_string(), "sessions", session, "activities", &app.to_string(), "metadata"]))
+}
+
+/// The secret GET's URL; None for a session id that is not plain (as `metadata_url`).
+fn secret_url(user: Id, session: &str, app: Id, invite: Option<(Id, Id)>) -> Option<Url> {
+    let mut url = metadata_url(user, session, app)?;
+    url.path_segments_mut().ok()?.pop().push("1");
+    if let Some((channel, message)) = invite {
+        url.query_pairs_mut().append_pair("channel_id", &channel.to_string()).append_pair("message_id", &message.to_string());
+    }
+    Some(url)
+}
+
+/// `{"secret": "…"}` as a `Secret` from the start (never logged; an error names no content).
+fn secret_of(body: &[u8]) -> Result<Secret, ApiError> {
+    #[derive(Deserialize)]
+    struct Wire {
+        secret: String,
+    }
+    let w: Wire = serde_json::from_slice(body).map_err(|_| ApiError::Decode("no secret".into()))?;
+    Some(w.secret).filter(|s| !s.is_empty()).map(Secret::new).ok_or_else(|| ApiError::Decode("no secret".into()))
+}
+
+fn ask_body(dm: Id, app: Id, my_session: &str, party_id: &str, nonce: &str) -> serde_json::Value {
+    let mut body = send_body(dm, "", nonce, None);
+    body["application_id"] = serde_json::json!(app);
+    body["activity"] = serde_json::json!({"type": 5, "session_id": my_session, "party_id": party_id});
+    body
 }
 
 /// `button_urls` of a metadata answer, leniently (an empty 204 body, odd entries: none).

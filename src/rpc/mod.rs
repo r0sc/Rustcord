@@ -16,7 +16,8 @@ pub use activity::{Activity, Presence, Privacy};
 pub use pipe::BASE;
 
 use crate::backend::{BackendEvent, CommandSender, EventSink};
-use crate::model::{Id, User};
+use crate::auth::Secret;
+use crate::model::{Activity as Card, Id, User};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -79,6 +80,8 @@ pub enum RpcCommand {
     Me(Option<RpcUser>),
     /// The setting: listen for games, or close them all and stop.
     Enable(bool),
+    /// My click on Join: the join secret goes to every game of `app` that listens (§2.5).
+    Dispatch { app: Id, secret: Secret },
 }
 
 /// UI -> backend (`Command::RpcRequest`): the requests the game connection causes.
@@ -86,6 +89,11 @@ pub enum RpcCommand {
 pub enum RpcRequest {
     /// The newest game's image URLs (1-2) -> `RpcEvent::Images`.
     ProxyImages { app: Id, urls: Vec<String> },
+    /// Join (§4.1; `invite` = channel and message of a rich-presence invite, §4.3): the secret GET,
+    /// then `RpcCommand::Dispatch`. An error is an `ActionFailed` toast.
+    Join { user: Id, session_id: String, app: Id, invite: Option<(Id, Id)> },
+    /// Ask to Join (§4.2): the DM with `user`, then the join request message.
+    AskToJoin { user: Id, app: Id, party_id: String, session_id: String, nonce: String },
 }
 
 /// Server -> UI (`BackendEvent::Rpc`).
@@ -117,6 +125,14 @@ pub enum RpcEvent {
     Images(Id, Vec<(String, Option<String>)>),
 }
 
+/// What a card's Join / Ask to Join button shows; `hover` explains a disabled one.
+#[derive(Debug, PartialEq)]
+pub struct JoinButton {
+    pub label: &'static str,
+    pub enabled: bool,
+    pub hover: Option<String>,
+}
+
 /// One game's connection as the UI knows it.
 #[derive(Debug)]
 pub struct ConnInfo {
@@ -144,6 +160,10 @@ pub struct RpcState {
     proxy_asked: HashSet<(Id, String)>,
     /// The proxy's answers: the path, None = failed.
     proxied: HashMap<(Id, String), Option<String>>,
+    /// My gateway session id (READY), which Ask to Join names.
+    pub session_id: String,
+    /// (user, party) I asked to join this session.
+    asked: HashSet<(Id, String)>,
 }
 
 impl RpcState {
@@ -198,6 +218,52 @@ impl RpcState {
     /// False while the newest game's images wait for the proxy: its op 3 change is held.
     pub fn images_ready(&self) -> bool {
         self.newest().is_none_or(|(app, a)| a.image_urls().iter().all(|u| self.proxied.contains_key(&(app, (*u).to_owned()))))
+    }
+
+    /// A game of `app` is connected and listens for `ACTIVITY_JOIN`.
+    pub fn can_join(&self, app: Id) -> bool {
+        self.on && self.conns.values().any(|c| c.app == app && c.events.contains(&"ACTIVITY_JOIN"))
+    }
+
+    /// The button of an activity card whose `join_label` is `label` (§4.1, §4.2); `online`: Rustcord
+    /// is connected.
+    pub fn join_button(&self, label: &'static str, online: bool, user: Id, a: &Card) -> JoinButton {
+        let rich = a.rich.as_deref();
+        let app = rich.and_then(|r| r.application_id);
+        let off = |label, hover: &str| JoinButton { label, enabled: false, hover: Some(hover.to_owned()) };
+        if !online {
+            return off(label, "You're offline.");
+        }
+        if label != "Join" {
+            let asked = rich.and_then(|r| r.party_id.clone()).map(|p| self.asked.contains(&(user, p)));
+            return match (app, asked) {
+                (Some(_), Some(false)) if !self.session_id.is_empty() => JoinButton { label, enabled: true, hover: None },
+                (Some(_), Some(true)) => off("Request sent", "They answer in their game."),
+                _ => off(label, "This activity can't be asked to join."),
+            };
+        }
+        match (app, rich.is_some_and(|r| r.session_id.is_some())) {
+            (Some(app), true) if self.can_join(app) => JoinButton { label, enabled: true, hover: None },
+            (Some(_), true) if !self.on => off(label, "Turn on \"Let games show their activity\" in Settings to join."),
+            (Some(_), true) => off(label, &format!("Start {} to join.", a.name)),
+            _ => off(label, "This activity can't be joined from here."),
+        }
+    }
+
+    /// A click on that button: its one request, none when it is disabled. Ask to Join is marked
+    /// as asked, so a second click sends nothing. `nonce` makes the message's nonce.
+    pub fn join_click(&mut self, cmd: &CommandSender, label: &'static str, online: bool, user: Id, a: &Card, nonce: impl FnOnce() -> String) {
+        let Some(r) = a.rich.as_deref().filter(|_| self.join_button(label, online, user, a).enabled) else { return };
+        let Some(app) = r.application_id else { return };
+        let req = match (label, &r.session_id, &r.party_id) {
+            ("Join", Some(session_id), _) => RpcRequest::Join { user, session_id: session_id.clone(), app, invite: None },
+            (_, _, Some(party_id)) if label != "Join" => {
+                self.asked.insert((user, party_id.clone()));
+                RpcRequest::AskToJoin { user, app, party_id: party_id.clone(), session_id: self.session_id.clone(), nonce: nonce() }
+            }
+            _ => return,
+        };
+        cmd.send(crate::backend::Command::RpcRequest(req));
     }
 
     /// What survives a logout: the server's state, not the session's games.
@@ -290,6 +356,8 @@ enum ToConn {
     Me(Option<RpcUser>),
     /// CLOSE 1000 with this message.
     Close(&'static str),
+    /// ACTIVITY_JOIN, for a game of `app` that subscribed.
+    Join { app: Id, secret: Secret },
 }
 
 /// Holds back the activity changes (and closes of a game that had one) so that at most one
@@ -380,6 +448,9 @@ async fn serve(mut cmds: UnboundedReceiver<RpcCommand>, sink: EventSink, base: S
                     games.values().for_each(|g| _ = g.send(ToConn::Close("The game connection is off")));
                 }
                 Some(RpcCommand::Enable(true)) => {}
+                Some(RpcCommand::Dispatch { app, secret }) => {
+                    games.values().for_each(|g| _ = g.send(ToConn::Join { app, secret: secret.clone() }));
+                }
             },
             stream = async { listener.as_mut().unwrap().accept().await }, if listener.is_some() => match stream {
                 Ok(stream) if games.len() < MAX_CONNS => {
@@ -464,6 +535,7 @@ async fn game(
                     Some(ToConn::Me(user)) if user.is_some() => conn.set_user(user),
                     Some(ToConn::Me(None)) => proto::Out::close(1000, "Logged out"),
                     Some(ToConn::Close(message)) => proto::Out::close(1000, message),
+                    Some(ToConn::Join { app, secret }) => proto::Out { frames: conn.join(app, &secret).into_iter().collect(), ..Default::default() },
                     _ => break,
                 };
                 if !finish(out, &mut stream, id, &up).await {
@@ -654,6 +726,103 @@ mod tests {
             global_name: None,
             avatar: None,
         }
+    }
+
+    fn card(app: Option<Id>, session: Option<&str>, party: Option<&str>) -> Card {
+        let rich = crate::model::RichPresence { application_id: app, session_id: session.map(Into::into), party_id: party.map(Into::into), ..Default::default() };
+        Card { kind: 0, name: "Halo".into(), rich: Some(Box::new(rich)) }
+    }
+
+    fn sent_cmds(rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::backend::Command>) -> Vec<String> {
+        std::iter::from_fn(|| rx.try_recv().ok()).map(|c| format!("{c:?}")).collect()
+    }
+
+    #[test]
+    fn the_join_button_follows_the_game_and_the_setting() {
+        let mut s = RpcState { on: true, session_id: "mine".into(), ..Default::default() };
+        let a = card(Some(Id(8)), Some("sess"), Some("p1"));
+        let join = |s: &RpcState, online, a: &Card| s.join_button("Join", online, Id(2), a);
+        let hover = |b: JoinButton| (b.enabled, b.hover);
+        assert_eq!(hover(join(&s, false, &a)), (false, Some("You're offline.".into())));
+        assert_eq!(hover(join(&s, true, &a)), (false, Some("Start Halo to join.".into())), "the game is not connected");
+        s.apply(RpcEvent::Connected { conn: 1, app: Id(8) });
+        assert_eq!(hover(join(&s, true, &a)).1.as_deref(), Some("Start Halo to join."), "connected but not listening");
+        s.apply(RpcEvent::Connected { conn: 2, app: Id(9) });
+        s.apply(RpcEvent::Subscribed { conn: 2, events: vec!["ACTIVITY_JOIN"] });
+        assert!(!join(&s, true, &a).enabled, "another game listens");
+        s.apply(RpcEvent::Subscribed { conn: 1, events: vec!["ACTIVITY_JOIN"] });
+        assert_eq!(hover(join(&s, true, &a)), (true, None));
+        assert!(s.can_join(Id(8)) && !s.can_join(Id(7)));
+        for (a, why) in [(card(Some(Id(8)), None, None), "no session"), (card(None, Some("sess"), None), "no application")] {
+            assert_eq!(hover(join(&s, true, &a)), (false, Some("This activity can't be joined from here.".into())), "{why}");
+        }
+        s.on = false;
+        assert_eq!(hover(join(&s, true, &a)), (false, Some("Turn on \"Let games show their activity\" in Settings to join.".into())));
+        assert!(!s.can_join(Id(8)));
+    }
+
+    #[test]
+    fn a_click_sends_one_request_and_ask_to_join_only_once() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let cmd = CommandSender(tx);
+        let mut s = RpcState { on: true, session_id: "mine".into(), ..Default::default() };
+        let a = card(Some(Id(8)), Some("sess"), Some("p1"));
+        s.apply(RpcEvent::Connected { conn: 1, app: Id(8) });
+        s.apply(RpcEvent::Subscribed { conn: 1, events: vec!["ACTIVITY_JOIN"] });
+        // Join: nothing offline or while disabled, one request per click.
+        s.join_click(&cmd, "Join", false, Id(2), &a, || "n".into());
+        s.join_click(&cmd, "Join", true, Id(2), &card(Some(Id(8)), None, None), || "n".into());
+        assert!(sent_cmds(&mut rx).is_empty());
+        s.join_click(&cmd, "Join", true, Id(2), &a, || "n".into());
+        assert_eq!(sent_cmds(&mut rx), [r#"RpcRequest(Join { user: 2, session_id: "sess", app: 8, invite: None })"#]);
+        // Ask to Join: offline nothing; then once per (user, party), and the button says so.
+        s.join_click(&cmd, "Ask to Join", false, Id(2), &a, || "n".into());
+        assert!(sent_cmds(&mut rx).is_empty());
+        assert!(s.join_button("Ask to Join", true, Id(2), &a).enabled);
+        s.join_click(&cmd, "Ask to Join", true, Id(2), &a, || "n".into());
+        s.join_click(&cmd, "Ask to Join", true, Id(2), &a, || "n2".into());
+        assert_eq!(sent_cmds(&mut rx), [r#"RpcRequest(AskToJoin { user: 2, app: 8, party_id: "p1", session_id: "mine", nonce: "n" })"#]);
+        let b = s.join_button("Ask to Join", true, Id(2), &a);
+        assert_eq!((b.label, b.enabled), ("Request sent", false));
+        s.join_click(&cmd, "Ask to Join", true, Id(3), &a, || "n3".into());
+        assert_eq!(sent_cmds(&mut rx).len(), 1, "another user's party is a new request");
+        // No party, no application or no session of mine: disabled. The game need not run.
+        for a in [card(Some(Id(8)), None, None), card(None, None, Some("p")), card(Some(Id(5)), None, Some("p"))] {
+            assert_eq!(s.join_button("Ask to Join", true, Id(4), &a).enabled, a.rich.as_ref().is_some_and(|r| r.application_id.is_some() && r.party_id.is_some()));
+        }
+        assert!(!RpcState::default().join_button("Ask to Join", true, Id(4), &a).enabled, "no gateway session yet");
+        assert!(s.after_logout().join_button("Ask to Join", true, Id(2), &a).hover.is_some(), "a new login starts fresh");
+    }
+
+    #[tokio::test]
+    async fn dispatch_reaches_only_a_listening_game_of_that_app() {
+        let base = format!("rustcord-test-ipc-join-{}", std::process::id());
+        let (sink, rx) = sink();
+        let svc = Service::spawn(sink, base.clone());
+        svc.send(RpcCommand::Enable(true));
+        assert!(matches!(next(&rx).await, RpcEvent::Listening(Some(0))));
+        svc.send(RpcCommand::Me(Some(me())));
+        // (client_id, subscribes): the listener, another app's game, and the same app without a subscription.
+        let mut games = Vec::new();
+        for (app, listens) in [("1575590836601753835", true), ("1575590836601753836", true), ("1575590836601753835", false)] {
+            let mut g = client(&base, 0).await;
+            send(&mut g, frame::HANDSHAKE, json!({"v": 1, "client_id": app})).await;
+            read_frame(&mut g).await;
+            if listens {
+                send(&mut g, frame::FRAME, json!({"cmd":"SUBSCRIBE","evt":"ACTIVITY_JOIN","nonce":"s"})).await;
+                read_frame(&mut g).await;
+            }
+            games.push(g);
+        }
+        svc.send(RpcCommand::Dispatch { app: Id(1575590836601753835), secret: Secret::new("j-1a2b3c".into()) });
+        let got = serde_json::from_slice::<Value>(&read_frame(&mut games[0]).await.body).unwrap();
+        assert_eq!(got, json!({"cmd":"DISPATCH","evt":"ACTIVITY_JOIN","data":{"secret":"j-1a2b3c"},"nonce":null}));
+        // The others hear nothing: their next frame is the answer to a PING sent after the dispatch.
+        for g in &mut games[1..] {
+            send(g, frame::PING, json!({"nonce": "p"})).await;
+            assert_eq!(read_frame(g).await.op, frame::PONG);
+        }
+        svc.send(RpcCommand::Enable(false));
     }
 
     #[tokio::test]

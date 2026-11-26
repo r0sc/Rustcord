@@ -5,6 +5,7 @@
 use super::activity::{self, Privacy};
 use super::frame::{self, Frame};
 use super::{ConnId, RpcEvent, RpcUser};
+use crate::auth::Secret;
 use crate::model::Id;
 use serde_json::{Value, json};
 use std::time::Instant;
@@ -82,6 +83,13 @@ impl Conn {
             }),
             _ => Out::default(),
         }
+    }
+
+    /// `ACTIVITY_JOIN` with the join secret, only when this game is `app` and subscribed (§2.5).
+    /// The secret lives in the frame bytes from here to the pipe write.
+    pub fn join(&self, app: Id, secret: &Secret) -> Option<Frame> {
+        let listens = self.app == Some(app) && self.subscribed.contains(&"ACTIVITY_JOIN");
+        listens.then(|| Frame::json(frame::FRAME, &json!({"cmd": "DISPATCH", "evt": "ACTIVITY_JOIN", "data": {"secret": secret.expose()}, "nonce": null})))
     }
 
     /// The logged-in user became known (READY goes out once a handshake is in) or changed.
@@ -433,6 +441,18 @@ mod tests {
             (&json!("ERROR"), &json!(4000))
         );
         assert!(o.events.is_empty());
+    }
+
+    #[test]
+    fn join_goes_to_a_subscribed_game_of_that_app_only() {
+        let (app, secret) = (Id(1575590836601753835), Secret::new("j-1a2b3c".into()));
+        let mut c = shaken();
+        assert!(c.join(app, &secret).is_none(), "not subscribed");
+        cmd(&mut c, json!({"cmd":"SUBSCRIBE","evt":"ACTIVITY_JOIN","nonce":"a"}));
+        assert_eq!(body(&c.join(app, &secret).unwrap()), json!({"cmd":"DISPATCH","evt":"ACTIVITY_JOIN","data":{"secret":"j-1a2b3c"},"nonce":null}));
+        assert!(c.join(Id(5), &secret).is_none(), "another application");
+        cmd(&mut c, json!({"cmd":"UNSUBSCRIBE","evt":"ACTIVITY_JOIN","nonce":"b"}));
+        assert!(c.join(app, &secret).is_none());
     }
 
     #[test]

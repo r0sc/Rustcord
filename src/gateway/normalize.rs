@@ -161,6 +161,7 @@ impl ActivityWire {
             sync_id: text(&self.sync_id),
             url: text(&self.url),
             party: party.filter(|p| p[1] > 0),
+            party_id: text(&self.party["id"]).filter(|s| s.chars().count() <= 128),
             // Labels as users receive them; a bot-style `{label, url}` object gives its label.
             buttons: self.buttons.as_array().into_iter().flatten().filter_map(|b| text(b).or_else(|| text(&b["label"]))).take(2).collect(),
             button_urls: Vec::new(),
@@ -681,6 +682,7 @@ pub(super) fn ready(bytes: &[u8]) -> serde_json::Result<Ready> {
             guild_settings: w.user_guild_settings,
             relationships: w.relationships,
             auth_session_id_hash: w.auth_session_id_hash,
+            session_id: w.session_id.clone(),
         },
         session_id: w.session_id,
         resume_url: w.resume_gateway_url.filter(|u| !u.is_empty()),
@@ -1223,6 +1225,7 @@ mod tests {
             large_image: Some("spotify:ab".into()),
             small_text: Some("s".into()),
             sync_id: Some("4uLU6hMCjMI75M1A2tKUQC".into()),
+            party_id: Some("spotify:2".into()),
             ..Default::default()
         };
         let spotify = Activity { kind: 2, name: "Spotify".into(), rich: Some(Box::new(rich)) };
@@ -1240,6 +1243,7 @@ mod tests {
         assert_eq!(rich.buttons, ["Watch on Twitch", "Website"], "two at most");
         assert!(rich.button_urls.is_empty(), "never taken from others' payloads");
         assert_eq!((rich.session_id.as_deref(), rich.flags, rich.party), (Some("abc"), RichPresence::JOIN | RichPresence::PARTY_PRIVACY_FRIENDS, Some([2, 4])));
+        assert_eq!(rich.party_id.as_deref(), Some("p1"));
 
         // Lenient: odd field types, desktop + mobile is not "mobile", invisible is offline.
         let r = ev("PRESENCE_UPDATE", r#"{"user":{"id":"3"},"status":5,"activities":null,"client_status":{"desktop":"online","mobile":"online"}}"#);

@@ -280,7 +280,7 @@ pub fn button_url(state: &mut AppState, cmd: &CommandSender, user: Id, a: &Activ
     None
 }
 
-fn online(state: &AppState) -> bool {
+pub(crate) fn online(state: &AppState) -> bool {
     state.conn == ConnState::Connected && !crate::config::offline_mode()
 }
 

@@ -233,6 +233,7 @@ impl AppState {
             // Not cached; READY brings them.
             relationships: Vec::new(),
             auth_session_id_hash: String::new(),
+            session_id: String::new(),
         });
         s.me = snap.me;
         for (id, mut msgs) in snap.recent_messages {
@@ -1040,6 +1041,7 @@ impl AppState {
         self.hidden_authors = r.relationships.iter().filter(|r| r.hides_author()).map(|r| r.id).collect();
         self.set_relationships(r.relationships);
         self.account.session_hash = r.auth_session_id_hash;
+        self.rpc.session_id = r.session_id;
     }
 
     /// Moves a guild's channels into `self.channels` and its voice states (a complete list,

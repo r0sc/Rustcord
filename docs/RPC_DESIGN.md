@@ -1,8 +1,8 @@
 # Local game connection (Discord RPC over IPC): design
 
 Status: **approved** (§11: build it, the setting defaults to on, no host side). Built: the pipe and a
-game's own rich presence in op 3 (§2, §3, §5, §8.5) with the image proxy (§3.4). Still to come:
-Join / Ask to Join (§4.1, §4.2) and invite messages (§4.3).
+game's own rich presence in op 3 (§2, §3, §5, §8.5) with the image proxy (§3.4), and Join / Ask to
+Join on activity cards (§4.1, §4.2). Still to come: invite messages (§4.3).
 
 Games and apps on this computer (discord-rpc, the Game SDK, pypresence, music players, …) look
 for a local pipe named `discord-ipc-N`, speak a small JSON protocol over it, and use it for two
@@ -457,7 +457,7 @@ Nothing in the tests talks to Discord. The live checks of §10 need the user's O
 1. `PARTY_PRIVACY_*` flags: set by the client when the game's `party.privacy` is public and the
    matching user setting is on. If the official client sets them without `privacy`, friends of
    discord-rpc games see "Ask to Join" through Rustcord instead of "Join".
-2. Ask to Join `session_id`: mine (assumed) or the host's.
+2. Ask to Join `session_id`: mine (assumed; built that way, **still unverified live**) or the host's.
 3. Buttons together with a join secret: rejected or dropped by Discord (assumed: drop them).
 4. The external-assets endpoint answering Rustcord.
 5. The secret endpoint's errors (none documented): the toast shows Discord's message.
