@@ -17,7 +17,7 @@ void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position
 // Simplex noise: Ashima Arts / Stefan Gustavson (MIT).
 const FS = `#version 300 es
 precision highp float;
-uniform vec2 R; uniform float T, S, G; uniform vec3 M, L, C; uniform vec4 P;
+uniform vec2 R; uniform float T, S, G; uniform vec3 M, L, C; uniform vec4 P, B; uniform float K;
 out vec4 o;
 vec3 pm(vec3 x){ return mod((x * 34. + 1.) * x, 289.); }
 float sn(vec2 v){
@@ -40,14 +40,15 @@ void main(){
   float f = n * 6., a = abs(fract(f + .5) - .5) / max(fwidth(f), 1e-4);
   float line = 1. - smoothstep(.35, 1.15, a);
   vec2 dl = (p - L.xy) * k; float l = L.z * exp(-dot(dl, dl) * 2.4);
+  vec2 bq = max(abs(p - B.xy) - B.zw, 0.); float halo = K * exp(-length(bq) * k * mix(9., 18., smoothstep(0., .06, (B.y - B.w - p.y) * k))); l = max(l, halo);
   float c = M.z * exp(-r2 * mix(10., 20., G));
-  vec3 col = vec3(.031, .027, .043) + C * (.11 * L.z * exp(-dot(dl, dl) * 1.1) + .05 * wave);
+  vec3 col = vec3(.031, .027, .043) + C * (.11 * L.z * exp(-dot(dl, dl) * 1.1) + .05 * wave + .16 * halo);
   col = mix(col, mix(vec3(.745, .404, .941), C, min(l, 1.) * .6), min(line * (.045 + .2 * l + .5 * c * (1. + .4 * G) + .7 * wave), .36));  // .36 keeps muted text at 4.5:1
   col += (fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453) - .5) / 255.;
   o = vec4(col, 1.);
 }`;
 // room light per screen: purple, live pink for Voice, bright for Lilac
-const ROOM = [[.643, .169, .918], [.941, .384, .753], [.643, .169, .918], [.643, .169, .918], [1.3, 1.15, 1.45]];
+const ROOM = [[.643, .169, .918], [.941, .384, .753], [.70, .22, .80], [.50, .20, .95], [1.3, 1.15, 1.45]];
 
 export function start(q) {
   const d = document.documentElement, fine = matchMedia('(hover: hover) and (pointer: fine)');
@@ -75,7 +76,7 @@ export function start(q) {
   if (mode === 'off') { d.classList.add('nolight'); return; }
 
   gl.useProgram(prog);
-  const U = Object.fromEntries('RTSGMLPC'.split('').map(n => [n, gl.getUniformLocation(prog, n)]));
+  const U = Object.fromEntries('RTSGMLPCBK'.split('').map(n => [n, gl.getUniformLocation(prog, n)]));
   let live = mode === 'live', W = 0, H = 0, s = 1, raf = 0, last = 0, time = tFix ?? 0, odd = false, dirty = true, dead = false, seen = 0;
   let px = -1e4, py = -1e4, cx = -1e4, cy = -1e4, ms = 0, msT = 0, g = 0, bx = 0, by = 0, lx = null, ly = 0, pu = null, lastRing = -1e9;
   let lz = hook || !live ? (hook ? 1 : 0.8) : 0, rampT = null, opening = live && !hook, room = ROOM[0].slice(), repT = 0, repN = 0;
@@ -131,6 +132,8 @@ export function start(q) {
       gl.uniform2f(U.R, cv.width, cv.height); gl.uniform1f(U.T, time); gl.uniform1f(U.S, -y * 0.3 * s); gl.uniform1f(U.G, g);
       gl.uniform3f(U.M, wx * s, (H - wy) * s, ms); gl.uniform3f(U.L, lx * s, (H - ly) * s, lz); gl.uniform3f(U.C, room[0], room[1], room[2]);
       gl.uniform4f(U.P, rg ? pu.x * s : 0, rg ? (H - pu.y) * s : 0, rg ? rg.r * pu.reach * s : 0, rg ? rg.a : 0);
+      gl.uniform4f(U.B, (wr.left + wr.width / 2) * s, (H - wr.top - wr.height / 2) * s, wr.width / 2 * s, wr.height / 2 * s);
+      gl.uniform1f(U.K, stage ? lz * Math.min(1, Math.max(0, ((win._p ?? 1) - .8) * 5)) : 0);
       gl.drawArrays(gl.TRIANGLES, 0, 3); stat.drawn++;
       if (!cv.classList.contains('on')) requestAnimationFrame(() => cv.classList.add('on'));
     }
