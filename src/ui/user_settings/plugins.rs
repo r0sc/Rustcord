@@ -5,7 +5,7 @@
 //! OWNERSHIP: plugins engineer.
 
 use super::super::icons::{self, Icon};
-use super::super::messages::{Btn, Pal, button, icon_button, vector_button};
+use super::super::messages::{Btn, Pal, button, icon_button, small_button, vector_button};
 use super::{switch, switch_row};
 use crate::plugins::{self, META, Meta, Opt, OptKind};
 use crate::ui::{UiCx, hint, semibold};
@@ -77,8 +77,10 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         d.insert_temp(query_id(), q);
         d.insert_temp(filter_id(), filter);
     });
+    // Test hook: a search that leaves one plugin also opens its options (screenshots).
+    let open_first = list.len() == 1 && std::env::var_os("RUSTCORD_PLUGIN_SEARCH").is_some();
     for m in list {
-        row(ui, cx, &pal, m);
+        row(ui, cx, &pal, m, open_first);
     }
 }
 
@@ -109,8 +111,8 @@ fn search_field(ui: &mut egui::Ui, pal: &Pal, well: egui::Color32, q: &mut Strin
 
 /// One plugin row: name (15/600) and up to two lines of description on the left, the gear (if it
 /// has options) and the switch on the right, a hairline under it; the options open under it.
-fn row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, m: &Meta) {
-    let mut open = ui.data(|d| d.get_temp::<bool>(open_id(m))).unwrap_or(false);
+fn row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, m: &Meta, open_first: bool) {
+    let mut open = ui.data(|d| d.get_temp::<bool>(open_id(m))).unwrap_or(open_first);
     let mut on = plugins::enabled(m.id);
     let has_opts = !m.opts.is_empty() || m.id == plugins::Plugin::TextReplace;
     Frame::new().inner_margin(Margin::symmetric(0, 12)).show(ui, |ui| {
@@ -146,11 +148,17 @@ fn row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, m: &Meta) {
         });
         if open {
             ui.add_space(4.0);
+            if m.id == plugins::Plugin::Translate {
+                hint(ui, cx.theme, "When you pick Translate, the message's text is sent to Google Translate, or to DeepL when a key is saved. Nothing else is sent, and nothing is sent on its own.");
+            }
             for o in m.opts {
                 option(ui, cx, pal, m, o);
             }
             if m.id == plugins::Plugin::TextReplace {
                 text_rules(ui, cx, pal);
+            }
+            if m.id == plugins::Plugin::Translate {
+                translate_key(ui, cx, pal);
             }
         }
     });
@@ -207,6 +215,57 @@ fn text_rules(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
         save(cx, plugins::save());
     }
     hint(ui, cx.theme, "Plain text, applied once to each message you send. \\n in a replacement is a new line.");
+}
+
+/// Translate's DeepL key: a password field (Enter or leaving it saves a non-empty value into the
+/// credential store and clears the field), "Remove key" while one is saved. The key is never shown again.
+fn translate_key(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
+    use crate::plugins::translate;
+    let id = egui::Id::unique("rc_deepl_key");
+    let mut draft: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    let mut error: Option<String> = ui.data(|d| d.get_temp(id.with("error")));
+    let saved = translate::has_key();
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("DeepL API key").color(pal.text));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if saved && small_button(ui, pal, "Remove key", pal.danger).clicked() {
+                match translate::clear_key() {
+                    Ok(()) => error = None,
+                    Err(e) => cx.view.toast(format!("Could not remove the key: {e}"), true),
+                }
+            }
+            ui.label(RichText::new(if saved { "Saved" } else { "Optional" }).size(pal.meta()).color(pal.muted));
+        });
+    });
+    let resp = ui.add(TextEdit::singleline(&mut draft).password(true).id_salt("rc_deepl_key_field").desired_width(f32::INFINITY));
+    if resp.changed() {
+        error = None;
+    }
+    let commit = resp.lost_focus() && !draft.trim().is_empty();
+    if commit {
+        match translate::set_key(&draft) {
+            Ok(()) => draft.clear(),
+            Err(e) if e.starts_with("That doesn't") => error = Some(e),
+            // No key text in it.
+            Err(e) => cx.view.toast(format!("Could not save the key: {e}"), true),
+        }
+    }
+    if let Some(e) = &error {
+        ui.label(RichText::new(e).size(pal.meta()).color(pal.danger));
+    }
+    hint(ui, cx.theme, "With a key, DeepL translates instead of Google. The key stays in your system's credential store.");
+    ui.data_mut(|d| {
+        d.insert_temp(id, draft);
+        match error {
+            Some(e) => {
+                d.insert_temp(id.with("error"), e);
+            }
+            None => {
+                d.remove_temp::<String>(id.with("error"));
+            }
+        }
+    });
 }
 
 fn save(cx: &mut UiCx<'_>, r: Result<(), String>) {

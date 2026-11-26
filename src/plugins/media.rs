@@ -1,8 +1,8 @@
-//! Images and links: ImageZoom (magnifier lens), ReverseImageSearch and Translate (open the
+//! Images and links: ImageZoom (magnifier lens), ReverseImageSearch (opens the
 //! browser on a click), ViewIcons (full-size CDN URLs), and the link rewrite every opened link
 //! goes through (ClearURLs, OpenInApp). Nothing here sends a request on its own.
 
-use super::{Plugin, enabled, opt_bool, opt_choice, opt_int, opt_text};
+use super::{Plugin, enabled, opt_bool, opt_choice, opt_int};
 use crate::model::{Guild, Id, Member, User};
 use egui::{Color32, Pos2, Rect, Stroke, Vec2, vec2};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
@@ -40,19 +40,6 @@ fn open_in_app(url: &str, spotify: bool, steam: bool) -> Option<String> {
         }
         "store.steampowered.com" | "steamcommunity.com" | "help.steampowered.com" if steam => Some(format!("steam://openurl/{url}")),
         _ => None,
-    }
-}
-
-/// Translate: the translation page of `text` in the browser (Google / DeepL / Bing web page:
-/// no key, no request from here).
-pub fn translate_url(text: &str) -> String {
-    let target = opt_text(Plugin::Translate, "target").trim().to_owned();
-    let q = encode(text);
-    match opt_choice(Plugin::Translate, "service") {
-        1 => format!("https://www.deepl.com/translator#auto/{}/{q}", if target.is_empty() { "en" } else { &target }),
-        2 => format!("https://www.bing.com/translator?from=auto-detect&to={}&text={q}", if target.is_empty() { "en" } else { &target }),
-        _ if target.is_empty() => format!("https://translate.google.com/?sl=auto&op=translate&text={q}"),
-        _ => format!("https://translate.google.com/?sl=auto&tl={}&op=translate&text={q}", encode(&target)),
     }
 }
 

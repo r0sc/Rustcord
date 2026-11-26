@@ -5,6 +5,7 @@
 
 use super::icons::{self, Icon};
 use super::markdown::{self, MdOpts};
+use crate::plugins::{Plugin, translate};
 use super::{composer, format_timestamp, images, pickers, pins, rgb, search, UiCx, ViewState};
 use crate::api::cdn;
 use crate::backend::{ChatCommand, Command, ConnState};
@@ -870,6 +871,8 @@ fn layout_key(ui: &egui::Ui, cx: &UiCx<'_>, width: f32) -> u64 {
     ui.style().text_styles.hash(&mut h);
     let s = &cx.state.account.settings;
     ([9, 10, 12, 13].map(|n| s.chat_shows(n)), cx.state.spoilers_open()).hash(&mut h);
+    // A translation arriving or going changes row heights without touching a message.
+    translate::generation().hash(&mut h);
     ctx.fonts(|f| {
         let d = f.definitions();
         for (name, data) in &d.font_data {
@@ -1212,7 +1215,8 @@ fn new_messages_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut M
 /// `indexing` (results panel with cached hits / its indexing state) and `detached` (the older
 /// half of the history shown as a jump window: "Jump to present" bar, highlighted target) and
 /// `online` (the composer without its "Offline" chip; README screenshots) and `mention` (QuickMention's
-/// click on the newest message not by me), `badges` (public flags on the demo authors), `hidden-open` (hidden-word messages but the first start shown) and
+/// click on the newest message not by me), `badges` (public flags on the demo authors), `hidden-open` (hidden-word messages but the first start shown), `translate` / `translate-wait` / `translate-error` (the newest message not by me
+/// translated, waiting or failed; no request) and
 /// `roleicons` / `roleicons-emoji` (the first hoisted role gets an image icon or an emoji, `ROLE_ICONS` on).
 pub(super) fn demo(flag: &str) -> bool {
     static FLAGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -1274,6 +1278,11 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>
             let me = cx.state.me.as_ref().map(|u| u.id);
             let open: Vec<Id> = cm.msgs.iter().filter(|m| crate::alerts::hides(&cx.settings.hidden_words, me, m)).skip(1).map(|m| m.id).collect();
             ctx.data_mut(|d| d.insert_temp(demo_unhidden_id(), open));
+        }
+        if let Some(which) = ["translate", "translate-wait", "translate-error"].into_iter().find(|f| demo(f))
+            && let Some(m) = cx.state.messages.get(&ch).and_then(|c| c.msgs.iter().rev().find(|m| cx.state.me.as_ref().is_none_or(|u| u.id != m.author.id)))
+        {
+            translate::demo(m.id, &m.content, which);
         }
         if demo("badges") && let Some(cm) = cx.state.messages.get_mut(&ch) {
             // ShowBadgesInChat: flags on the authors of the loaded messages.
@@ -2173,14 +2182,30 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
     // MessageLogger: earlier versions above, a deleted message greyed.
     crate::plugins::message_logger::show_versions(ui, cx.theme, msg.id);
     let deleted = crate::plugins::message_logger::is_deleted(msg.id).then_some(pal.muted.gamma_multiply(0.75));
+    // Translate (the user's click on the menu entry): the translation in place of the text, with its line below.
+    let translated = crate::plugins::enabled(Plugin::Translate).then(|| translate::view(msg.id, &msg.content)).flatten();
+    let fade_id = egui::Id::unique("rc_translated").with(msg.id.0);
+    let (text, mentions, fade) = match &translated {
+        Some(translate::View::Shown { text, .. }) => (text.as_str(), &[][..], Some(super::motion::anim(ui.ctx(), fade_id, true, super::motion::FAST, 0.0))),
+        other => {
+            // Waiting or failed: the state is 0, so the answer fades in when it arrives.
+            if other.is_some() {
+                super::motion::anim(ui.ctx(), fade_id, false, super::motion::FAST, 0.0);
+            }
+            (msg.content.as_str(), &msg.mentions[..], None)
+        }
+    };
     if cx.view.editing == Some((lc.ch, msg.id)) {
         edit_box(ui, cx, lc, memo, msg);
     } else if show_content || note.is_some() || msg.edited_timestamp.is_some() {
         // A wrapping row lets a one-paragraph message flow inline with "(edited)" after it.
         ui.horizontal_wrapped(|ui| {
+            if let Some(t) = fade {
+                ui.multiply_opacity(t);
+            }
             if show_content {
-                let opts = MdOpts { guild_id: lc.guild_id, mentions: &msg.mentions, id_salt: msg.id, color: deleted, highlight: &[], bg: Some(row_bg(cx, &pal, msg)) };
-                markdown::render(ui, cx, &msg.content, &opts);
+                let opts = MdOpts { guild_id: lc.guild_id, mentions, id_salt: msg.id, color: deleted, highlight: &[], bg: Some(row_bg(cx, &pal, msg)) };
+                markdown::render(ui, cx, text, &opts);
             }
             if let Some(note) = note {
                 ui.label(RichText::new(note).italics().color(pal.muted));
@@ -2190,6 +2215,11 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
                 ui.label(RichText::new(" (edited)").color(pal.muted)).on_hover_text(time_labels(ui.ctx(), edited).header.as_str());
             }
         });
+    }
+    if let Some(v) = &translated
+        && cx.view.editing != Some((lc.ch, msg.id))
+    {
+        translation_line(ui, cx, &pal, msg, v);
     }
     if let Some(p) = &msg.poll {
         super::polls::card(ui, cx, &pal, lc.ch, lc.guild_id, msg.id, p);
@@ -2203,6 +2233,44 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
     }
     if reacts {
         reactions(ui, cx, lc, memo, msg, hovered);
+    }
+}
+
+/// The line under a translated message (Translate plugin): waiting, where it came from with
+/// "Show original", or why it failed with "Try again" and "Dismiss". Static; the links are real controls.
+fn translation_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, msg: &Message, view: &translate::View) {
+    let (icon, color) = match view {
+        translate::View::Failed(_) => (Icon::Info, pal.danger),
+        _ => (Icon::Globe, pal.muted),
+    };
+    let label = match view {
+        translate::View::Pending => "Translating…".to_owned(),
+        translate::View::Shown { from, .. } if from.is_empty() => "Translated".to_owned(),
+        translate::View::Shown { from, .. } => format!("Translated from {}", translate::language_name(from)),
+        translate::View::Failed(reason) => reason.clone(),
+    };
+    let (mut retry, mut dismiss) = (false, false);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.set_height(18.0);
+        let (r, _) = ui.allocate_exact_size(vec2(14.0, 18.0), Sense::hover());
+        icons::paint(ui.painter(), icon, Rect::from_center_size(r.center(), Vec2::splat(14.0)), color, pal.bg);
+        ui.add(Label::new(RichText::new(label).size(pal.meta()).color(color)).selectable(false));
+        let link = |ui: &mut egui::Ui, text: &str| ui.add(egui::Link::new(RichText::new(text).size(pal.meta()))).clicked();
+        match view {
+            translate::View::Pending => {}
+            translate::View::Shown { .. } => dismiss = link(ui, "Show original"),
+            translate::View::Failed(_) => {
+                retry = link(ui, "Try again");
+                dismiss = link(ui, "Dismiss");
+            }
+        }
+    });
+    if retry {
+        let locale = cx.state.account.settings.proto_str(12, &[1]);
+        translate::start(ui.ctx(), msg.id, &msg.content, readable_text(cx.state, msg), locale.as_deref());
+    } else if dismiss {
+        translate::dismiss(msg.id);
     }
 }
 
@@ -3540,6 +3608,12 @@ fn resolve_tokens(text: &str, mut name_of: impl FnMut(&str) -> Option<String>) -
     }
     out.push_str(rest);
     out
+}
+
+/// The whole text of a message with mentions, channels and custom emoji turned into the names
+/// shown (spoilers kept): what Translate sends, and nothing else of the message.
+pub(crate) fn readable_text(state: &AppState, m: &Message) -> String {
+    resolve_tokens(&m.content, |tok| token_name(state, m.guild_id, &m.mentions, tok))
 }
 
 /// Readable form of a mention / channel / custom emoji token (without the angle brackets).

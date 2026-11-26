@@ -213,6 +213,8 @@ retakes the screenshots.</sub>
 
 - 53 plugins in Settings → Plugins, modeled on Vencord's. All of them are off by default and
   only change this app. Their options are stored in `plugins.toml`.
+- Translate sends a message's text to Google Translate, or to DeepL if you saved your key, only when
+  you pick Translate on that message. Google's endpoint is unofficial and can stop working.
 
 <details>
 <summary>The 53 plugins</summary>
@@ -226,7 +228,7 @@ with the silenced ones), OnePingPerDM, OpenInApp, PermissionsViewer, PinDMs, Pla
 QuickMention (a Mention button in the hover bar), QuickReply (Ctrl+Up and Ctrl+Down to reply, with Shift to edit your own),
 ReadAllNotificationsButton, RelationshipNotifier, ReplyTimestamp, ReverseImageSearch, ServerInfo, ShowConnections,
 ShowBadgesInChat (grey badge marks after names), ShowHiddenChannels, ShowMeYourName, ShowTimeoutDuration, SilentMessageToggle, SilentTyping,
-TextReplace, Translate, TypingIndicator, TypingTweaks, UserVoiceShow, ValidUser, VcNarrator
+TextReplace, Translate (in the chat: Google, or DeepL with your key), TypingIndicator, TypingTweaks, UserVoiceShow, ValidUser, VcNarrator
 (Windows speech, `say` on macOS, `spd-say` on Linux), ViewIcons, ViewRaw, VoiceMessages
 (playback), VolumeBooster (up to 400 %, local mix only), WhoReacted.
 
@@ -501,6 +503,7 @@ cargo run --example export_icons
 | Updates (downloads, `state.toml`) | `%LOCALAPPDATA%\Rustcord\cache\update\` | `~/.cache/rustcord/update/` | `~/Library/Caches/Rustcord/update/` |
 | Discord's device cookies and the logged-out fingerprint (`device.json`, kept across restarts and logouts; owner-only on Linux and macOS) | `…\config\device.json` | `…/device.json` | `…/device.json` |
 | Login token | Windows Credential Manager (generic credential `user-token.Rustcord`) | Secret Service | Keychain |
+| DeepL key (Translate plugin) | Windows Credential Manager (generic credential `deepl-api-key.Rustcord`) | Secret Service | Keychain |
 | Added games, saved games list | `…\config\games.json`, `…\cache\detectable.tsv` | `…/games.json`, `~/.cache/rustcord/detectable.tsv` | `…/games.json`, `~/Library/Caches/Rustcord/detectable.tsv` |
 | Installed app (setup) | `%LOCALAPPDATA%\Programs\Rustcord\` | `/usr/bin/rustcord` (.deb), `~/.local/bin/rustcord` (install.sh) | `/Applications/Rustcord.app` |
 | Start at sign-in | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `Rustcord` | `~/.config/autostart/rustcord.desktop` | `~/Library/LaunchAgents/io.github.r0sc.rustcord.plist` |

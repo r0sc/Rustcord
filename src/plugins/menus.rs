@@ -2,7 +2,7 @@
 //! CopyUserURLs, MessageLogger), user (CopyUserURLs, ViewIcons, PermissionsViewer) and server
 //! (ServerInfo, ViewIcons). The caller passes its own menu-row widget (`item(ui, label, glyph)`,
 //! true when clicked) so the rows look like the rest of its menu. Every entry acts on a click
-//! only: copy, open the browser, or open a local dialog.
+//! only: copy, open the browser, translate in the chat, or open a local dialog.
 
 use super::windows::{Window, open};
 use super::{Plugin, enabled, media, message_logger};
@@ -30,7 +30,9 @@ fn image_urls(m: &Message) -> Vec<String> {
 /// Entries of the message menu, before its "Copy Message ID".
 pub fn message_items(ui: &mut egui::Ui, cx: &mut UiCx<'_>, m: &Message, item: Item<'_>) {
     if enabled(Plugin::Translate) && !m.content.is_empty() && item(ui, "Translate", "🌐") {
-        open_url(ui, &media::translate_url(&m.content));
+        // The text goes to the translation service on this click only (translate.rs).
+        let locale = cx.state.account.settings.proto_str(12, &[1]);
+        super::translate::start(ui.ctx(), m.id, &m.content, crate::ui::messages::readable_text(cx.state, m), locale.as_deref());
     }
     if enabled(Plugin::ReverseImageSearch) {
         let images = image_urls(m);

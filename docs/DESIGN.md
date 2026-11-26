@@ -340,6 +340,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Toasts | BASE, 8 px rise + fade | BASE x OUT | existing | 5, 18 |
 | Press (everything using `motion::pressed`) | instant: drawn at **97 %** about the centre, at least 1 px smaller per side | instant | change `pressed` + its test | 16, 20 (house ".97", no frames) |
 | Hidden message shown | FAST fade of its content, height instant | – | `anim` | 5, 16, 20 |
+| Translation arriving | FAST fade of the text, height instant | instant (Show original) | `anim` | 5, 16, 18 |
 | My reaction | pop 1 → 1.12 → 1 over BASE | | `pop` (existing) | 9 |
 | Login error shake, update pill | LARGE | | existing | 9 |
 
@@ -932,6 +933,8 @@ fn tile_corners(t: f32) -> CornerRadius {
 - Body 15 with line height 21. 16 between groups. Compact mode unchanged.
 
 **Hidden message** (Settings > Content & social > Hidden words): a message from someone else whose text, embed title or description, or forwarded text has one of my words folds into one 20 px line instead of the whole message. `EyeOff` 16 `text_muted` in the avatar column (cozy: x + 20, compact: x + 8), then "Hidden message" (meta 12, `text_muted`), 8 px, "Show" (meta 12/600, `link`). The whole line is one button: `hover` fill, pointing hand, focus ring, Enter or Space shows it; no hover bar or context menu on it. It ends its group (the next shown message of that author gets its header again). Shown, the message draws normally until the channel is left; its uploaded pictures and videos and its embed pictures sit under the spoiler cover labelled "Hidden", also with "Show spoiler content: Always". A reply to a hidden message quotes "Hidden message". My own messages are never hidden.
+
+**Translated** (Translate plugin, after the user picked Translate in the message menu): the translation takes the message text's place (same markdown, "(edited)" stays after it). Under it a 18 px meta line: `Globe` 14 `text_muted`, "Translating…" while waiting; "Translated from German" and, 8 px on, the link "Show original" (meta 12, `link`) when done; on failure `Info` 14 `danger`, the reason in `danger` meta, then the links "Try again" and "Dismiss". Static, no spinner. The text fades in on arrival (FAST); everything else is instant.
 
 **Mentions of me:** `mention_highlight` row fill plus a 2 px `attention` bar on the left
 (not accent). A message that matches one of my keyword alerts (Settings > Notifications, in scope, history included) takes the same look.

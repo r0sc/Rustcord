@@ -25,6 +25,7 @@ pub mod panel;
 pub mod idle;
 pub mod voice;
 pub mod diagnostics;
+pub mod translate;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{OnceLock, RwLock};
@@ -184,9 +185,8 @@ pub const META: &[Meta] = &[
         opt("ignoreBots", "Ignore bots", Bool(true)),
         opt("ignoreSelf", "Ignore my messages", Bool(false)),
     ]),
-    meta(P::Translate, "Translate", "Translate a message in your browser (message menu).", &[
-        opt("target", "Language", Text("", "e.g. de, en; empty = system")),
-        opt("service", "Service", Choice(&["Google", "DeepL", "Bing"], 0)),
+    meta(P::Translate, "Translate", "Translate in the message menu shows the message in your language. Only on that click is its text sent: to Google Translate, or to DeepL if you add a key.", &[
+        opt("to", "Translate to", Choice(translate::LANGUAGES, 0)),
     ]),
     meta(P::FavoriteEmojiFirst, "FavoriteEmojiFirst", "Your most used emoji first in : suggestions.", &[]),
     meta(P::ViewIcons, "ViewIcons", "Open avatars, banners and server icons in full size.", &[
@@ -317,13 +317,14 @@ const FILES: &[(&str, &[Plugin])] = &[
     ("compose", &[P::TextReplace, P::CharacterCounter, P::QuickReply]),
     ("idle", &[P::CustomIdle]),
     ("link_embeds", &[P::MessageLinkEmbeds]),
-    ("media", &[P::ImageZoom, P::ViewIcons, P::OpenInApp, P::Translate, P::ClearUrls]),
+    ("media", &[P::ImageZoom, P::ViewIcons, P::OpenInApp, P::ClearUrls]),
     ("menus", &[P::ViewIcons, P::PermissionsViewer, P::CopyUserUrls, P::ViewRaw, P::Translate, P::ServerInfo, P::ReverseImageSearch]),
     ("message_logger", &[P::MessageLogger]),
     ("notifier", &[P::RelationshipNotifier, P::OnePingPerDm, P::NotificationLog]),
     ("panel", &[P::GameActivityToggle, P::AccountPanelServerProfile]),
     ("people", &[P::UserVoiceShow, P::PlatformIndicators, P::ShowMeYourName, P::MoreUserTags, P::ShowTimeoutDuration, P::IrcColors, P::ValidUser, P::ShowConnections, P::PermissionsViewer, P::MutualGroupDms, P::MemberCount, P::FriendsSince, P::BetterRoleDot, P::ShowBadgesInChat]),
     ("sidebar", &[P::PinDms, P::BetterFolders, P::TypingIndicator, P::CallTimer, P::ShowHiddenChannels, P::ReadAllNotificationsButton]),
+    ("translate", &[P::Translate]),
     ("voice", &[P::VolumeBooster, P::VcNarrator]),
     ("voice_messages", &[P::VoiceMessages]),
     ("diagnostics", &[P::ClientDiagnostics]),
@@ -399,6 +400,9 @@ pub fn put(p: Plugin, key: &str, v: toml::Value) {
     drop(s);
     if p == Plugin::MessageLogger && !enabled(p) {
         message_logger::clear();
+    }
+    if p == Plugin::Translate && !enabled(p) {
+        translate::clear();
     }
 }
 
@@ -493,7 +497,7 @@ mod tests {
         s.set(P::ClearUrls, "enabled", toml::Value::Boolean(true));
         s.set(P::ImageZoom, "zoom", toml::Value::Integer(99));
         s.set(P::CallTimer, "format", toml::Value::Integer(1));
-        s.set(P::Translate, "target", toml::Value::String("de".into()));
+        s.set(P::NoReplyMention, "userList", toml::Value::String("1,2".into()));
         let back = Store::parse(&s.to_text());
         assert_eq!(back, s);
         assert!(back.is_on(P::ClearUrls));
@@ -501,7 +505,7 @@ mod tests {
         // Out of range values are clamped, not trusted.
         assert_eq!(back.int(P::ImageZoom, "zoom"), 10);
         assert_eq!(back.choice(P::CallTimer, "format"), 1);
-        assert_eq!(back.text(P::Translate, "target"), "de");
+        assert_eq!(back.text(P::NoReplyMention, "userList"), "1,2");
         // Unknown tables and a broken file never fail the load.
         assert!(!Store::parse("[Foo]\nenabled = true\n").is_on(P::ClearUrls));
         assert_eq!(Store::parse("not toml ["), Store::default());

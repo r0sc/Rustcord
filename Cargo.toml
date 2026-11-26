@@ -70,7 +70,8 @@ windows-capture = "=2.0.1"
 # Win32_System_SystemInformation: GetTickCount for the CustomIdle plugin's idle time.
 # Registry: autostart + the installer's Apps entry. Threading + Security: the single-instance mutex.
 # Diagnostics_ToolHelp (+ Threading): the process list of game detection (src/activity/scan.rs).
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_SystemInformation", "Win32_System_Registry", "Win32_System_Threading", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_Graphics_Gdi", "Win32_UI_Accessibility"] }
+# Globalization: GetUserDefaultLocaleName for the Translate plugin's "App language" fallback.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_SystemInformation", "Win32_System_Registry", "Win32_System_Threading", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_Graphics_Gdi", "Win32_UI_Accessibility", "Win32_Globalization"] }
 
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 # Discord's hCaptcha inside the login card: a child webview of Rustcord's window (docs/AUTH_NOTES.md

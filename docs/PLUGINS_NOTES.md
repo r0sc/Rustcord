@@ -454,6 +454,8 @@ All settings are written `key` = default.
 - The context menu translates the selection, otherwise the whole message.
 - Shown as an accessory "translated from X" with Dismiss.
 - DeepL (user's own key): `POST https://api-free.deepl.com/v2/translate` (or `api.deepl.com`).
+
+What shipped (src/plugins/translate.rs): manual only, in place. "Translate" in the message menu translates that one message on the click: the translation takes the text's place, a meta line says "Translated from X" with "Show original". Google's keyless endpoint is the default (unofficial, can stop working; Vencord's embedded key is not used); with the user's own DeepL key (OS credential store, `deepl-api-key`) DeepL is used instead. Target language: the option "Translate to", else "App language" = the account's Discord language, else the OS locale, else English. Only the message text (mentions as names) and the language code are sent, on that click, one request each; results stay in memory (at most 200) and are cleared when the plugin turns off. No auto-translate, no selection translation, no browser fallback.
   - Header `Authorization: DeepL-Auth-Key …`; body `{"text":[…],"target_lang":"DE"}`.
   - Response: `translations[0].text` and `.detected_source_language`.
   - 456 = quota, 403 = bad key.
