@@ -113,6 +113,18 @@
   </div>
 </section>
 
+<section class="sec" id="performance" aria-labelledby="perf-title">
+  <div class="wrap">
+    <h2 class="sec-title" id="perf-title">Performance</h2>
+    <ul class="nums">
+      <li><b>199&nbsp;ms</b><span>to the first frame</span></li>
+      <li><b>96&nbsp;MB</b><span>of RAM</span></li>
+      <li><b>0&nbsp;%</b><span>CPU when idle</span></li>
+    </ul>
+    <p class="meta">The numbers are medians of 5 runs of a release build on a Ryzen 7 5825U with Windows 11, offline with cached data. Images from a live connection add to the RAM.</p>
+  </div>
+</section>
+
 <section class="sec" id="plugins" aria-labelledby="plugins-title">
   <div class="wrap">
     <h2 class="sec-title" id="plugins-title">Plugins</h2>
@@ -128,6 +140,46 @@
     </div>
   </div>
 </section>
+
+<section class="sec" id="extras" aria-labelledby="extras-title">
+  <div class="wrap">
+    <h2 class="sec-title" id="extras-title">Also built in</h2>
+    <ul class="feats">
+      <li><h3>Rich presence</h3><p>Games on this computer show their status and pictures through Rustcord.</p></li>
+      <li><h3>Local profile</h3><p>Use any image or GIF as your banner and avatar. Only you see them.</p></li>
+      <li><h3>Hidden words <span class="chip chip-next">Next release</span></h3><p>Messages with words you hide fold into one line, only on your screen.</p></li>
+      <li><h3>Keyword alerts and quiet hours</h3><p>Messages with your keywords notify you, even in muted channels. Quiet hours pause notifications.</p></li>
+      <li><h3>Game overlay</h3><p>On Windows, who is talking and notifications show over windowed games. Nothing is injected into the game.</p></li>
+      <li><h3>Themes</h3><p>Themes are TOML files with a live editor, import and export.</p></li>
+      <li><h3>Status presets <span class="chip chip-next">Next release</span></h3><p>Saved custom statuses can be set again from the status menu.</p></li>
+    </ul>
+    <p class="meta sec-after">The <a href="https://github.com/r0sc/Rustcord#features">README</a> lists every feature.</p>
+  </div>
+</section>
+
+<div class="sec">
+  <div class="wrap duo">
+    <section aria-labelledby="privacy-title">
+      <h2 class="sec-title" id="privacy-title">Privacy</h2>
+      <ul class="facts">
+        <li>With “Stay signed in”, the login token is kept in the system’s credential store. Logging out deletes it and the cache.</li>
+        <li>Passwords and 2FA codes are never written to disk or logs.</li>
+        <li>Camera and screen are captured only after you click.</li>
+        <li>Crash reports stay in the config folder. Nothing is sent.</li>
+        <li>By default your activity shows “Playing Rustcord”, so others can see which client you use. Settings → Activity privacy turns this off.</li>
+      </ul>
+    </section>
+    <section aria-labelledby="limits-title">
+      <h2 class="sec-title" id="limits-title">Limits</h2>
+      <ul class="facts">
+        <li>Camera and screen share work on Windows only. Linux and macOS can watch streams.</li>
+        <li>Not included: slash commands, bot buttons, a sticker picker, account creation and most Nitro features.</li>
+        <li>Vencord and BetterDiscord plugins and CSS themes cannot be loaded.</li>
+        <li>On Linux, and on Windows without WebView2, Rustcord cannot show Discord’s captcha. QR code and token sign-in work without it.</li>
+      </ul>
+    </section>
+  </div>
+</div>
 
 <section class="dl" id="download" aria-labelledby="download-title">
   <div class="wrap narrow">

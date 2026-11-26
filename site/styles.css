@@ -90,7 +90,7 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
 [data-dl-other] { color: var(--muted); font-weight: 400; }
 [data-dl-other]:hover { color: var(--text); }
 /* small grey text over lit lines: a ground-coloured halo keeps the glyph edges clean */
-.cta .meta, .risk, [data-dl-other], .notes > li:not(.warn), .after-list, .sec .meta, .pl-desc { text-shadow: 0 0 2px var(--ground), 0 0 8px var(--ground); }
+.cta .meta, .risk, [data-dl-other], .notes > li:not(.warn), .after-list, .sec .meta, .pl-desc, .feats p, .facts li, .nums span { text-shadow: 0 0 2px var(--ground), 0 0 8px var(--ground); }
 .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 12px; }
 @media (max-width: 479.98px) { .cta-row .btn-primary { width: 100%; } }
 
@@ -125,6 +125,11 @@ h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; letter-spacing: -.
 .sec-title { font-size: clamp(2.25rem, 1.25rem + 3vw, 3.5rem); font-stretch: 72%; font-weight: 800; line-height: 1.05; letter-spacing: -.015em; margin: 0 0 20px; }
 .sec-lede { font-size: 1.125rem; line-height: 1.5; max-width: 60ch; margin: 0 0 24px; text-wrap: pretty; }
 .sec-after { margin: 16px 0 0; }
+.nums { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 16px 32px; }
+@media (min-width: 480px) { .nums { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.nums li { display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.nums b { font-size: clamp(2.75rem, 1.5rem + 4vw, 4.5rem); font-stretch: 66%; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nums span { font-size: 1rem; color: var(--muted); }
 .pl-search { margin: 0 0 16px; }
 .pl-search input { -webkit-appearance: none; appearance: none; width: 100%; max-width: 420px; height: 48px; padding: 0 16px; border: 1px solid var(--rule); border-radius: var(--r-control); background: var(--well); color: var(--text); font: 400 1rem var(--font); transition: border-color var(--t-fast); }
 .pl-search input::placeholder { color: var(--muted); }
@@ -145,6 +150,16 @@ a.chip-src::after { content: ""; position: absolute; inset: -10px -4px; } /* a b
 .pl-group h3 { font-size: 1.0625rem; margin: 24px 0 8px; }
 .is-filtering .pl-more > summary { display: none; }
 .is-filtering .pl-more::details-content { transition: none; }
+.feats { list-style: none; margin: 0; padding: 0; display: grid; column-gap: 40px; }
+@media (min-width: 640px) { .feats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.feats li { padding: 20px 0; border-top: 1px solid var(--rule); }
+.feats h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 6px; }
+.feats p { margin: 0; font-size: 1rem; color: var(--muted); }
+.duo { display: grid; gap: 56px; }
+@media (min-width: 900px) { .duo { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 64px; } }
+.facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; font-size: 1rem; }
+.facts li { position: relative; padding-left: 20px; max-width: 60ch; }
+.facts li::before { content: ""; position: absolute; left: 2px; top: .7em; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
 
 /* the screens: a plain list, or (html.stage) one window that rises, sticks and changes screens */
 /* the cursor tilt changes every frame; not inherited, so the window's children skip the style recalc */
