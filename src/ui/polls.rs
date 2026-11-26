@@ -223,14 +223,14 @@ fn answer_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, v: &View, a: &Pol
                 ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(w, rect.height())), radius, if r.mine { tk.chip } else { tk.selected });
             }
             if r.mine {
-                ui.painter().rect_stroke(rect, radius, Stroke::new(1.0, pal.link), StrokeKind::Inside);
+                ui.painter().rect_stroke(rect, radius, Stroke::new(1.0, tk.accent_ink), StrokeKind::Inside);
             }
             let g = ui.painter().layout_no_wrap(format!("{}%", r.share), FontId::new(pal.ui(), crate::theme::semibold_family()), pal.text);
             right -= g.size().x;
             ui.painter().galley(pos2(right, rect.center().y - g.size().y / 2.0), g, pal.text);
             if r.mine {
                 right -= 20.0;
-                icons::paint(ui.painter(), Icon::Check, Rect::from_center_size(pos2(right + 8.0, rect.center().y), Vec2::splat(16.0)), pal.link, tk.chip);
+                icons::paint(ui.painter(), Icon::Check, Rect::from_center_size(pos2(right + 8.0, rect.center().y), Vec2::splat(16.0)), tk.accent_ink, tk.chip);
             }
         }
         if voters && resp.has_focus() {

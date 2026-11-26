@@ -356,6 +356,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
     });
     let resp = shown.inner;
     let frame_rect = shown.response.rect;
+    super::messages::sheen(ui.painter(), frame_rect, f32::from(r), &pal.tk);
     // The popup and the row it accepted (Enter / Tab this pass, or a click).
     let mut ac_open = false;
     if let Some(v) = ac_view {

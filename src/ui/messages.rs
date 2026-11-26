@@ -1776,10 +1776,10 @@ fn message_block(
         // MessageLogger: a deleted message keeps a faint red tint.
         shapes.push(Shape::rect_filled(rect, 0.0, pal.danger.gamma_multiply(if hovered { 0.16 } else { 0.1 })));
     } else if system.is_none() && for_me(cx, msg) {
-        // Mentions me or a keyword alert: the `mention_highlight` row and a 2 px straw (`attention`) bar.
+        // Mentions me or a keyword alert: the `mention_highlight` row and a 2 px `accent_ink` bar.
         let tint = if hovered { pal.mention.blend(pal.tk.hover) } else { pal.mention };
         shapes.push(Shape::rect_filled(rect, 0.0, tint));
-        shapes.push(Shape::rect_filled(Rect::from_min_size(rect.min, vec2(2.0, rect.height())), 0.0, pal.tk.attention));
+        shapes.push(Shape::rect_filled(Rect::from_min_size(rect.min, vec2(2.0, rect.height())), 0.0, pal.tk.accent_ink));
     } else if hovered {
         shapes.push(Shape::rect_filled(rect, 0.0, pal.hover));
     }
@@ -2482,7 +2482,7 @@ fn reactions(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, ms
 /// it) and the count in meta 500. Mine: the `chip` fill with a 1 px `link` border.
 fn reaction_chip(ui: &mut egui::Ui, pal: &Pal, tex: Option<SizedTexture>, emoji: &str, count: &str, me: bool) -> egui::Response {
     let p = ui.painter().clone();
-    let count_g = p.layout_no_wrap(count.to_owned(), FontId::new(pal.meta(), crate::theme::medium_family()), if me { pal.link } else { pal.text });
+    let count_g = p.layout_no_wrap(count.to_owned(), FontId::new(pal.meta(), crate::theme::medium_family()), pal.text);
     // An emoji the fonts can't draw as one (a missing glyph, a keycap, a flag) shows as its muted
     // `:shortcode:`, never as an empty box or loose letters.
     let drawable = tex.is_some() || (has_emoji_glyph(ui, emoji) && (emojis::get(emoji).is_none() || pickers::drawable(ui.ctx(), emoji)));
@@ -2499,13 +2499,13 @@ fn reaction_chip(ui: &mut egui::Ui, pal: &Pal, tex: Option<SizedTexture>, emoji:
         let hot = resp.hovered();
         let fill = match (me, hot) {
             (true, false) => pal.tk.chip,
-            (true, true) => pal.link.gamma_multiply(0.28),
+            (true, true) => pal.tk.chip.blend(pal.tk.hover),
             (false, true) => pal.surface.blend(pal.tk.hover),
             _ => pal.surface,
         };
         // High Contrast keeps an edge on every pill (its `surface` sits close to the chat).
         let hc = pal.tk.mode == crate::theme::Mode::HighContrast;
-        let stroke = if me { Stroke::new(1.0, pal.link) } else if hc { Stroke::new(1.0, pal.tk.rule) } else { Stroke::NONE };
+        let stroke = if me { Stroke::new(1.0, pal.tk.accent_ink) } else if hc { Stroke::new(1.0, pal.tk.rule) } else { Stroke::NONE };
         p.rect(rect, pal.radius, fill, stroke, egui::StrokeKind::Inside);
         let x = rect.left() + 8.0;
         match (tex, emoji_g) {

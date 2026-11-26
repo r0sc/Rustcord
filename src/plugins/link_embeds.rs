@@ -129,7 +129,7 @@ fn preview(ui: &mut egui::Ui, cx: &mut UiCx<'_>, host: Id, ch: Id, mid: Id) -> b
         return false;
     }
     let c = &cx.theme.colors;
-    let (text, muted, accent, surface, size) = (c.text.to_color32(), c.text_muted.to_color32(), c.accent.to_color32(), c.surface.to_color32(), cx.theme.font.size);
+    let (text, muted, bar, surface, size) = (c.text.to_color32(), c.text_muted.to_color32(), cx.theme.tokens().edge, c.surface.to_color32(), cx.theme.font.size);
     let radius = (cx.theme.layout.corner_radius.round().clamp(0.0, 60.0) as u8).saturating_mul(2);
     let place = cx.state.channels.get(&ch).map(|x| if x.guild_id.is_some() { format!("#{}", cx.state.channel_name(ch)) } else { cx.state.channel_name(ch) });
     let mut load = false;
@@ -177,7 +177,7 @@ fn preview(ui: &mut egui::Ui, cx: &mut UiCx<'_>, host: Id, ch: Id, mid: Id) -> b
             .response
     });
     let rect = shown.inner.rect;
-    ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, vec2(4.0, rect.height())), CornerRadius { nw: radius, sw: radius, ne: 0, se: 0 }, accent);
+    ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, vec2(4.0, rect.height())), CornerRadius { nw: radius, sw: radius, ne: 0, se: 0 }, bar);
     if load {
         // The one request, on this click.
         ask(mid);

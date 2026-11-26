@@ -94,6 +94,8 @@ struct Pal {
     text: Color32,
     muted: Color32,
     link: Color32,
+    /// Pill text (`Tokens::accent_ink`).
+    ink: Color32,
     /// Mention and channel chips (`Tokens::chip`), search hits (`Tokens::selection`).
     chip: Color32,
     selection: Color32,
@@ -110,6 +112,7 @@ impl Pal {
             text: c.text.to_color32(),
             muted: c.text_muted.to_color32(),
             link: c.link.to_color32(),
+            ink: tk.accent_ink,
             chip: tk.chip,
             selection: tk.selection,
             code_bg: c.code_background.to_color32(),
@@ -272,7 +275,7 @@ impl Md<'_, '_> {
             Inline::Link { label, url, masked } => self.inlines(ui, label, Look { link: Some((url, *masked)), ..look }),
             Inline::UserMention(id) => {
                 let name = self.user_name(*id).or_else(|| crate::plugins::people::valid_user_name(self.cx.state, *id)).map_or_else(|| "@unknown-user".to_owned(), |n| format!("@{n}"));
-                let r = pill(ui, &name, pal.link, pal.chip, look.size).on_hover_cursor(CursorIcon::PointingHand);
+                let r = pill(ui, &name, pal.ink, pal.chip, look.size).on_hover_cursor(CursorIcon::PointingHand);
                 if r.clicked() {
                     let anchor = r.rect.left_bottom();
                     self.cx.view.profile_card = Some(ProfileTarget { user_id: *id, guild_id: self.opts.guild_id, anchor, pivot: egui::Align2::LEFT_TOP });
@@ -287,14 +290,14 @@ impl Md<'_, '_> {
                         let on = self.opts.bg.unwrap_or_else(|| self.cx.theme.colors.background.to_color32()).blend(fill);
                         pill(ui, &name, self.cx.theme.readable_on_pane(c, on), fill, look.size)
                     }
-                    None => pill(ui, &name, pal.link, pal.chip, look.size),
+                    None => pill(ui, &name, pal.ink, pal.chip, look.size),
                 };
             }
             Inline::ChannelMention(id) => {
                 let state: &AppState = self.cx.state;
                 let name = if state.channels.contains_key(id) { format!("#{}", state.channel_name(*id)) } else { "#unknown".to_owned() };
                 let openable = state.can_view(*id) && state.channels.get(id).is_some_and(|c| c.is_text_chat());
-                let r = pill(ui, &name, pal.link, pal.chip, look.size);
+                let r = pill(ui, &name, pal.ink, pal.chip, look.size);
                 let r = if openable { r.on_hover_cursor(CursorIcon::PointingHand) } else { r };
                 if openable && r.clicked() {
                     self.cx.state.select_channel(*id);
@@ -302,13 +305,13 @@ impl Md<'_, '_> {
                 }
             }
             Inline::Everyone => {
-                pill(ui, "@everyone", pal.link, pal.chip, look.size);
+                pill(ui, "@everyone", pal.ink, pal.chip, look.size);
             }
             Inline::Here => {
-                pill(ui, "@here", pal.link, pal.chip, look.size);
+                pill(ui, "@here", pal.ink, pal.chip, look.size);
             }
             Inline::SlashCommand(name) => {
-                pill(ui, &format!("/{name}"), pal.link, pal.chip, look.size).on_hover_text("Slash command");
+                pill(ui, &format!("/{name}"), pal.ink, pal.chip, look.size).on_hover_text("Slash command");
             }
             Inline::CustomEmoji { name, id, animated } => self.emoji(ui, name, *id, *animated, look.size),
             Inline::Timestamp { unix, style } => self.timestamp(ui, *unix, *style, look),
@@ -459,7 +462,13 @@ fn flush(ui: &mut Ui, job: &mut LayoutJob, look: Look<'_>) {
 /// Mention chip (docs/DESIGN.md §9): `fill` behind the text, flowing inline with the paragraph;
 /// on hover the text colour at 28 %.
 fn pill(ui: &mut Ui, text: &str, fg: Color32, fill: Color32, size: f32) -> egui::Response {
-    rounded_label(ui, text, size, fg, |hovered| if hovered { fg.gamma_multiply(0.28) } else { fill })
+    let r = rounded_label(ui, text, size, fg, |_| fill);
+    if r.hovered() {
+        // Hover keeps the fill and underlines the label: 2 px in from both ends, 1 px above the bottom.
+        let y = r.rect.bottom() - 1.5;
+        ui.painter().hline(r.rect.left() + 2.0..=r.rect.right() - 2.0, y, egui::Stroke::new(1.0, fg));
+    }
+    r
 }
 
 /// One-row label on a rounded background (`fill(hovered)`); a text background can't be
