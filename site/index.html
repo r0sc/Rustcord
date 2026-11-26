@@ -98,7 +98,7 @@
       <div><dt>First frame</dt><dd class="stat">199 ms</dd><dd>from start, with your cached servers</dd></div>
       <div><dt>Memory in use</dt><dd class="stat">96 MB</dd><dd>working set, 87 MB of it private</dd></div>
       <div><dt>CPU while idle</dt><dd class="stat">0 %</dd><dd>16 ms of CPU in 20 s</dd></div>
-      <div><dt>Plugins built in</dt><dd class="stat">48</dd><dd>all off until you turn them on</dd></div>
+      <div><dt>Plugins built in</dt><dd class="stat">51</dd><dd>all off until you turn them on</dd></div>
     </dl>
     <p class="meta measured">Measured on a release build with a Ryzen 7 5825U and Windows 11, median of 5 runs, offline with cached data for 3 servers and DMs and no network images loaded. With a live connection, avatars and attachments add to the memory use.</p>
   </div>
@@ -124,8 +124,8 @@
           <figcaption><h3>Profiles and status</h3><p>Set your status and custom status and see what friends are playing.</p></figcaption>
         </figure>
         <figure class="shot-panel" id="view-plugins">
-          <div class="shot-frame"><img src="shots/plugins.webp" srcset="shots/plugins-960.webp 960w, shots/plugins.webp 1600w" sizes="(min-width: 960px) 880px, calc(100vw - 64px)" width="1600" height="1000" loading="lazy" decoding="async" alt="Settings open as a floating panel over the app, on the Plugins page: the built-in Vencord-style plugins, 4 of 48 turned on"></div>
-          <figcaption><h3>48 plugins, built in</h3><p>Each plugin has its own switch in Settings.</p></figcaption>
+          <div class="shot-frame"><img src="shots/plugins.webp" srcset="shots/plugins-960.webp 960w, shots/plugins.webp 1600w" sizes="(min-width: 960px) 880px, calc(100vw - 64px)" width="1600" height="1000" loading="lazy" decoding="async" alt="Settings open as a floating panel over the app, on the Plugins page: the built-in Vencord-style plugins, 4 of 51 turned on"></div>
+          <figcaption><h3>51 plugins, built in</h3><p>Each plugin has its own switch in Settings.</p></figcaption>
         </figure>
         <figure class="shot-panel" id="view-lilac">
           <div class="shot-frame"><img src="shots/light.webp" srcset="shots/light-960.webp 960w, shots/light.webp 1600w" sizes="(min-width: 960px) 880px, calc(100vw - 64px)" width="1600" height="1000" loading="lazy" decoding="async" alt="The same #general chat in the Lilac theme"></div>
@@ -164,8 +164,8 @@
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>Chat</h3><p>Markdown, mentions, custom emoji, replies and reactions. Edit and delete your own messages, upload files by drag and drop or paste, search, pin and mark unread. Threads and forum channels work too.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice and video</h3><p>Voice channels and calls with DAVE end-to-end encryption, and you can watch anyone’s stream. Camera and screen sharing work on Windows for now. On Windows, a game overlay shows who’s talking.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-media"/></svg>Pictures and videos</h3><p>Uploaded MP4 videos play right in the chat, decoded by Rustcord itself. Pictures, GIFs and videos open in a viewer with zoom, pan, Save, Copy image and Copy link.</p></div>
-      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg>48 plugins</h3><p>Rebuilt in Rust from Vencord’s plugins: all off until you turn them on, and they only change this app.</p>
-        <details class="plugins"><summary>Show all 48 plugins <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+      <div><h3><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg>51 plugins</h3><p>Rebuilt in Rust from Vencord’s plugins: all off until you turn them on, and they only change this app.</p>
+        <details class="plugins"><summary>Show all 51 plugins <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
           <ul class="plugin-list">
 <li>AccountPanelServerProfile</li>
 <li>BetterFolders</li>
@@ -173,6 +173,7 @@
 <li>CallTimer</li>
 <li>CharacterCounter</li>
 <li>ClearURLs</li>
+<li>ClientDiagnostics</li>
 <li>CopyUserURLs</li>
 <li>CustomIdle</li>
 <li>FavoriteEmojiFirst</li>
@@ -187,11 +188,13 @@
 <li>MutualGroupDMs</li>
 <li>NoBlockedMessages</li>
 <li>NoReplyMention</li>
+<li>NotificationLog</li>
 <li>OnePingPerDM</li>
 <li>OpenInApp</li>
 <li>PermissionsViewer</li>
 <li>PinDMs</li>
 <li>PlatformIndicators</li>
+<li>QuickReply</li>
 <li>ReadAllNotificationsButton</li>
 <li>RelationshipNotifier</li>
 <li>ReplyTimestamp</li>
@@ -215,7 +218,7 @@
 <li>VoiceMessages (playback)</li>
 <li>VolumeBooster (up to 400 %, local mix only)</li>
 <li>WhoReacted</li>
-          </ul></details></div>
+</ul></details></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Themes and your look</h3><p>Nightshade, Lilac and High Contrast, plus a live editor for your own themes, saved as TOML files you can import and export. Add a banner and an animated avatar that only you see.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-person"/></svg>Profiles and activities</h3><p>Profiles show avatar decorations, nameplates, effects, badges and connections from Discord. Games and Spotify appear with their art. Rustcord can detect the game you’re playing; others see it only if you turn on sharing.</p></div>
       <div><h3><svg class="icon" aria-hidden="true"><use href="#i-key"/></svg>Sign-in and account</h3><p>Sign in with a QR code, with email and password (with 2FA), or with a token. Your session token is kept in your system’s credential store, never in a file. Account security, settings and server administration are built in.</p></div>
@@ -299,7 +302,7 @@ sh rustcord-&lt;version&gt;/install.sh</code></pre><button class="btn btn-second
       <details id="faq-missing"><summary>What’s not included? <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
         <div class="acc-body"><p>Account creation, slash commands and bot components, the sticker picker, other Nitro features and completing quests for you. Rustcord never solves captchas: when Discord asks for one, you solve it yourself in the sign-in card on Windows and macOS.</p></div></details>
       <details id="faq-plugins"><summary>Where do the plugins come from? <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
-        <div class="acc-body"><p>They do what <a href="https://github.com/Vendicated/Vencord">Vencord</a>’s plugins (GPL-3.0) do, rebuilt in Rust. No Vencord code, keys or assets are included. All 48 are off until you turn them on, and they only change this app.</p></div></details>
+        <div class="acc-body"><p>They do what <a href="https://github.com/Vendicated/Vencord">Vencord</a>’s plugins (GPL-3.0) do, rebuilt in Rust. No Vencord code, keys or assets are included. All 51 are off until you turn them on, and they only change this app.</p></div></details>
       <details id="notes-updates"><summary>Where do updates come from? <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
         <div class="acc-body"><p>To update itself, Rustcord asks GitHub for the newest version every 6 hours. GitHub sees your IP address and the app’s version; no Discord token or other personal data is sent.</p></div></details>
       <details id="notes-verify"><summary>How do I check a download? <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
