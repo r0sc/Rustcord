@@ -299,6 +299,49 @@ fn file() -> std::path::PathBuf {
     crate::config::paths().config_dir.join("plugins.toml")
 }
 
+/// Which plugins' code lives in each `src/plugins/<stem>.rs` (crash reports name them).
+const FILES: &[(&str, &[Plugin])] = &[
+    ("chat", &[P::TypingTweaks, P::SilentMessageToggle, P::NoReplyMention, P::NoBlockedMessages, P::WhoReacted, P::SilentTyping, P::ReplyTimestamp, P::FavoriteEmojiFirst]),
+    ("clear_urls", &[P::ClearUrls]),
+    ("compose", &[P::TextReplace, P::CharacterCounter]),
+    ("idle", &[P::CustomIdle]),
+    ("link_embeds", &[P::MessageLinkEmbeds]),
+    ("media", &[P::ImageZoom, P::ViewIcons, P::OpenInApp, P::Translate, P::ClearUrls]),
+    ("menus", &[P::ViewIcons, P::PermissionsViewer, P::CopyUserUrls, P::ViewRaw, P::Translate, P::ServerInfo, P::ReverseImageSearch]),
+    ("message_logger", &[P::MessageLogger]),
+    ("notifier", &[P::RelationshipNotifier, P::OnePingPerDm]),
+    ("panel", &[P::GameActivityToggle, P::AccountPanelServerProfile]),
+    ("people", &[P::UserVoiceShow, P::PlatformIndicators, P::ShowMeYourName, P::MoreUserTags, P::ShowTimeoutDuration, P::IrcColors, P::ValidUser, P::ShowConnections, P::PermissionsViewer, P::MutualGroupDms, P::MemberCount, P::FriendsSince, P::BetterRoleDot]),
+    ("sidebar", &[P::PinDms, P::BetterFolders, P::TypingIndicator, P::CallTimer, P::ShowHiddenChannels, P::ReadAllNotificationsButton]),
+    ("voice", &[P::VolumeBooster, P::VcNarrator]),
+    ("voice_messages", &[P::VoiceMessages]),
+];
+
+/// Every plugin whose code lives in the file of a panic location (`src/plugins/people.rs:3:5`,
+/// either slash). Empty for any other file.
+fn plugins_of_file(location: &str) -> &'static [Plugin] {
+    let loc = location.replace('\\', "/");
+    let Some((_, rest)) = loc.rsplit_once("src/plugins/") else { return &[] };
+    let stem = rest.split(['.', ':']).next().unwrap_or("");
+    FILES.iter().find(|(s, _)| *s == stem).map_or(&[], |(_, ps)| ps)
+}
+
+/// The plugins of that file that are on now.
+pub fn in_file(location: &str) -> Vec<Plugin> {
+    plugins_of_file(location).iter().copied().filter(|p| enabled(*p)).collect()
+}
+
+/// Names of the plugins in `bits`.
+fn names_of(bits: u64) -> Vec<&'static str> {
+    META.iter().filter(|m| bits & (1 << m.id as u8) != 0).map(|m| m.name).collect()
+}
+
+/// Names of the plugins that are on, for a crash report. Reads the bit mask only (no lock, no
+/// file), so it is safe inside a panic hook.
+pub fn enabled_names() -> Vec<&'static str> {
+    names_of(ENABLED.load(Ordering::Relaxed))
+}
+
 /// The hook guard.
 pub fn enabled(p: Plugin) -> bool {
     store();
@@ -414,6 +457,19 @@ mod tests {
             assert!(!m.default_on, "{} defaults to off like Vencord", m.name);
         }
         assert!(META.len() >= 48);
+    }
+
+    #[test]
+    fn a_panic_location_maps_to_the_plugins_of_its_file() {
+        let people = plugins_of_file("src\\plugins\\people.rs:12:5");
+        assert!(people.contains(&P::MemberCount) && people.contains(&P::FriendsSince));
+        assert_eq!(plugins_of_file("src/plugins/people.rs:12:5"), people);
+        assert_eq!(plugins_of_file("C:/x/Rustcord/src/plugins/people.rs:1:1"), people);
+        assert!(plugins_of_file("src/ui/mod.rs:1:1").is_empty());
+        assert!(plugins_of_file("src/plugins/mod.rs:1:1").is_empty());
+        // Nothing is on in tests, so the "on now" filter leaves nothing.
+        assert!(in_file("src/plugins/people.rs:12:5").is_empty());
+        assert_eq!(names_of(1 << P::FriendsSince as u8 | 1 << P::MemberCount as u8), ["FriendsSince", "MemberCount"]);
     }
 
     #[test]

@@ -11,6 +11,7 @@ pub mod call;
 pub mod chrome;
 pub mod composer;
 pub mod cosmetics;
+pub mod crash_card;
 pub mod dm_call;
 pub mod forum;
 pub mod forward;
@@ -133,6 +134,8 @@ pub struct ViewState {
     /// (message id, spoiler index) revealed by click. Attachments use index 1000+i.
     pub revealed_spoilers: HashSet<(Id, usize)>,
     pub toasts: Vec<Toast>,
+    /// The crash report card (src/crash.rs, ui/crash_card.rs).
+    pub crash: Option<crate::crash::Report>,
     pub settings_open: bool,
     pub profile_card: Option<ProfileTarget>,
     /// (channel, message) whose reaction picker is open.
@@ -285,6 +288,7 @@ impl Default for ViewState {
             edit_text: String::new(),
             revealed_spoilers: HashSet::new(),
             toasts: Vec::new(),
+            crash: None,
             settings_open: false,
             profile_card: None,
             reaction_picker: None,
@@ -419,7 +423,7 @@ impl RustcordApp {
         theme_applier.apply(ctx, &theme);
 
         let state = snapshot.map(AppState::from_snapshot).unwrap_or_default();
-        let mut view = ViewState::default();
+        let mut view = ViewState { crash: crate::crash::pending(), ..Default::default() };
         let offline = crate::config::offline_mode();
         user_settings::restore_voice(&settings, &backend.cmd);
         if let Some(token) = token {
@@ -1047,6 +1051,7 @@ impl eframe::App for RustcordApp {
                 show_modals(&ctx, &mut cx);
                 viewer::end_frame(&ctx, &mut cx);
                 crate::plugins::frame(&ctx, &mut cx);
+                crash_card::show(&ctx, &mut cx);
                 dm_call::incoming(&ctx, &mut cx, accept);
             }
         }

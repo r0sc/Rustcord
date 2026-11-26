@@ -10,6 +10,7 @@ mod backend;
 mod cache;
 mod captcha;
 mod config;
+mod crash;
 mod emoji;
 mod gateway;
 mod media;
@@ -91,6 +92,7 @@ fn main() -> eframe::Result {
     // eframe sets this itself only on a context it creates; ours must open real windows for the game overlay's viewports (ui/overlay).
     #[cfg(windows)]
     ctx.set_embed_viewports(false);
+    crash::install(&ctx);
     let backend = backend::spawn(rt.handle(), ctx.clone());
 
     // eframe's defaults are already the lean ones: no MSAA, depth or stencil buffer, vsync on

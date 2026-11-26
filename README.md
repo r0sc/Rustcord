@@ -177,6 +177,10 @@ What's in it so far:
   on Windows, Noto Sans or DejaVu Sans on Linux, Arial on macOS). Decorated channel and role
   names (`・〢┊꒰ᘏ`, 𝐛𝐨𝐥𝐝 letters, box drawing) use the system's fallback fonts instead of empty
   boxes.
+- Crash reports: after a panic Rustcord saves a small text report in the config folder
+  (`crash/`, the newest 5): version, system, the panic's message and place, and which plugins
+  were on. The next start shows it in a card with Copy report, Report on GitHub and Dismiss; if
+  the panic came from a plugin's code, the card offers to turn that plugin off. Nothing is sent.
 - Plugins (Settings → Plugins), rebuilt from Vencord's, all off by default and local to this
   app: AccountPanelServerProfile, BetterFolders, BetterRoleDot, CallTimer, CharacterCounter,
   ClearURLs, CopyUserURLs, CustomIdle, FavoriteEmojiFirst, FriendsSince, GameActivityToggle,
