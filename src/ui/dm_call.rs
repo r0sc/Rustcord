@@ -258,14 +258,21 @@ pub(super) fn incoming(ctx: &egui::Context, cx: &mut UiCx<'_>, accept: bool) {
     let tk = cx.theme.tokens();
     // Some(Some(video)) = accept, Some(None) = decline.
     let mut action = accept.then_some(Some(false));
-    let card = egui::Frame::popup(&ctx.global_style()).fill(STAGE).corner_radius(12).inner_margin(24);
+    // A layer like the modals: radius 20, the dock's 1 px white edge, E3 shadow, sheen.
+    let layer_r = Pal::new(cx.theme).modal_radius();
+    let card = egui::Frame::popup(&ctx.global_style())
+        .fill(STAGE)
+        .stroke(Stroke::new(1.0, Color32::from_white_alpha(20)))
+        .shadow(ctx.global_style().visuals.window_shadow)
+        .corner_radius(layer_r)
+        .inner_margin(24);
     // Reduced motion: the ring stands still and nothing repaints.
     let still = super::motion::secs(ctx, 1.0) == 0.0;
     egui::Area::new(egui::Id::unique("rc_incoming_call"))
         .order(egui::Order::Foreground)
         .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
         .show(ctx, |ui| {
-            card.show(ui, |ui| {
+            let shown = card.show(ui, |ui| {
                 ui.set_width(200.0);
                 ui.vertical_centered(|ui| {
                     let (slot, _) = ui.allocate_exact_size(Vec2::splat(112.0), Sense::hover());
@@ -295,6 +302,7 @@ pub(super) fn incoming(ctx: &egui::Context, cx: &mut UiCx<'_>, accept: bool) {
                     }
                 });
             });
+            super::messages::sheen(ui.painter(), shown.response.rect, f32::from(layer_r), &tk);
         });
     // The pulse: a few frames a second while the popup is up (no repaint otherwise).
     if !still {
