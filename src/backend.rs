@@ -96,6 +96,8 @@ pub enum Command {
     /// Game detection and activity icons (`crate::activity`); answered with
     /// `BackendEvent::Activity`.
     Activity(crate::activity::ActivityCommand),
+    /// The game connection (`crate::rpc`): the setting and the logged-in user.
+    Rpc(crate::rpc::RpcCommand),
     /// Quests list, accept, claim, reward code, video progress (`crate::quests`); answered
     /// with `BackendEvent::Quests`. docs/QUESTS_NOTES.md.
     Quests(crate::quests::QuestCommand),
@@ -1086,6 +1088,8 @@ pub enum BackendEvent {
     Account(AccountEvent),
     /// The activity thread and its fetches; the UI hands them to `AppState::activity`.
     Activity(crate::activity::ActivityEvent),
+    /// Games on the local pipe and application names; the UI hands them to `AppState::rpc`.
+    Rpc(crate::rpc::RpcEvent),
     /// Quest answers; the UI hands them to `AppState::quests`.
     Quests(crate::quests::QuestEvent),
 }
@@ -2264,9 +2268,9 @@ fn handle_activity(cmd: crate::activity::ActivityCommand, session: &mut Option<S
     use crate::activity::{ActivityCommand as C, ActivityEvent};
     match cmd {
         // Without a session there is no presence to change; the UI sends it again after login.
-        C::SetActivities { game, app } => {
+        C::SetActivities { game, app, rpc } => {
             if let Some(s) = session {
-                s.gateway.send(GatewayCommand::SetActivities { game, app });
+                s.gateway.send(GatewayCommand::SetActivities { game, app, rpc });
             }
         }
         C::FetchApps(ids) => {
@@ -2279,6 +2283,10 @@ fn handle_activity(cmd: crate::activity::ActivityCommand, session: &mut Option<S
                 Some(BackendEvent::Activity(ActivityEvent::Apps(icons)))
             });
         }
+        C::FetchAppName(id) => rest(session, sink, move |api| async move { api.public_apps(&[id]).await }, move |r| {
+            let found = r.map_err(|e| eprintln!("rustcord: app name: {e}")).ok()?;
+            Some(BackendEvent::Rpc(crate::rpc::RpcEvent::AppName(id, found.into_iter().find(|a| a.id == id).and_then(|a| a.name))))
+        }),
         C::FetchButtons(key) => {
             let (user, sid, app) = key.clone();
             rest(session, sink, move |api| async move { api.activity_button_urls(user, &sid, app).await }, move |r| {
@@ -2378,6 +2386,8 @@ async fn run(
     let voice = VoiceManager::spawn(sink.clone(), video);
     // Game detection (its own thread; local files only) and the games list fetched once a run.
     let activity = crate::activity::Service::spawn(sink.clone());
+    // The game connection: off until the UI sends the setting.
+    let rpc = crate::rpc::Service::spawn(sink.clone(), crate::rpc::BASE.into());
     let mut detectable_fetched = false;
     let mut session: Option<Session> = None;
     let not_connected = || BackendEvent::ActionFailed("Not connected".into());
@@ -2707,6 +2717,7 @@ async fn run(
             Command::Social(c) => handle_social(c, &mut session, &sink),
             Command::Account(c) => handle_account(c, &mut session, &sink, None),
             Command::Activity(c) => handle_activity(c, &mut session, &sink, &activity),
+            Command::Rpc(c) => rpc.send(c),
             Command::Quests(c) => handle_quests(c, &mut session, &sink),
         }
     }

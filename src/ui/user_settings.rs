@@ -217,6 +217,7 @@ impl Page {
             ],
             Page::VoiceVideo => &["Input volume", "Input mode", "Voice activity", "Push to talk", "Input sensitivity", "Microphone and sound", "Mute", "Deafen", "Video", "Camera"],
             Page::Advanced => &["Hardware acceleration"],
+            Page::ActivityPrivacy => &["Let games show their activity"],
             Page::GameOverlay => &["Enable in-game overlay", "Position", "Avatar size", "Show names", "Show users"],
             Page::ThemeEditor => &[
                 "Base", "Dark", "Light", "Gradient", "Background", "Sidebar", "Server bar", "Surface", "Text", "Muted text", "Primary", "Text on primary", "Message hover",
@@ -598,7 +599,7 @@ fn page(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     }
     // Profiles > Server Profiles is about one server only.
     if !(p == Page::Profiles && cx.view.user_settings_ui.server_tab.is_some()) {
-        synced::show(ui, cx, synced::groups(p));
+        changed |= synced::show(ui, cx, synced::groups(p));
     }
     if p == Page::Notifications {
         guild_notifications(ui, cx);

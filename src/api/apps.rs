@@ -12,12 +12,13 @@ use serde::Deserialize;
 // shortcut: 25 like `/games`; the server's own limit is unconfirmed.
 pub const MAX_APP_IDS: usize = 25;
 
-/// `/applications/public` entry; only the icon is used.
+/// `/applications/public` entry; the icon and the name are used.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct PublicApp {
     pub id: Id,
     pub icon: Option<String>,
+    pub name: Option<String>,
 }
 
 impl ApiClient {

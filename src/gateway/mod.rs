@@ -44,10 +44,10 @@ pub enum GatewayCommand {
     /// that the gateway keeps from READY / USER_SETTINGS_UPDATE, so op 3 never wipes it.
     /// Max 5 per 20 s: debounced, newest wins, through the send limiter; survives a reconnect.
     UpdatePresence { status: UserStatus, afk: bool },
-    /// My detected game and Rustcord's own presence (None: none) for op 3's activity list, after
-    /// the custom status (game first). On a change an op 3 with my current status is queued like
+    /// A game's own presence over the local pipe, my detected game and Rustcord's own presence
+    /// (None: none) for op 3's activity list, after the custom status, in that order. On a change an op 3 with my current status is queued like
     /// `UpdatePresence` (after READY; a new session gets it again after its READY).
-    SetActivities { game: Option<crate::activity::GameActivity>, app: Option<crate::activity::AppActivity> },
+    SetActivities { game: Option<crate::activity::GameActivity>, app: Option<crate::activity::AppActivity>, rpc: Option<crate::rpc::Presence> },
     /// Op 8 with `query` (§1.7): `{"guild_id":["<g>"],"query","limit","presences":false,
     /// "nonce"}` (nonce ≤ 32 bytes, kept with (guild, query) in a small bounded map). Debounced
     /// per guild (~600 ms, newest query wins). GUILD_MEMBERS_CHUNK with that nonce ->

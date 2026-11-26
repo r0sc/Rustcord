@@ -21,6 +21,13 @@ impl Secret {
     }
 }
 
+/// For comparing an activity that carries one (a game's join secret); not constant-time.
+impl PartialEq for Secret {
+    fn eq(&self, other: &Self) -> bool {
+        self.expose() == other.expose()
+    }
+}
+
 impl fmt::Debug for Secret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Secret(<redacted>)")

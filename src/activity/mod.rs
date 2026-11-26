@@ -7,7 +7,8 @@
 //! Traffic, all through the rate limiter: `GET /games/detectable` at most once a day (saved
 //! compact on disk), `GET /applications/public` once per application id that is shown without
 //! art (batched; answers saved on disk), and one op 3 per change of the game I share or of Rustcord's own presence. The
-//! Registered Games list stays on this device.
+//! Registered Games list stays on this device. A game's own rich presence comes from `crate::rpc`
+//! (the local game pipe) and goes into the same op 3, before my detected game.
 //!
 //! OWNERSHIP: activities engineer.
 
@@ -115,9 +116,11 @@ pub struct AddedGame {
 
 #[derive(Debug)]
 pub enum ActivityCommand {
-    /// My game and Rustcord's own presence in op 3 (None: not shown), keeping my status and
-    /// custom status. The game comes first.
-    SetActivities { game: Option<GameActivity>, app: Option<AppActivity> },
+    /// A game's own presence (over the local pipe), my game and Rustcord's own presence in op 3
+    /// (None: not shown), keeping my status and custom status, in that order.
+    SetActivities { game: Option<GameActivity>, app: Option<AppActivity>, rpc: Option<crate::rpc::Presence> },
+    /// `GET /applications/public` for one id -> `RpcEvent::AppName`: a game's application name.
+    FetchAppName(Id),
     /// `GET /applications/public` for these ids (≤ 25) -> `ActivityEvent::Apps`.
     FetchApps(Vec<Id>),
     /// Someone's button URLs, after a click on one -> `ActivityEvent::Buttons`.
@@ -159,7 +162,7 @@ pub struct ActivityState {
     /// Rustcord's own presence as the settings want it now (set each frame, also offline).
     pub app: Option<AppActivity>,
     /// What my session's presence carries (the last `SetActivities`).
-    sent: (Option<GameActivity>, Option<AppActivity>),
+    sent: (Option<GameActivity>, Option<AppActivity>, Option<crate::rpc::Presence>),
     /// Fetched button URLs.
     button_urls: HashMap<ButtonKey, Vec<String>>,
     /// The button clicked while its URLs are on their way (also: asked, do not ask again).
@@ -227,13 +230,29 @@ pub fn my_game(state: &AppState) -> Option<Activity> {
     state.activity.detected.as_ref().filter(|_| sharing(state)).map(GameActivity::to_activity)
 }
 
-/// Someone's activity as rows and cards show it: their presence's; mine falls back to my shared
-/// game, then Rustcord's own (my presence echo lags, and offline it never comes).
+/// A game's own activity (over the local pipe) while I share activity: the newest one, once its
+/// application's name is known (the games list, else a `/applications/public` answer).
+fn my_rpc(state: &AppState) -> Option<crate::rpc::Presence> {
+    if !sharing(state) {
+        return None;
+    }
+    let (app, activity) = state.rpc.newest()?;
+    let name = state.activity.table.as_ref().and_then(|t| t.app(app)).map(|a| a.name.to_string()).or_else(|| state.rpc.name(app).map(str::to_owned))?;
+    // "Friends can join my activities" (8.1) and "Voice channel members can join" (8.2), default on.
+    let allowed = |field| state.account.settings.proto_varint(8, &[field], true).is_none_or(|v| v != 0);
+    let privacy = crate::rpc::Privacy { friends: allowed(1), voice: allowed(2) };
+    Some(crate::rpc::Presence { app, name, privacy, activity: Box::new(activity.clone()) })
+}
+
+/// Someone's activity as rows and cards show it: their presence's; mine falls back to my game's
+/// own presence (over the local pipe), my shared game, then Rustcord's own (my presence echo
+/// lags, and offline it never comes).
 pub fn activity_of(state: &AppState, user: Id) -> Option<Cow<'_, Activity>> {
     if let Some(a) = state.presence_of(user).and_then(|p| p.activity.as_ref()) {
         return Some(Cow::Borrowed(a));
     }
-    state.me.as_ref().filter(|m| m.id == user).and_then(|_| my_game(state).or_else(|| state.activity.app.as_ref().map(AppActivity::to_activity))).map(Cow::Owned)
+    state.me.as_ref().filter(|m| m.id == user)?;
+    my_rpc(state).map(|p| p.to_activity()).or_else(|| my_game(state)).or_else(|| state.activity.app.as_ref().map(AppActivity::to_activity)).map(Cow::Owned)
 }
 
 /// A click on custom button `i` of `user`'s activity `a`: its URL when known (my own, or fetched
@@ -284,13 +303,25 @@ pub fn art_url(ctx: &egui::Context, state: &mut AppState, a: &Activity, px: u32)
 pub fn logic(state: &mut AppState, settings: &crate::config::Settings, cmd: &CommandSender) {
     let p = &settings.rustcord_presence;
     state.activity.app = p.enabled.then(|| AppActivity { application_id: Some(p.application_id.unwrap_or(RUSTCORD_APP_ID)), start_ms: *STARTED.get_or_init(now_ms) });
+    // Offline mode (screenshots, measurements) never takes the pipe.
+    state.rpc.sync(settings.game_connection && !crate::config::offline_mode(), state.me.as_ref(), cmd);
     if !online(state) {
         return;
     }
-    let want = (state.activity.detected.clone().filter(|_| sharing(state)), state.activity.app.clone());
+    // A game's activity waits for its application's name, asked for once.
+    let unnamed = state.rpc.newest().map(|n| n.0).filter(|&app| state.activity.table.as_ref().is_none_or(|t| t.app(app).is_none()) && state.rpc.name(app).is_none());
+    if let Some(app) = unnamed
+        && state.rpc.ask_name(app)
+    {
+        cmd.send(Command::Activity(ActivityCommand::FetchAppName(app)));
+    }
+    // The game's own presence replaces my detected game of the same application, or one found by name only (no application id) when it plays.
+    let rpc = my_rpc(state);
+    let replaced = |g: &GameActivity| rpc.as_ref().is_some_and(|r| g.application_id == Some(r.app) || (g.application_id.is_none() && r.activity.kind == 0));
+    let want = (state.activity.detected.clone().filter(|g| sharing(state) && !replaced(g)), state.activity.app.clone(), rpc.clone());
     if want != state.activity.sent {
         state.activity.sent = want.clone();
-        cmd.send(Command::Activity(ActivityCommand::SetActivities { game: want.0, app: want.1 }));
+        cmd.send(Command::Activity(ActivityCommand::SetActivities { game: want.0, app: want.1, rpc: want.2 }));
     }
     let a = &mut state.activity;
     if !a.wanted.is_empty() {
@@ -311,7 +342,7 @@ mod tests {
     }
 
     fn set(game: Option<&GameActivity>, app: Option<AppActivity>) -> String {
-        format!("{:?}", Command::Activity(ActivityCommand::SetActivities { game: game.cloned(), app }))
+        format!("{:?}", Command::Activity(ActivityCommand::SetActivities { game: game.cloned(), app, rpc: None }))
     }
 
     #[test]
@@ -319,7 +350,8 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let cmd = CommandSender(tx);
         let mut s = AppState::default();
-        let mut cfg = crate::config::Settings::default();
+        // The game connection has its own test: its commands would show up here.
+        let mut cfg = crate::config::Settings { game_connection: false, ..Default::default() };
         let game = GameActivity { name: "Factorio".into(), application_id: Some(Id(7)), start_ms: 5 };
         s.activity.apply(ActivityEvent::Detected(Some(game.clone())));
         logic(&mut s, &cfg, &cmd);
@@ -361,6 +393,74 @@ mod tests {
         s.activity.sent = Default::default();
         logic(&mut s, &cfg, &cmd);
         assert!(sent(&mut rx).is_empty() && s.activity.app.is_some());
+    }
+
+    #[test]
+    fn a_games_own_presence_goes_before_my_detected_game() {
+        use crate::rpc::{RpcEvent, test_presence};
+        use serde_json::json;
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let cmd = CommandSender(tx);
+        let mut s = AppState::default();
+        let mut cfg = crate::config::Settings { rustcord_presence: crate::config::RustcordPresence { enabled: false, ..Default::default() }, ..Default::default() };
+        s.me = Some(crate::model::User { id: Id(1), ..Default::default() });
+        s.conn = ConnState::Connected;
+        logic(&mut s, &cfg, &cmd);
+        let first = sent(&mut rx);
+        assert!(first.len() == 2 && first[0] == "Rpc(Enable(true))" && first[1].starts_with("Rpc(Me(Some("), "the setting and the user, once: {first:?}");
+        logic(&mut s, &cfg, &cmd);
+        assert!(sent(&mut rx).is_empty());
+        // A game connects and sets an activity: its name is asked for once and the activity waits.
+        let halo = |extra: serde_json::Value| {
+            let mut a = json!({"state": "In a match", "secrets": {"join": "s3cret"}, "party": {"id": "p"}});
+            a.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            test_presence(Id(77), "Halo", a).activity
+        };
+        let at = std::time::Instant::now();
+        s.rpc.apply(RpcEvent::Connected { conn: 1, app: Id(77) });
+        s.rpc.apply(RpcEvent::Activity { conn: 1, activity: Some(halo(json!({}))), at });
+        logic(&mut s, &cfg, &cmd);
+        logic(&mut s, &cfg, &cmd);
+        assert_eq!(sent(&mut rx), ["Activity(FetchAppName(77))"]);
+        assert!(s.activity.sent.2.is_none() && activity_of(&s, Id(1)).is_none());
+        s.rpc.apply(RpcEvent::AppName(Id(77), Some("Halo".into())));
+        logic(&mut s, &cfg, &cmd);
+        let out = sent(&mut rx);
+        assert!(out.len() == 1 && out[0].contains(r#"name: "Halo""#) && !out[0].contains("s3cret"), "{out:?}");
+        assert_eq!(activity_of(&s, Id(1)).map(|a| a.name.clone()).as_deref(), Some("Halo"), "my own card too");
+        // My detected game: replaced by the same application, or by a type 0 one when found by name only; else both go.
+        let game = |id| GameActivity { name: "Factorio".into(), application_id: id, start_ms: 5 };
+        let both = |s: &AppState| (s.activity.sent.0.is_some(), s.activity.sent.2.is_some());
+        for (detected, want) in [(Some(Id(77)), (false, true)), (None, (false, true)), (Some(Id(5)), (true, true))] {
+            s.activity.apply(ActivityEvent::Detected(Some(game(detected))));
+            logic(&mut s, &cfg, &cmd);
+            assert_eq!(both(&s), want, "{detected:?}");
+        }
+        s.rpc.apply(RpcEvent::Activity { conn: 1, activity: Some(halo(json!({"type": 2}))), at });
+        s.activity.apply(ActivityEvent::Detected(Some(game(None))));
+        logic(&mut s, &cfg, &cmd);
+        assert_eq!(both(&s), (true, true), "a listening activity does not hide a game found by name");
+        // The newest game wins and the games list's name beats a question; not sharing removes it.
+        s.rpc.apply(RpcEvent::Connected { conn: 2, app: Id(88) });
+        s.rpc.apply(RpcEvent::Activity { conn: 2, activity: Some(halo(json!({}))), at: at + std::time::Duration::from_secs(1) });
+        s.activity.apply(ActivityEvent::Table(Arc::new(Table::from_json(br#"[{"id":"88","name":"Table Game","icon_hash":"0123456789abcdef0123456789abcdef"}]"#).unwrap())));
+        logic(&mut s, &cfg, &cmd);
+        assert_eq!(s.activity.sent.2.as_ref().map(|p| (p.app, p.name.as_str())), Some((Id(88), "Table Game")));
+        assert!(!sent(&mut rx).iter().any(|c| c.contains("FetchAppName")), "the list knows it");
+        s.account.settings.set_local(11, &[(vec![3], SettingValue::Wrapped(0))]);
+        logic(&mut s, &cfg, &cmd);
+        assert_eq!(both(&s), (false, false));
+        // The setting off: the server stops and the activity goes, once.
+        s.account.settings.set_local(11, &[(vec![3], SettingValue::Wrapped(1))]);
+        cfg.game_connection = false;
+        logic(&mut s, &cfg, &cmd);
+        assert!(s.activity.sent.2.is_none() && s.rpc.newest().is_none());
+        assert!(sent(&mut rx).iter().any(|c| c == "Rpc(Enable(false))"));
+        // Logging out: the server's user goes, once.
+        s.rpc = std::mem::take(&mut s.rpc).after_logout();
+        s.me = None;
+        logic(&mut s, &cfg, &cmd);
+        assert_eq!(sent(&mut rx), ["Rpc(Me(None))"]);
     }
 
     #[test]
@@ -427,7 +527,7 @@ mod tests {
         let cmd = CommandSender(tx);
         let mut s = AppState::default();
         // Rustcord's own presence is not under test here.
-        let off = crate::config::Settings { rustcord_presence: crate::config::RustcordPresence { enabled: false, ..Default::default() }, ..Default::default() };
+        let off = crate::config::Settings { rustcord_presence: crate::config::RustcordPresence { enabled: false, ..Default::default() }, game_connection: false, ..Default::default() };
         s.conn = ConnState::Connected;
         let ctx = egui::Context::default();
         let game = |id: u64| GameActivity { name: "x".into(), application_id: Some(Id(id)), start_ms: 0 }.to_activity();

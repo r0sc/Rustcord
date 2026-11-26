@@ -382,9 +382,10 @@ fn save(cx: &mut UiCx<'_>, top: u32, values: Vec<(Vec<u32>, SettingValue)>) {
     }
 }
 
-/// The groups' sections and rows; at most one write per pass (one click).
-pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, groups: &'static [Group]) {
-    let mut write = None;
+/// The groups' sections and rows; at most one write per pass (one click). True when a local
+/// setting changed (the caller saves it).
+pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, groups: &'static [Group]) -> bool {
+    let (mut write, mut changed) = (None, false);
     for g in groups {
         section(ui, cx.theme, g.title);
         for row in g.rows {
@@ -392,10 +393,22 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, groups: &'static [Group
                 write = Some(w);
             }
         }
+        // This device's switch for the game connection sits under "Share detected activity", the last row of this group.
+        if g.title == "Activity status" {
+            changed |= game_connection(ui, cx);
+        }
     }
     if let Some((top, values)) = write {
         save(cx, top, values);
     }
+    changed
+}
+
+/// Let games show their activity (`Settings::game_connection`): not in Discord's proto.
+fn game_connection(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
+    let busy = cx.settings.game_connection && cx.state.rpc.none_free;
+    let hint = if busy { "Another app is using the game connection." } else { "Games on this computer can show what you're doing in them and let friends join you. Rustcord answers them in place of the Discord app." };
+    super::switch_row(ui, cx.theme, "Let games show their activity", Some(hint), &mut cx.settings.game_connection)
 }
 
 /// Appearance > Message Display: Cozy / Compact cards with a sketch of each (`COMPACT`, saved

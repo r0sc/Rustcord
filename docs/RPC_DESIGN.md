@@ -1,6 +1,8 @@
 # Local game connection (Discord RPC over IPC): design
 
-Status: **proposal, waiting for the user's OK** (§11). Nothing below is built yet.
+Status: **approved** (§11: build it, the setting defaults to on, no host side). Built: the pipe and a
+game's own rich presence in op 3 (§2, §3 without the image proxy, §5, §8.5). Still to come: the
+image proxy (§3.4), Join / Ask to Join (§4.1, §4.2) and invite messages (§4.3).
 
 Games and apps on this computer (discord-rpc, the Game SDK, pypresence, music players, …) look
 for a local pipe named `discord-ipc-N`, speak a small JSON protocol over it, and use it for two
@@ -174,7 +176,8 @@ With RPC:
   (a music player next to a game) does not show at the same time (**shortcut**; the official
   client's behaviour with two RPC apps is not documented).
 - It replaces the detected game when both have the same application id, or when the detected
-  game has none (most games are detected by name only). Otherwise both go.
+  game has no application id (most games are detected by name only) and the RPC activity is type
+  0 (playing; a music player's "Listening" does not hide the game). Otherwise both go.
 - Order: `[custom status, RPC activity, detected game, Rustcord]`.
 - Gated like the detected game: only while "Share my activity" (proto 11.3) is on. Rustcord's own
   presence keeps its own switch; Invisible still hides it.
@@ -186,9 +189,9 @@ op 3 is limited to **5 updates per 20 s** per session (gateway-events page). Use
 throttled to **one op 3 per 4 s**, the latest winning. The existing 250 ms
 `PRESENCE_DEBOUNCE` stays for everything else.
 
-Code: `ActivityCommand::SetActivities { game, app }` gains `rpc: Option<rpc::Activity>`
-(`activity::logic` builds it from `state.rpc`; the throttle lives there), and so do
-`GatewayCommand::SetActivities` and `presence_payload`. `rpc::Activity::to_op3(name, flags)`
+Code: `ActivityCommand::SetActivities { game, app }` gains `rpc: Option<rpc::Presence>`
+(`activity::logic` builds it from `state.rpc`; the throttle lives in the server, `rpc/mod.rs`), and so do
+`GatewayCommand::SetActivities` and `presence_payload`. `rpc::Presence::op3()`
 builds the JSON; `presence_payload` stays the one place that writes op 3.
 
 ### 3.4 Image URLs

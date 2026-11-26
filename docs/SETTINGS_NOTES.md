@@ -364,7 +364,7 @@ All ✔ and cheap:
 
 - Detection list from `GET /games/detectable` (`executables[{os,name}]`, `aliases`) plus `/games/detectable/exclusions`.
 - Process scan → op 3 `{type:0, name, application_id, timestamps.start}`. "Add it!" is L.
-- ✔ medium effort. A local RPC pipe (`\\.\pipe\discord-ipc-0`) is a separate, larger feature.
+- ✔ medium effort. The local RPC pipe (`\\.\pipe\discord-ipc-N`) is a feature of its own: docs/RPC_DESIGN.md.
 - `P10` game library: ✗ obsolete.
 
 ### Game Overlay

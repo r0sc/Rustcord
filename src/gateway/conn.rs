@@ -275,6 +275,8 @@ struct Gateway {
     my_game: Option<crate::activity::GameActivity>,
     /// Rustcord's own presence (`SetActivities`): op 3 carries it after the game.
     my_app: Option<crate::activity::AppActivity>,
+    /// A game's own presence over the local pipe (`SetActivities`): op 3 carries it before my detected game.
+    my_rpc: Option<crate::rpc::Presence>,
     /// Op 3 not sent yet (newest wins), and its `afk`.
     want_presence: Option<UserStatus>,
     afk: bool,
@@ -370,6 +372,7 @@ impl Gateway {
             settings_custom: None,
             my_game: None,
             my_app: None,
+            my_rpc: None,
             want_presence: None,
             afk: false,
             presence_limiter: SendLimiter::new(PRESENCE_LIMIT, PRESENCE_WINDOW),
@@ -423,12 +426,12 @@ impl Gateway {
                 (self.want_presence, self.afk) = (Some(status), afk);
                 true
             }
-            Some(GatewayCommand::SetActivities { game, app }) => {
+            Some(GatewayCommand::SetActivities { game, app, rpc }) => {
                 // Before READY `my_status` is only the default; READY queues the op 3 then.
-                if (&game, &app) != (&self.my_game, &self.my_app) && self.session.is_some() {
+                if (&game, &app, &rpc) != (&self.my_game, &self.my_app, &self.my_rpc) && self.session.is_some() {
                     self.want_presence = Some(self.want_presence.unwrap_or(self.my_status));
                 }
-                (self.my_game, self.my_app) = (game, app);
+                (self.my_game, self.my_app, self.my_rpc) = (game, app, rpc);
                 true
             }
             Some(GatewayCommand::RequestMembers { guild_id, query, limit }) => {
@@ -698,7 +701,7 @@ impl Gateway {
                     // A new session starts without my activities: send them again with my real status.
                     let known = r.status.status.is_some();
                     self.on_status(r.status, false);
-                    if known && (self.my_game.is_some() || self.my_app.is_some()) && self.want_presence.is_none() {
+                    if known && (self.my_game.is_some() || self.my_app.is_some() || self.my_rpc.is_some()) && self.want_presence.is_none() {
                         (self.want_presence, self.afk) = (Some(self.my_status), false);
                     }
                     self.connected(link);
@@ -892,7 +895,7 @@ impl Gateway {
         }
         // The UI hears of a dropped custom status with the `emit_status` after the send.
         self.drop_expired_custom(chrono::Utc::now());
-        match link.send(presence_payload(status, self.afk, self.my_custom.as_ref(), self.my_game.as_ref(), self.my_app.as_ref(), unix_ms()), false).await {
+        match link.send(presence_payload(status, self.afk, self.my_custom.as_ref(), self.my_rpc.as_ref(), self.my_game.as_ref(), self.my_app.as_ref(), unix_ms()), false).await {
             Ok(()) => {
                 self.want_presence = None;
                 self.my_status = status;
@@ -1027,13 +1030,15 @@ fn voice_state_payload(guild_id: Option<Id>, channel_id: Option<Id>, self_mute: 
 }
 
 /// Op 3 (FEATURES_NOTES §1.3). It replaces the session's activity list, so the custom status
-/// (type 4), my detected game (type 0, like the official client's: name, application id, start
-/// time) and Rustcord's own presence (type 0, left out while Invisible) go along, in that order.
-/// `since` = when idle started (unix ms), else 0.
+/// (type 4), a game's own presence over the local pipe (RPC_DESIGN §3), my detected game (type 0,
+/// like the official client's: name, application id, start time) and Rustcord's own presence
+/// (type 0, left out while Invisible) go along, in that order. The game's join secret goes out
+/// only here. `since` = when idle started (unix ms), else 0.
 fn presence_payload(
     status: UserStatus,
     afk: bool,
     custom: Option<&CustomStatus>,
+    rpc: Option<&crate::rpc::Presence>,
     game: Option<&crate::activity::GameActivity>,
     app: Option<&crate::activity::AppActivity>,
     now_ms: u64,
@@ -1053,6 +1058,7 @@ fn presence_payload(
             a
         })
         .into_iter()
+        .chain(rpc.map(crate::rpc::Presence::op3))
         .chain(game.map(|g| {
             let mut a = json!({"type": 0, "name": g.name, "timestamps": {"start": g.start_ms}});
             if let Some(id) = g.application_id {
@@ -1157,38 +1163,44 @@ mod tests {
         let v = |s: String| serde_json::from_str::<serde_json::Value>(&s).unwrap();
         let custom = CustomStatus { text: Some("brb".into()), emoji: Some(crate::model::Emoji { name: Some("🍕".into()), ..Default::default() }) };
         assert_eq!(
-            v(presence_payload(UserStatus::Dnd, false, Some(&custom), None, None, 5)),
+            v(presence_payload(UserStatus::Dnd, false, Some(&custom), None, None, None, 5)),
             json!({"op":3,"d":{"status":"dnd","since":0,"afk":false,"activities":[
                 {"type":4,"name":"Custom Status","state":"brb","emoji":{"name":"🍕"}}]}})
         );
         let custom = CustomStatus { text: None, emoji: Some(crate::model::Emoji { id: Some(Id(9)), name: Some("pepe".into()), animated: true }) };
-        let idle = v(presence_payload(UserStatus::Idle, true, Some(&custom), None, None, 1_700_000_000_000));
+        let idle = v(presence_payload(UserStatus::Idle, true, Some(&custom), None, None, None, 1_700_000_000_000));
         assert_eq!((&idle["d"]["since"], &idle["d"]["status"], &idle["d"]["afk"]), (&json!(1_700_000_000_000u64), &json!("idle"), &json!(true)));
         assert_eq!(idle["d"]["activities"][0], json!({"type":4,"name":"Custom Status","emoji":{"id":"9","name":"pepe","animated":true}}));
-        assert_eq!(v(presence_payload(UserStatus::Invisible, false, None, None, None, 5))["d"]["activities"], json!([]));
+        assert_eq!(v(presence_payload(UserStatus::Invisible, false, None, None, None, None, 5))["d"]["activities"], json!([]));
         // My game goes next to the custom status, which it never replaces.
         let game = crate::activity::GameActivity { name: "Factorio".into(), application_id: Some(Id(427520)), start_ms: 1_700_000_000_000 };
         let custom = CustomStatus { text: Some("brb".into()), emoji: None };
         assert_eq!(
-            v(presence_payload(UserStatus::Online, false, Some(&custom), Some(&game), None, 5))["d"]["activities"],
+            v(presence_payload(UserStatus::Online, false, Some(&custom), None, Some(&game), None, 5))["d"]["activities"],
             json!([{"type":4,"name":"Custom Status","state":"brb"},
                    {"type":0,"name":"Factorio","application_id":"427520","timestamps":{"start":1_700_000_000_000u64}}])
         );
         let added = crate::activity::GameActivity { application_id: None, ..game.clone() };
-        assert_eq!(v(presence_payload(UserStatus::Dnd, false, None, Some(&added), None, 5))["d"]["activities"], json!([{"type":0,"name":"Factorio","timestamps":{"start":1_700_000_000_000u64}}]));
+        assert_eq!(v(presence_payload(UserStatus::Dnd, false, None, None, Some(&added), None, 5))["d"]["activities"], json!([{"type":0,"name":"Factorio","timestamps":{"start":1_700_000_000_000u64}}]));
         // Rustcord's own presence comes last, with fixed texts; the Application ID only when set; never while invisible.
         let app = crate::activity::AppActivity { application_id: None, start_ms: 1_700_000_001_000 };
         let own = json!({"type":0,"name":"Rustcord","details":"Third-party client, built in Rust","state":concat!("Version ", env!("CARGO_PKG_VERSION")),"timestamps":{"start":1_700_000_001_000u64}});
-        let list = v(presence_payload(UserStatus::Online, false, Some(&custom), Some(&game), Some(&app), 5))["d"]["activities"].clone();
+        let list = v(presence_payload(UserStatus::Online, false, Some(&custom), None, Some(&game), Some(&app), 5))["d"]["activities"].clone();
         assert_eq!((list[0]["type"].clone(), list[1]["name"].clone(), list[2].clone()), (json!(4), json!("Factorio"), own.clone()));
         let with_id = crate::activity::AppActivity { application_id: Some(Id(123456789012345678)), ..app.clone() };
-        let own_with_id = v(presence_payload(UserStatus::Idle, false, None, None, Some(&with_id), 5))["d"]["activities"][0].clone();
+        let own_with_id = v(presence_payload(UserStatus::Idle, false, None, None, None, Some(&with_id), 5))["d"]["activities"][0].clone();
         assert_eq!(
             [&own_with_id["application_id"], &own_with_id["buttons"], &own_with_id["metadata"]],
             [&json!("123456789012345678"), &json!(["Get Rustcord"]), &json!({"button_urls": ["https://getrustcord.netlify.app/"]})],
             "the button goes along with an application id only (own above has none)"
         );
-        assert_eq!(v(presence_payload(UserStatus::Invisible, false, None, Some(&game), Some(&app), 5))["d"]["activities"].as_array().map(Vec::len), Some(1));
+        assert_eq!(v(presence_payload(UserStatus::Invisible, false, None, None, Some(&game), Some(&app), 5))["d"]["activities"].as_array().map(Vec::len), Some(1));
+        // A game's own presence: after the custom status, before my detected game and Rustcord's; its join secret goes out only here.
+        let rpc = crate::rpc::test_presence(Id(77), "Halo", json!({"state":"In a match","party":{"id":"p1","size":[1,4]},"secrets":{"join":"j-1"}}));
+        let list = v(presence_payload(UserStatus::Online, false, Some(&custom), Some(&rpc), Some(&game), Some(&app), 5))["d"]["activities"].clone();
+        assert_eq!(list.as_array().map(Vec::len), Some(4));
+        assert_eq!((&list[0]["type"], &list[1]["name"], &list[1]["secrets"], &list[1]["flags"], &list[2]["name"], &list[3]["name"]), (&json!(4), &json!("Halo"), &json!({"join":"j-1"}), &json!(2), &json!("Factorio"), &json!("Rustcord")));
+        assert!(!format!("{rpc:?}").contains("j-1"));
 
         let q = MemberQuery { guild_id: Id(10), query: "ab".into(), limit: 50, due: Instant::now(), retried: false };
         assert_eq!(
@@ -1307,7 +1319,7 @@ mod tests {
     async fn activity_changes_queue_one_op3_with_my_status() {
         let (mut gw, _rx) = gateway();
         let game = Some(crate::activity::GameActivity { name: "Factorio".into(), application_id: None, start_ms: 1 });
-        let set = |game: Option<crate::activity::GameActivity>, app| Some(GatewayCommand::SetActivities { game, app });
+        let set = |game: Option<crate::activity::GameActivity>, app| Some(GatewayCommand::SetActivities { game, app, rpc: None });
         // Before READY my status is unknown: only remembered.
         gw.note_cmd(set(game.clone(), None));
         assert_eq!((gw.want_presence, &gw.my_game), (None, &game));
@@ -1325,6 +1337,16 @@ mod tests {
         gw.want_presence = None;
         gw.note_cmd(set(None, app.clone()));
         assert_eq!(gw.want_presence, None);
+        // A game's own presence alone queues one too, and so does its going.
+        gw.want_presence = None;
+        let rpc = Some(crate::rpc::test_presence(Id(7), "Halo", json!({"state":"In a match"})));
+        gw.note_cmd(Some(GatewayCommand::SetActivities { game: None, app: app.clone(), rpc: rpc.clone() }));
+        assert_eq!((gw.want_presence, &gw.my_rpc), (Some(UserStatus::Dnd), &rpc));
+        gw.want_presence = None;
+        gw.note_cmd(Some(GatewayCommand::SetActivities { game: None, app: app.clone(), rpc: rpc.clone() }));
+        assert_eq!(gw.want_presence, None);
+        gw.note_cmd(set(None, app.clone()));
+        assert_eq!((gw.want_presence, &gw.my_rpc), (Some(UserStatus::Dnd), &None));
         // A status picked meanwhile is kept.
         gw.note_cmd(Some(GatewayCommand::UpdatePresence { status: UserStatus::Idle, afk: true }));
         gw.note_cmd(set(game, app));

@@ -154,6 +154,8 @@ pub struct AppState {
     pub unread_marker: Option<(Id, Id)>,
     /// Game detection, my added games, activity icons (`crate::activity`). Not cached.
     pub activity: crate::activity::ActivityState,
+    /// Games connected over the local pipe (`crate::rpc`). Not cached.
+    pub rpc: crate::rpc::RpcState,
     /// The Quests page: quests, Orbs, clicks on their way (`crate::quests`). Not cached.
     pub quests: crate::quests::QuestState,
 }
@@ -208,6 +210,7 @@ impl Default for AppState {
             account: account::AccountState::default(),
             unread_marker: None,
             activity: Default::default(),
+            rpc: Default::default(),
             quests: Default::default(),
         }
     }
@@ -662,7 +665,8 @@ impl AppState {
     pub fn reset(&mut self) {
         // This device's games stay; the session's presence and friends' app icons go.
         let activity = std::mem::take(&mut self.activity).after_logout();
-        *self = Self { activity, ..Self::default() };
+        let rpc = std::mem::take(&mut self.rpc).after_logout();
+        *self = Self { activity, rpc, ..Self::default() };
     }
 
     // ----- selection ---------------------------------------------------------

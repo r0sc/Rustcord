@@ -615,6 +615,8 @@ impl RustcordApp {
                         ctx.open_url(egui::OpenUrl::new_tab(url));
                     }
                 }
+                // Games on the local pipe, application names (crate::rpc).
+                BackendEvent::Rpc(ev) => self.state.rpc.apply(ev),
                 // Quests page; a video progress answer goes on to the video modal's session.
                 BackendEvent::Quests(ev) => {
                     if let Some((quest_id, ok)) = self.state.quests.apply(ev) {

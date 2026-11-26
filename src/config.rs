@@ -141,6 +141,8 @@ pub struct Settings {
     pub reduced_motion: bool,
     pub streamer: StreamerMode,
     pub rustcord_presence: RustcordPresence,
+    /// Activity privacy > Let games show their activity: Rustcord answers on the local game pipe (`crate::rpc`).
+    pub game_connection: bool,
     /// Keybinds the user changed: action name -> shortcut ("Ctrl+Shift+M"; "" = none).
     pub keybinds: std::collections::BTreeMap<String, String>,
     // Open at sign-in / start minimized are not kept here: the Windows / Linux / macOS settings
@@ -316,6 +318,7 @@ impl Default for Settings {
             reduced_motion: false,
             streamer: StreamerMode::default(),
             rustcord_presence: RustcordPresence::default(),
+            game_connection: true,
             keybinds: Default::default(),
             autostart_default_done: false,
             minimize_to_tray: true,
@@ -502,6 +505,10 @@ volume = 30
         let s = Settings { rustcord_presence, ..Default::default() };
         let back: Settings = toml::from_str(&toml::to_string_pretty(&s).unwrap()).unwrap();
         assert_eq!(back.rustcord_presence, s.rustcord_presence);
+        // Files from before the game connection load with it on.
+        assert!(old.game_connection);
+        let off: Settings = toml::from_str("game_connection = false").unwrap();
+        assert!(!off.game_connection);
     }
 
     #[test]
