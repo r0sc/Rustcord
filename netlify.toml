@@ -7,8 +7,9 @@
   # The image default is 24 too, but a version picked in the UI would win over it.
   NODE_VERSION = "24"
 
+# The paths are the files scripts/build-site.sh reads; add one here when the script reads a new file.
 # Exit 0 skips the build. This skips only when an earlier, different commit was built and
 # neither the changes since then nor the pushed commit touch the site's inputs.
 # Everything else builds: a first build, a cleared cache, a retry, a commit git cannot find.
 [context.production]
-  ignore = 'p="site docs/screenshots assets scripts/build-site.sh netlify.toml"; test -n "$CACHED_COMMIT_REF" && test "$CACHED_COMMIT_REF" != "$COMMIT_REF" && git diff --quiet "$CACHED_COMMIT_REF" "$COMMIT_REF" -- $p && git diff --quiet "$COMMIT_REF^" "$COMMIT_REF" -- $p'
+  ignore = 'p="site docs/screenshots/main.png docs/screenshots/stream.png docs/screenshots/profile.png docs/screenshots/plugins.png docs/screenshots/light.png assets/logo.svg assets/logo-small.svg assets/icons/rustcord-32.png assets/icons/rustcord-256.png scripts/build-site.sh netlify.toml"; test -n "$CACHED_COMMIT_REF" && test "$CACHED_COMMIT_REF" != "$COMMIT_REF" && git diff --quiet "$CACHED_COMMIT_REF" "$COMMIT_REF" -- $p && git diff --quiet "$COMMIT_REF^" "$COMMIT_REF" -- $p'
