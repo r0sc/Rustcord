@@ -1,5 +1,5 @@
 //! Advanced > Diagnostics (plugin ClientDiagnostics, `crate::plugins::diagnostics`): frame times,
-//! the slowest sections, memory and the connection as cards, and Copy report. While it is on
+//! the slowest sections, memory, voice playback and the connection as cards, and Copy report. While it is on
 //! screen it times frames (`frame_stats::keep_live`) and redraws once a second; leaving the page
 //! stops both, so idle CPU is back to 0.
 
@@ -35,7 +35,7 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     ui.data_mut(|d| d.insert_temp(id, snap.clone()));
     let window = frame_stats::last();
     let connection = format!("{} for {}", data::conn_text(&cx.state.conn), data::duration_text(cx.view.conn_since.elapsed().as_secs()));
-    let facts = data::Facts { window: window.clone(), memory: snap.memory, parts: snap.parts.clone(), connection: connection.clone(), uptime_s: crate::crash::uptime_s() };
+    let facts = data::Facts { window: window.clone(), memory: snap.memory, parts: snap.parts.clone(), connection: connection.clone(), uptime_s: crate::crash::uptime_s(), voice: crate::voice::audio::stats() };
 
     section(ui, cx.theme, "Diagnostics");
     hint(ui, cx.theme, "Rustcord's own numbers. This page redraws once a second to update them; with it closed, an idle Rustcord draws 0 frames.");
@@ -72,6 +72,12 @@ pub(super) fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         for (name, mb) in &snap.parts {
             row(ui, &pal, name, plain(&pal, format!("{mb:.1} MB")));
         }
+    });
+    card(ui, &pal, "Voice playback, since start", |ui| {
+        let (dry, late, concealed) = facts.voice;
+        row(ui, &pal, "Speaker ran dry", plain(&pal, dry.to_string()));
+        row(ui, &pal, "Late packets dropped", plain(&pal, late.to_string()));
+        row(ui, &pal, "Frames concealed", plain(&pal, concealed.to_string()));
     });
     card(ui, &pal, "Connection", |ui| {
         row(ui, &pal, "State", plain(&pal, connection));

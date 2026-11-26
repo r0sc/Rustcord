@@ -1,7 +1,7 @@
 //! Pure audio logic (no devices, no threads): level, voice gate, silence trailer, speaking
 //! indicator, jitter buffer, resampling, mixing and the Opus settings.
 
-use super::{CHANNELS, FRAME_SAMPLES, JITTER_PACKETS, MAX_INPUT_VOLUME, SAMPLE_RATE};
+use super::{CHANNELS, FRAME_SAMPLES, MAX_INPUT_VOLUME, SAMPLE_RATE, SILENCE_FRAME};
 use opus_rs::{Application, OpusEncoder};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -10,8 +10,14 @@ use std::time::{Duration, Instant};
 const TRAILING_SILENCE: u8 = 5;
 /// Voice-activity hangover in 20 ms frames (300 ms).
 const HANGOVER_FRAMES: u8 = 15;
-/// Packets buffered before a stream starts playing (60 ms).
-const PREFILL: usize = 3;
+/// Packets buffered before a stream starts playing (60 ms), and the most a stream that waited
+/// for late packets starts with (200 ms).
+const PREFILL: u8 = 3;
+const MAX_DEPTH: u8 = 10;
+/// Packets kept past the depth (a burst after a stall) before the oldest is dropped.
+const SLACK: usize = 2;
+/// Frames played without a wait before the depth drops one packet again (10 s).
+const CALM_FRAMES: u16 = 500;
 /// Frames concealed on an empty buffer before a stream counts as finished (100 ms).
 const MAX_LOST: u8 = 5;
 /// Speaking turns off this long after the last non-silence packet (VOICE_NOTES §2.9).
@@ -148,15 +154,28 @@ pub enum Pop {
     Lost,
 }
 
-/// Per-SSRC jitter buffer: at most `JITTER_PACKETS` packets ordered by RTP sequence number
-/// (u16 wraparound). Starts playing after `PREFILL` packets, stops after `MAX_LOST`
-/// concealed frames on an empty buffer.
-#[derive(Default)]
+/// Per-SSRC jitter buffer ordered by RTP sequence number (u16 wraparound). A stream starts
+/// playing once `depth` packets wait. A late packet is waited for (concealed meanwhile, the stream
+/// plays that much later from then on) instead of being dropped when it comes, and the next talk
+/// spurt starts with that much more prefill; `CALM_FRAMES` without a wait take one packet off
+/// again. At most `depth + SLACK` packets wait, so the delay stays bounded.
 pub struct Jitter {
     buf: VecDeque<(u16, Vec<u8>)>,
     /// Sequence number to play next; None while idle.
     next: Option<u16>,
+    /// Frames concealed in a row on an empty buffer, waiting for `next`.
     lost: u8,
+    /// Prefill in packets, PREFILL..=MAX_DEPTH.
+    depth: u8,
+    calm: u16,
+    /// The last frame played was the silence frame that ends a talk spurt.
+    ended: bool,
+}
+
+impl Default for Jitter {
+    fn default() -> Self {
+        Self { buf: VecDeque::new(), next: None, lost: 0, depth: PREFILL, calm: 0, ended: false }
+    }
 }
 
 /// `a` comes before `b` in u16 wraparound order.
@@ -165,46 +184,60 @@ fn before(a: u16, b: u16) -> bool {
 }
 
 impl Jitter {
-    pub fn push(&mut self, seq: u16, opus: Vec<u8>) {
+    /// False when the packet came after its slot was played or concealed (it is dropped).
+    pub fn push(&mut self, seq: u16, opus: Vec<u8>) -> bool {
         if self.next.is_some_and(|next| before(seq, next)) {
-            return; // late: its slot was played or concealed
+            return false;
         }
         let at = self.buf.iter().position(|&(s, _)| !before(s, seq)).unwrap_or(self.buf.len());
         if self.buf.get(at).is_some_and(|&(s, _)| s == seq) {
-            return; // duplicate
+            return true; // duplicate
         }
         self.buf.insert(at, (seq, opus));
-        if self.buf.len() > JITTER_PACKETS
+        if self.buf.len() > usize::from(self.depth) + SLACK
             && let Some((oldest, _)) = self.buf.pop_front()
             && self.next.is_some()
         {
             self.next = Some(oldest.wrapping_add(1));
         }
+        true
     }
 
     pub fn pop(&mut self) -> Pop {
         let next = match (self.next, self.buf.front()) {
             (Some(next), _) => next,
-            (None, Some(&(first, _))) if self.buf.len() >= PREFILL => first,
+            (None, Some(&(first, _))) if self.buf.len() >= usize::from(self.depth) => first,
             (None, _) => return Pop::Idle,
         };
         match self.buf.front() {
-            Some(&(s, _)) if s == next => {
-                (self.next, self.lost) = (Some(next.wrapping_add(1)), 0);
-                Pop::Frame(self.buf.pop_front().map(|(_, p)| p).unwrap_or_default())
-            }
-            // A gap: conceal one frame, then go on with the packets we have.
             Some(&(s, _)) => {
-                self.next = Some(s);
-                Pop::Lost
+                let waited = std::mem::take(&mut self.lost);
+                if waited > 0 {
+                    (self.depth, self.calm) = ((self.depth + waited).min(MAX_DEPTH), 0);
+                } else if s != next {
+                    // A gap: conceal it (FEC from `s`), then go on with the packets we have.
+                    self.next = Some(s);
+                    return Pop::Lost;
+                }
+                // (After a wait, frames missing before `s` were concealed already.)
+                self.next = Some(s.wrapping_add(1));
+                self.calm += 1;
+                if self.calm >= CALM_FRAMES {
+                    (self.depth, self.calm) = (self.depth.saturating_sub(1).max(PREFILL), 0);
+                }
+                let opus = self.buf.pop_front().map(|(_, p)| p).unwrap_or_default();
+                self.ended = opus == SILENCE_FRAME;
+                Pop::Frame(opus)
             }
-            None if self.lost < MAX_LOST => {
-                (self.next, self.lost) = (Some(next.wrapping_add(1)), self.lost + 1);
-                Pop::Lost
-            }
-            None => {
+            // Empty after the closing silence frame: the spurt is over, nothing is late.
+            None if self.ended || self.lost >= MAX_LOST => {
                 (self.next, self.lost) = (None, 0);
                 Pop::Idle
+            }
+            // Empty mid-spurt: `next` is late, not lost. Conceal and keep waiting for it.
+            None => {
+                self.lost += 1;
+                Pop::Lost
             }
         }
     }
@@ -302,7 +335,6 @@ pub fn encode(enc: &mut OpusEncoder, mono: &[f32; FRAME_SAMPLES]) -> Option<Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::voice::audio::SILENCE_FRAME;
     use opus_rs::OpusDecoder;
 
     #[test]
@@ -431,13 +463,129 @@ mod tests {
     fn jitter_is_bounded_and_wraps() {
         let mut j = Jitter::default();
         push(&mut j, &[65533, 65534, 65535, 0, 1, 2, 3]);
-        assert_eq!(j.buf.len(), JITTER_PACKETS);
+        assert_eq!(j.buf.len(), usize::from(PREFILL) + SLACK);
         let played: Vec<Pop> = (0..5).map(|_| j.pop()).collect();
         assert_eq!(played, [frame(65535), frame(0), frame(1), frame(2), frame(3)]);
 
         // Overflow while playing skips ahead instead of stalling.
         push(&mut j, &[4, 5, 6, 7, 8, 9]);
         assert_eq!(j.pop(), frame(5));
+    }
+
+
+    /// Simulated receive path (ms clock): packets every 20 ms with `base` ms of jitter and a stall of
+    /// `spike` ms about every `every` packets (later packets queue behind it, then arrive in a burst),
+    /// the audio thread ticking every 15.6 ms (measured on Windows) and refilling the speaker ring to 40 ms,
+    /// the device taking 10 ms every 10 ms. Returns (concealed frames, packets never played: late
+    /// or trimmed, ring dry-outs while playing, mean ms from arrival to playout) for one minute of
+    /// speech.
+    fn simulate(base: u32, spike: u32, every: u32) -> (u32, u32, u32, f64) {
+        let mut rng = 0x9E37_79B9_7F4A_7C15u64;
+        let mut rand = move |n: u32| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            (rng % u64::from(n.max(1))) as u32
+        };
+        let mut arrivals = Vec::new();
+        let (mut last, mut stall) = (0, 0u32);
+        for i in 0..3000u32 {
+            if spike > 0 && rand(every) == 0 {
+                stall = spike / 2 + rand(spike / 2);
+            }
+            let at = (i * 20 + rand(base + 1) + stall).max(last);
+            stall = stall.saturating_sub(20);
+            last = at;
+            arrivals.push((at, i as u16));
+        }
+        let mut j = Jitter::default();
+        let (mut ring, mut playing) = (0.0f64, false);
+        let (mut concealed, mut dry, mut waited, mut played) = (0, 0, 0.0, 0u32);
+        let mut arrived_at = std::collections::HashMap::new();
+        let (mut next_pkt, mut next_tick, mut t) = (0usize, 3.0f64, 0u32);
+        while t < 61_000 {
+            if t % 10 == 0 {
+                ring -= 10.0;
+                if ring < 0.0 {
+                    if playing {
+                        dry += 1;
+                    }
+                    ring = 0.0;
+                }
+            }
+            if f64::from(t) >= next_tick {
+                next_tick += 15.6;
+                while next_pkt < arrivals.len() && arrivals[next_pkt].0 <= t {
+                    let seq = arrivals[next_pkt].1;
+                    arrived_at.insert(seq, t);
+                    j.push(seq, vec![1]);
+                    next_pkt += 1;
+                }
+                let mut wrote = false;
+                while ring < 40.0 {
+                    let seq = j.next.or(j.buf.front().map(|f| f.0));
+                    match j.pop() {
+                        Pop::Idle => break,
+                        Pop::Lost => concealed += 1,
+                        Pop::Frame(_) => {
+                            if let Some(at) = seq.and_then(|s| arrived_at.get(&s)) {
+                                waited += f64::from(t - at) + ring;
+                                played += 1;
+                            }
+                        }
+                    }
+                    ring += 20.0;
+                    wrote = true;
+                }
+                playing = wrote || ring > 0.0;
+            }
+            t += 1;
+        }
+        (concealed, arrivals.len() as u32 - played, dry, waited / f64::from(played.max(1)))
+    }
+
+    /// Before the buffer waited for late packets: wifi 29 concealed / 24 dropped / 39 ms, bad
+    /// 62 / 53 / 87 ms (5 of the concealed frames are the end of the stream).
+    #[test]
+    fn jitter_rides_out_network_stalls() {
+        let profiles = [("calm 0-8 ms", 8, 0, 1, 5, 60.0), ("wifi 0-15 ms, 30-80 ms stall / 5 s", 15, 80, 250, 12, 120.0), ("bad 0-25 ms, 60-150 ms stall / 3 s", 25, 150, 150, 20, 200.0)];
+        for (name, base, spike, every, max_concealed, max_ms) in profiles {
+            let (c, dropped, dry, ms) = simulate(base, spike, every);
+            eprintln!("{name}: concealed {c}, never played {dropped}, dry-outs {dry}, delay {ms:.0} ms (per minute)");
+            assert!(c <= max_concealed && dropped <= 2 && dry == 0 && ms < max_ms, "{name}");
+        }
+    }
+
+    #[test]
+    fn jitter_waits_for_late_packets_and_starts_later_next_time() {
+        let mut j = Jitter::default();
+        push(&mut j, &[1, 2, 3]);
+        assert_eq!((j.pop(), j.pop(), j.pop()), (frame(1), frame(2), frame(3)));
+        assert_eq!((j.pop(), j.pop()), (Pop::Lost, Pop::Lost), "4 is late: concealed while waiting");
+        assert!(j.push(4, vec![4]), "and played when it comes, not dropped");
+        assert_eq!(j.pop(), frame(4));
+        assert_eq!(j.depth, PREFILL + 2);
+
+        // Waiting for 5, then 6 comes: 5 was lost, its slot is concealed already.
+        assert_eq!(j.pop(), Pop::Lost);
+        push(&mut j, &[6]);
+        assert_eq!(j.pop(), frame(6));
+        assert!(!j.push(5, vec![5]), "too late now");
+
+        // The closing silence frame ends the spurt at once; the next one starts with 6 packets.
+        j.push(7, SILENCE_FRAME.to_vec());
+        assert_eq!((j.pop(), j.pop()), (Pop::Frame(SILENCE_FRAME.to_vec()), Pop::Idle));
+        push(&mut j, &[10, 11, 12, 13, 14]);
+        assert_eq!(j.pop(), Pop::Idle);
+        push(&mut j, &[15]);
+        assert_eq!(j.pop(), frame(10));
+
+        // Calm for CALM_FRAMES frames: one packet less.
+        for seq in 16..16 + CALM_FRAMES {
+            j.push(seq, vec![0]);
+            assert!(matches!(j.pop(), Pop::Frame(_)));
+        }
+        assert_eq!(j.depth, PREFILL + 2);
     }
 
     #[test]

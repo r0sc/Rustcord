@@ -4,7 +4,8 @@
 
 use super::SAMPLE_RATE;
 use super::dsp::{self, Resampler};
-use crate::voice::{VoiceEvent, VoiceEvents};
+use super::{Events, boost_thread};
+use crate::voice::VoiceEvent;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, ErrorKind, FromSample, Host, SampleFormat, SizedSample, Stream, StreamConfig};
 use std::sync::Arc;
@@ -75,7 +76,7 @@ pub fn list(host: &Host) -> (Vec<String>, Vec<String>) {
 }
 
 /// The device called `wanted`, else (with a notice) the system default.
-fn pick(host: &Host, input: bool, wanted: Option<&str>, events: &VoiceEvents) -> Option<Device> {
+fn pick(host: &Host, input: bool, wanted: Option<&str>, events: &Events) -> Option<Device> {
     if let Some(wanted) = wanted {
         let found = host.devices().ok().and_then(|mut all| {
             all.find(|d| name(d).as_deref() == Some(wanted) && if input { d.supports_input() } else { d.supports_output() })
@@ -90,7 +91,7 @@ fn pick(host: &Host, input: bool, wanted: Option<&str>, events: &VoiceEvents) ->
 }
 
 /// Stream error callback: reports the first real failure once.
-fn on_error(events: VoiceEvents, what: &'static str) -> impl FnMut(cpal::Error) + Send + 'static {
+fn on_error(events: Events, what: &'static str) -> impl FnMut(cpal::Error) + Send + 'static {
     let mut reported = false;
     move |e| {
         // Glitches and a reroute to the new default device are not worth a toast.
@@ -111,7 +112,7 @@ pub struct Input {
 }
 
 impl Input {
-    pub fn open(host: &Host, wanted: Option<&str>, events: &VoiceEvents) -> Result<Self, String> {
+    pub fn open(host: &Host, wanted: Option<&str>, events: &Events) -> Result<Self, String> {
         let failed = |e: cpal::Error| format!("Could not open the microphone: {e}");
         let dev = pick(host, true, wanted, events).ok_or("No microphone found.")?;
         // WASAPI capture only accepts the device's own format: take it and convert here.
@@ -148,7 +149,11 @@ where
     f32: FromSample<T>,
 {
     let ch = usize::from(config.channels.max(1));
+    let mut boosted = false;
     let data = move |data: &[T], _: &_| {
+        if !std::mem::replace(&mut boosted, true) {
+            boost_thread(); // cpal's own callback thread
+        }
         // Downmix to mono; a full ring (stalled audio thread) drops the newest samples.
         ring.push(data.chunks_exact(ch).map(|f| f.iter().map(|&s| f32::from_sample_(s)).sum::<f32>() / ch as f32));
     };
@@ -167,7 +172,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn open(host: &Host, wanted: Option<&str>, events: &VoiceEvents) -> Result<Self, String> {
+    pub fn open(host: &Host, wanted: Option<&str>, events: &Events) -> Result<Self, String> {
         let failed = |e: cpal::Error| format!("Could not open the speaker: {e}");
         let dev = pick(host, false, wanted, events).ok_or("No speaker found.")?;
         let sc = dev.default_output_config().map_err(failed)?;
@@ -185,6 +190,11 @@ impl Output {
         let resampler = Resampler::new(SAMPLE_RATE, sc.sample_rate(), 2);
         let target = per_ms * OUTPUT_TARGET_MS;
         Ok(Self { _stream: stream, ring, channels, target, resampler, resampled: Vec::new(), frames: Vec::new() })
+    }
+
+    /// The device took everything queued.
+    pub fn is_empty(&self) -> bool {
+        self.ring.len() == 0
     }
 
     /// Time to mix the next 20 ms.
@@ -214,7 +224,11 @@ fn output_stream<T>(
 where
     T: SizedSample + FromSample<f32>,
 {
+    let mut boosted = false;
     let data = move |data: &mut [T], _: &_| {
+        if !std::mem::replace(&mut boosted, true) {
+            boost_thread(); // cpal's own callback thread
+        }
         // What the ring lacks stays silent: cpal pre-fills the buffer with silence.
         let n = data.len();
         let mut slots = data.iter_mut();

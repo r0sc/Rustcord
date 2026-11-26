@@ -1,6 +1,7 @@
 //! ClientDiagnostics: Settings > Advanced shows numbers Rustcord already measures: frame times
 //! and the slowest sections (`ui::frame_stats`, timed only while the section is on screen),
-//! memory (`ui::images::memory_mb`, `AppState::mem_estimate`), the connection and the version.
+//! memory (`ui::images::memory_mb`, `AppState::mem_estimate`), voice playback glitches
+//! (`voice::audio::stats`), the connection and the version.
 //! This file holds the data and the plain-text report; `ui/user_settings/diagnostics.rs` draws it.
 //! The report is copied by a click; nothing leaves the PC and it holds only names and numbers.
 
@@ -57,6 +58,13 @@ pub struct Facts {
     pub parts: Vec<(&'static str, f64)>,
     pub connection: String,
     pub uptime_s: u64,
+    /// `voice::audio::stats`: speaker dry-outs, late packets, concealed frames since start.
+    pub voice: (u32, u32, u32),
+}
+
+/// "2 speaker dry-outs, 0 late packets, 14 concealed frames".
+pub fn voice_text((dry, late, concealed): (u32, u32, u32)) -> String {
+    format!("{dry} speaker dry-outs, {late} late packets, {concealed} concealed frames")
 }
 
 /// The text of "Copy report": names and numbers only.
@@ -86,6 +94,7 @@ pub fn report(f: &Facts) -> String {
     }
     let parts: Vec<String> = f.parts.iter().map(|(n, mb)| format!("{n} {mb:.1} MB")).collect();
     out += &format!("State: {}\n", parts.join(", "));
+    out += &format!("Voice since start: {}\n", voice_text(f.voice));
     out
 }
 
@@ -126,14 +135,15 @@ mod tests {
 
     #[test]
     fn the_report_holds_only_names_and_numbers() {
-        let f = Facts { window: Some(window()), memory: Some((90.2, 70.1)), parts: vec![("messages", 4.25)], connection: "Connected".into(), uptime_s: 125 };
+        let f = Facts { window: Some(window()), memory: Some((90.2, 70.1)), parts: vec![("messages", 4.25)], connection: "Connected".into(), uptime_s: 125, voice: (2, 0, 14) };
         let r = report(&f);
         let keys: Vec<_> = r.lines().map(|l| l.split(':').next().unwrap()).collect();
         let first = format!("Rustcord {} diagnostics", env!("CARGO_PKG_VERSION"));
         assert_eq!(keys[0], first);
-        assert_eq!(&keys[1..], ["System", "Uptime", "Connection", "Frames", "Frame time", "Rustcord time", "Slowest sections (ms per frame)", "Memory", "State"]);
+        assert_eq!(&keys[1..], ["System", "Uptime", "Connection", "Frames", "Frame time", "Rustcord time", "Slowest sections (ms per frame)", "Memory", "State", "Voice since start"]);
         assert!(r.contains("chat 9.50 (slow)") && r.contains("Memory: working set 90.2 MB, private 70.1 MB"));
-        let idle = report(&Facts { window: Some(Window::default()), memory: None, parts: vec![], connection: "Offline".into(), uptime_s: 3 });
+        assert!(r.contains("Voice since start: 2 speaker dry-outs, 0 late packets, 14 concealed frames"));
+        let idle = report(&Facts { window: Some(Window::default()), memory: None, parts: vec![], connection: "Offline".into(), uptime_s: 3, voice: (0, 0, 0) });
         assert!(idle.contains("Frames: 0 frames (idle)") && idle.contains("not measured") && !idle.contains("Slowest"));
         assert!(report(&Facts { window: None, ..f }).contains("Frames: measuring"));
     }

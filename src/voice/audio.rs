@@ -8,17 +8,21 @@
 //! `Stream` is `Send`) and does Opus encode/decode + mixing every 10 ms; cpal callbacks only
 //! convert and copy samples through lock-free bounded rings (`device::Ring`), never block and
 //! never allocate. Received packets reach the thread through a bounded queue (`Playback`).
+//! The audio thread and the cpal callbacks run boosted (`boost_thread`) and never touch the UI:
+//! their events go through the "rustcord-audio-ev" thread (an egui repaint request takes the
+//! UI's lock, which a busy UI pass can hold).
 //! Push-to-talk polls `GetAsyncKeyState` (windows-sys `Win32_UI_Input_KeyboardAndMouse`) every
 //! 10 ms on that thread; on Linux / macOS it reads the key as the focused window saw it.
 //!
 //! Memory bounds: capture queue `CAPTURE_QUEUE` frames, received queue `PACKET_QUEUE`
-//! packets, jitter `JITTER_PACKETS` per SSRC, mic ring 200 ms, output ring ≤ 100 ms; a
+//! packets, jitter ≤ 12 per SSRC (`dsp::Jitter`), mic ring 200 ms, output ring ≤ 100 ms; a
 //! decoder is dropped with its SSRC or after `STREAM_IDLE` without packets.
 
 mod device;
 mod dsp;
 
 use super::{InputMode, VoiceEvent, VoiceEvents};
+use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 use crate::model::Id;
 use dsp::{Jitter, Pop, Speaking, Trailer, Tx, Vad};
 use opus_rs::{OpusDecoder, OpusEncoder};
@@ -34,8 +38,6 @@ pub const CHANNELS: usize = 2;
 pub const FRAME_SAMPLES: usize = 960;
 /// Capture -> transport queue, in frames (200 ms). When full, the newest frame is dropped.
 pub const CAPTURE_QUEUE: usize = 10;
-/// Jitter buffer depth per SSRC, in packets.
-pub const JITTER_PACKETS: usize = 5;
 /// Opus silence; sent 5 times before `Captured::End` (DAVE passes it through unencrypted).
 pub const SILENCE_FRAME: [u8; 3] = [0xF8, 0xFF, 0xFE];
 
@@ -129,11 +131,15 @@ impl Audio {
         let (frames, captured) = mpsc::channel(CAPTURE_QUEUE);
         let (packets, packet_rx) = std_mpsc::sync_channel(PACKET_QUEUE);
         let (config, config_rx) = std_mpsc::channel();
+        let (ev_tx, ev_rx) = std_mpsc::channel();
         let ev = events.clone();
-        let spawned = std::thread::Builder::new()
-            .name("rustcord-audio".into())
-            .spawn(move || Engine::new(cfg, me, events, frames).run(config_rx, packet_rx));
-        if spawned.is_err() {
+        // Ends once the engine and its cpal streams dropped their senders.
+        let forward = std::thread::Builder::new().name("rustcord-audio-ev".into()).spawn(move || ev_rx.iter().for_each(|e| events.send(e)));
+        let spawned = std::thread::Builder::new().name("rustcord-audio".into()).spawn(move || {
+            boost_thread();
+            Engine::new(cfg, me, Events(ev_tx), frames).run(config_rx, packet_rx);
+        });
+        if spawned.is_err() || forward.is_err() {
             ev.send(VoiceEvent::Error("Could not start audio.".into()));
         }
         (Audio { config }, MediaLink { captured, playback: Playback { tx: packets } })
@@ -186,6 +192,51 @@ pub fn set_input_volume(percent: u16) {
     INPUT_GAIN.store(dsp::volume_gain(percent).to_bits(), std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Events of the audio thread and the cpal callbacks, handed to the UI by "rustcord-audio-ev".
+#[derive(Clone)]
+struct Events(std_mpsc::Sender<VoiceEvent>);
+
+impl Events {
+    fn send(&self, ev: VoiceEvent) {
+        let _ = self.0.send(ev);
+    }
+}
+
+/// MMCSS "Pro Audio" for the calling thread (the audio thread, each cpal callback thread), else
+/// time-critical priority. With every core busy (a game) a normal thread waited 64 ms (median)
+/// for its 10 ms tick, longer than the 40 ms the speaker ring holds; boosted 16 ms (measured).
+// shortcut: Windows only; cpal's `realtime` feature (audio_thread_priority) for Linux/macOS if they stutter.
+#[cfg(windows)]
+fn boost_thread() {
+    use windows_sys::Win32::System::Threading::{AvSetMmThreadCharacteristicsW, GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL};
+    let mut task = 0;
+    // SAFETY: a static NUL-terminated name and a valid out pointer; the registration lasts as
+    // long as the thread. SetThreadPriority takes the current thread's pseudo handle.
+    unsafe {
+        if AvSetMmThreadCharacteristicsW(windows_sys::w!("Pro Audio"), &mut task).is_null() {
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn boost_thread() {}
+
+/// Since Rustcord started (Settings > Advanced, ClientDiagnostics): the speaker ran dry while
+/// someone talked, packets that came after their slot (dropped), frames concealed (lost or late).
+static UNDERRUNS: AtomicU32 = AtomicU32::new(0);
+static LATE: AtomicU32 = AtomicU32::new(0);
+static CONCEALED: AtomicU32 = AtomicU32::new(0);
+
+/// `(underruns, late packets, concealed frames)` since start.
+pub fn stats() -> (u32, u32, u32) {
+    (UNDERRUNS.load(Relaxed), LATE.load(Relaxed), CONCEALED.load(Relaxed))
+}
+
+fn count(c: &AtomicU32) {
+    c.fetch_add(1, Relaxed);
+}
+
 /// One remote SSRC.
 struct Remote {
     user_id: Id,
@@ -200,7 +251,7 @@ struct Remote {
 struct Engine {
     cfg: AudioConfig,
     me: Id,
-    events: VoiceEvents,
+    events: Events,
     captured: mpsc::Sender<Captured>,
     host: cpal::Host,
     input: Option<device::Input>,
@@ -218,10 +269,12 @@ struct Engine {
     streams: HashMap<u32, Remote>,
     decoded: Vec<f32>,
     mix: Vec<f32>,
+    /// The speaker ring held audio after the last refill (empty now = it ran dry).
+    playing: bool,
 }
 
 impl Engine {
-    fn new(cfg: AudioConfig, me: Id, events: VoiceEvents, captured: mpsc::Sender<Captured>) -> Self {
+    fn new(cfg: AudioConfig, me: Id, events: Events, captured: mpsc::Sender<Captured>) -> Self {
         let encoder = dsp::encoder().map_err(|_| events.send(VoiceEvent::Error("Could not start the voice encoder.".into()))).ok();
         Self {
             cfg,
@@ -242,6 +295,7 @@ impl Engine {
             streams: HashMap::new(),
             decoded: vec![0.0; MAX_DECODE * CHANNELS],
             mix: vec![0.0; FRAME_SAMPLES * CHANNELS],
+            playing: false,
         }
     }
 
@@ -394,21 +448,29 @@ impl Engine {
                     self.events.send(VoiceEvent::Speaking { user_id, speaking });
                 }
                 // Deafened or no speaker: dropped cheaply, nothing would pull the buffer.
-                if playing {
-                    r.jitter.push(seq, opus);
+                if playing && !r.jitter.push(seq, opus) {
+                    count(&LATE);
                 }
             }
         }
     }
 
     fn play(&mut self) {
-        let Some(out) = self.output.as_mut().filter(|_| !self.cfg.deafened) else { return };
-        for _ in 0..3 {
+        let Some(out) = self.output.as_mut().filter(|_| !self.cfg.deafened) else {
+            self.playing = false;
+            return;
+        };
+        let dry = out.is_empty();
+        for i in 0..3 {
             if !out.wants_more() || !mix_frame(&mut self.streams, &mut self.decoded, &mut self.mix) {
                 break;
             }
+            if i == 0 && dry && self.playing {
+                count(&UNDERRUNS);
+            }
             out.write(&self.mix);
         }
+        self.playing = !out.is_empty();
     }
 
     /// Speaking timeouts; forgets streams that went quiet long ago.
@@ -430,8 +492,10 @@ fn mix_frame(streams: &mut HashMap<u32, Remote>, decoded: &mut [f32], mix: &mut 
     let mut playing = false;
     for r in streams.values_mut() {
         let pop = r.jitter.pop();
-        if pop == Pop::Idle {
-            continue;
+        match pop {
+            Pop::Idle => continue,
+            Pop::Lost => count(&CONCEALED),
+            Pop::Frame(_) => {}
         }
         playing = true;
         if r.decoder.is_none() {
@@ -522,8 +586,7 @@ mod tests {
     #[test]
     fn level_reports_coarse_steps_and_zero_while_muted() {
         let (ev_tx, ev_rx) = std_mpsc::channel();
-        let events = VoiceEvents(crate::backend::EventSink::new(ev_tx, egui::Context::default()));
-        let mut e = Engine::new(AudioConfig::default(), Id(1), events, mpsc::channel(1).0);
+        let mut e = Engine::new(AudioConfig::default(), Id(1), Events(ev_tx), mpsc::channel(1).0);
         let report = |e: &mut Engine, db| (0..LEVEL_FRAMES).for_each(|_| e.report_level(db));
         report(&mut e, -50.0); // 0.5
         report(&mut e, -48.0); // 0.52: below the step
@@ -531,10 +594,7 @@ mod tests {
         e.cfg.muted = true;
         report(&mut e, -10.0);
         report(&mut e, -10.0);
-        let levels: Vec<f32> = ev_rx
-            .try_iter()
-            .filter_map(|ev| if let crate::backend::BackendEvent::Voice(VoiceEvent::LocalLevel(l)) = ev { Some(l) } else { None })
-            .collect();
+        let levels: Vec<f32> = ev_rx.try_iter().filter_map(|ev| if let VoiceEvent::LocalLevel(l) = ev { Some(l) } else { None }).collect();
         assert_eq!(levels, [0.5, 0.6, 0.0]);
     }
 }
