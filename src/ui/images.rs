@@ -31,7 +31,10 @@ enum State {
 /// A streamed animation (`DecodedImage::stream`): its one texture shows the next frame once the shown one is due;
 /// frames are pulled only while drawn with `animate`, so a hidden card's decoder waits.
 struct Stream {
-    rx: std::sync::mpsc::Receiver<ImageFrame>,
+    rx: std::sync::mpsc::Receiver<(u32, ImageFrame)>,
+    rewind: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    /// The decoder pass whose frames show; frames of an older one (from before a rewind) are dropped.
+    pass: u32,
     due: Option<f64>,
     delay: f64,
 }
@@ -44,7 +47,8 @@ impl Stream {
             return Some(due);
         }
         let next = match self.rx.try_recv() {
-            Ok(f) => {
+            Ok((pass, _)) if pass != self.pass => return self.pull(tex, now),
+            Ok((_, f)) => {
                 tex.set(f.image, egui::TextureOptions::LINEAR);
                 self.delay = f64::from(f.delay_ms) / 1000.0;
                 // More than a frame late (the card was hidden): the clock restarts now.
@@ -56,6 +60,12 @@ impl Stream {
         };
         self.due = Some(next);
         Some(next)
+    }
+
+    /// From the first frame again, shown as soon as the decoder has it.
+    fn rewind(&mut self) {
+        self.pass = self.rewind.fetch_add(1, std::sync::atomic::Ordering::Relaxed).wrapping_add(1);
+        self.due = Some(f64::NEG_INFINITY);
     }
 }
 
@@ -155,6 +165,13 @@ impl ImageCache {
                 self.next_frame_at = Some(self.next_frame_at.map_or(due, |t| t.min(due)));
                 Some(SizedTexture::from_handle(&frames[index].0))
             }
+        }
+    }
+
+    /// Starts the streamed animation at `url` over at its first frame (an effect layer whose window opens).
+    pub fn rewind(&mut self, url: &str) {
+        if let Some(Entry { state: State::Ready { stream: Some(s), .. }, .. }) = self.entries.get_mut(url) {
+            s.rewind();
         }
     }
 
@@ -449,7 +466,7 @@ fn upload(ctx: &egui::Context, name: &str, img: DecodedImage) -> State {
             (ctx.load_texture(format!("{name}#{i}"), f.image, egui::TextureOptions::LINEAR), delay)
         })
         .collect();
-    let stream = stream.map(|rx| Stream { rx, due: None, delay: f64::from(total_ms) / 1000.0 });
+    let stream = stream.map(|s| Stream { rx: s.rx, rewind: s.rewind, pass: 0, due: None, delay: f64::from(total_ms) / 1000.0 });
     State::Ready { frames, total_ms, bytes, size, stream }
 }
 
@@ -698,7 +715,8 @@ mod tests {
         let mut cache = ImageCache::new(CommandSender(tx_cmd));
         let ctx = egui::Context::default();
         let frame = |ms| ImageFrame { image: egui::ColorImage::new([2, 2], vec![egui::Color32::WHITE; 4]), delay_ms: ms };
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let (tx, rx) = std::sync::mpsc::sync_channel::<(u32, ImageFrame)>(1);
+        let rewind = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         // Runs one pass at `t` and returns the repaint delay it asked for.
         let pass = |cache: &mut ImageCache, t: f64, animate: bool| {
             ctx.begin_pass(egui::RawInput { time: Some(t), ..Default::default() });
@@ -710,23 +728,32 @@ mod tests {
         };
         pass(&mut cache, 0.0, true);
         ctx.begin_pass(egui::RawInput { time: Some(0.5), ..Default::default() });
-        cache.on_loaded(&ctx, "fx".into(), Ok(DecodedImage { frames: vec![frame(100)], stream: Some(rx) }));
+        cache.on_loaded(&ctx, "fx".into(), Ok(DecodedImage { frames: vec![frame(100)], stream: Some(crate::backend::FrameStream { rx, rewind: rewind.clone() }) }));
         ctx.end_pass().textures_delta.clear();
-        tx.send(frame(50)).unwrap();
+        tx.send((0, frame(50))).unwrap();
         pass(&mut cache, 1.0, true);
-        assert!(matches!(tx.try_send(frame(50)), Err(std::sync::mpsc::TrySendError::Full(_))), "not due yet: nothing pulled");
+        assert!(matches!(tx.try_send((0, frame(50))), Err(std::sync::mpsc::TrySendError::Full(_))), "not due yet: nothing pulled");
         let wake = pass(&mut cache, 1.1, true);
-        assert!(tx.try_send(frame(50)).is_ok(), "due: the waiting frame was pulled");
+        assert!(tx.try_send((0, frame(50))).is_ok(), "due: the waiting frame was pulled");
         assert!((wake - 0.05).abs() < 1e-6, "next frame in 50 ms, got {wake}");
         pass(&mut cache, 5.0, false);
-        assert!(matches!(tx.try_send(frame(50)), Err(std::sync::mpsc::TrySendError::Full(_))), "not animating: nothing pulled");
+        assert!(matches!(tx.try_send((0, frame(50))), Err(std::sync::mpsc::TrySendError::Full(_))), "not animating: nothing pulled");
         let wake = pass(&mut cache, 10.0, true);
-        assert!(tx.try_send(frame(50)).is_ok(), "pulled again");
+        assert!(tx.try_send((0, frame(50))).is_ok(), "pulled again");
         assert!((wake - 0.05).abs() < 1e-6, "late: the clock restarts now, got {wake}");
         pass(&mut cache, 10.05, true); // takes the frame sent above
         let wake = pass(&mut cache, 10.11, true);
         assert!((wake - 0.0125).abs() < 1e-6, "decoder behind: again in a quarter frame, got {wake}");
+        // A rewind drops what the decoder queued before it and looks for the new pass's first frame at once.
+        tx.send((0, frame(50))).unwrap();
+        cache.rewind("fx");
+        assert_eq!(rewind.load(std::sync::atomic::Ordering::Relaxed), 1);
+        let wake = pass(&mut cache, 10.2, true);
+        assert!(tx.try_send((1, frame(70))).is_ok(), "the old pass's frame was dropped");
+        assert!((wake - 0.0125).abs() < 1e-6, "the new first frame looked for soon, got {wake}");
+        let wake = pass(&mut cache, 10.22, true);
+        assert!((wake - 0.0625).abs() < 1e-6, "shown, the next due after its 70 ms, got {wake}");
         drop(cache);
-        assert!(tx.send(frame(50)).is_err(), "dropping the cache stops the decoder");
+        assert!(tx.send((1, frame(50))).is_err(), "dropping the cache stops the decoder");
     }
 }

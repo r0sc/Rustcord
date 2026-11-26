@@ -1102,8 +1102,17 @@ pub enum BackendEvent {
 pub struct DecodedImage {
     pub frames: Vec<ImageFrame>,
     /// A streamed animation (profile effects and banners, `cache::images::stream_frames`): `frames` holds the first frame, the rest
-    /// arrive here in order, looping, decoded just ahead; dropping it stops the decoder.
-    pub stream: Option<std::sync::mpsc::Receiver<ImageFrame>>,
+    /// arrive here.
+    pub stream: Option<FrameStream>,
+}
+
+/// The rest of a streamed animation: frames in order, looping, decoded just ahead, each with the
+/// number of the pass it belongs to. Bumping `rewind` makes the decoder start a new pass at the
+/// first frame; dropping `rx` stops it.
+#[derive(Debug)]
+pub struct FrameStream {
+    pub rx: std::sync::mpsc::Receiver<(u32, ImageFrame)>,
+    pub rewind: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 
 #[derive(Debug)]

@@ -711,32 +711,70 @@ pub fn paint_effect(ui: &egui::Ui, images: &mut ImageCache, card: Rect, radius: 
         let (w, h) = (w.unwrap_or(450.0).max(1.0), h.unwrap_or(880.0).max(1.0));
         Rect::from_min_size(card.min + vec2(x * k, y * k), vec2(w * k, h * k))
     };
-    if !animate {
+    let still = |images: &mut ImageCache| {
         let still = item.reduced_motion_src.as_deref().or(item.static_frame_src.as_deref()).and_then(cdn::collectible_asset_url);
         let first = item.effects.first();
         let r = rect_of(0.0, 0.0, first.and_then(|l| l.width), first.and_then(|l| l.height));
         if let Some(tex) = still.and_then(|u| big_image(ui, images, &u, r, false)) {
             p.add(rounded_tex(tex, r, card, radius));
         }
+    };
+    if !animate {
+        still(images);
         return;
     }
-    let t = (t * 1000.0) as f32 - 500.0;
     let mut layers: Vec<&EffectLayer> = item.effects.iter().collect();
     layers.sort_by_key(|l| l.z_index);
+    let layers: Vec<_> = layers.into_iter().map(|l| (l, cdn::collectible_asset_url(&l.src), rect_of(l.position.x, l.position.y, l.width, l.height))).collect();
+    // The effect's clock runs from when it started to animate (a hover, the card opening) with every
+    // layer loaded, so each play starts with the intro's first frame; a pass without it resets it.
+    let (id, pass) = (egui::Id::unique(("rc_fx_clock", ui.layer_id(), item.sku_id)), ui.ctx().cumulative_pass_nr());
+    let mut clock = ui.ctx().data(|d| d.get_temp::<FxClock>(id)).filter(|c| c.pass + 1 >= pass && c.start.is_none_or(|s| s <= t)).unwrap_or_default();
+    clock.pass = pass;
+    let ready = |images: &mut ImageCache| layers.iter().all(|(_, url, r)| url.as_ref().is_none_or(|u| big_image(ui, images, u, *r, false).is_some()));
+    let start = match clock.start {
+        Some(s) => s,
+        None if ready(images) => *clock.start.insert(t),
+        // Loading: the still image stays meanwhile (no blank card, no intro cut short).
+        None => {
+            ui.ctx().data_mut(|d| d.insert_temp(id, clock));
+            still(images);
+            return;
+        }
+    };
+    let t = ((t - start) * 1000.0) as f32;
+    if layers.iter().all(|(l, ..)| t < l.start) {
+        still(images);
+    }
+    clock.shown.resize(layers.len(), false);
     let mut wake: Option<f32> = None;
-    for l in layers {
+    for (i, (l, url, r)) in layers.iter().enumerate() {
         let (shown, next) = layer_window(l, t);
         if let Some(n) = next {
             wake = Some(wake.map_or(n, |w| w.min(n)));
         }
-        let r = rect_of(l.position.x, l.position.y, l.width, l.height);
-        if let Some(tex) = cdn::collectible_asset_url(&l.src).filter(|_| shown).and_then(|u| big_image(ui, images, &u, r, true)) {
-            p.add(rounded_tex(tex, r, card, radius));
+        // Every window plays the layer from its first frame (COSMETICS_NOTES §5), not where it paused.
+        let was = std::mem::replace(&mut clock.shown[i], shown);
+        if shown && !was && let Some(u) = url {
+            images.rewind(u);
+        }
+        if let Some(tex) = url.as_ref().filter(|_| shown).and_then(|u| big_image(ui, images, u, *r, true)) {
+            p.add(rounded_tex(tex, *r, card, radius));
         }
     }
+    ui.ctx().data_mut(|d| d.insert_temp(id, clock));
     if let Some(ms) = wake {
         ui.ctx().request_repaint_after(Duration::from_millis(ms.ceil().max(1.0) as u64));
     }
+}
+
+/// A profile effect's clock on one surface (`paint_effect`): when it started (in the surface's
+/// seconds), the pass it was last drawn in, and which layers were in their window then.
+#[derive(Clone, Default)]
+struct FxClock {
+    start: Option<f64>,
+    pass: u64,
+    shown: Vec<bool>,
 }
 
 /// Profile-frame layers around `card` (§6): the `back` ones (under the card's content) or the

@@ -323,6 +323,7 @@ re-checked against [UD]/[MOB] in `docs/GUILD_CARD_NOTES.md`, which wins over thi
 - APNG frame time: use `(t - start) mod anim_len` for the frame index, and restart the decoder clock when a layer becomes visible.
 - `randomizedSources`: pick one index below the shortest array length, once per open, and use it for every layer.
 - Reduced motion or performance mode: draw `reducedMotionSrc` (or `staticFrameSrc`) only.
+- Rustcord (cosmetics.rs `paint_effect`): effects animate on hover (unless "Play animated avatars, emoji and GIFs" is on), so the clock starts when the hover starts and every layer has loaded (the still image shows until then; no −500 ms), and resets when the hover ends: every hover plays the intro from its first frame. Each layer window rewinds its stream to frame 0 (`ImageCache::rewind`).
 - Rustcord: effect layers and profile banners stream (cache/images.rs `stream_frames`): the APNG / GIF stays compressed, a thread decodes each frame just before it is due (2 ahead; own compositor on the `png` / `gif` crates, ~1 ms an effect frame), one texture per layer at the asset's 1× size (2× assets box-halved), paused while not drawn, freed when the card closes.
 
 **Where:** profile popout and full profile modal. Picker preview uses `thumbnailPreviewSrc`.

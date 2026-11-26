@@ -13,7 +13,8 @@
 //!
 //! OWNERSHIP: cache implementer.
 
-use crate::backend::{BackendEvent, DecodedImage, EventSink, ImageFrame};
+use crate::backend::{BackendEvent, DecodedImage, EventSink, FrameStream, ImageFrame};
+use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 use image::codecs::{gif::GifDecoder, png::PngDecoder, webp::WebPDecoder};
 use image::{AnimationDecoder, Frames, ImageDecoder, ImageFormat, RgbaImage};
 use std::collections::HashSet;
@@ -247,8 +248,8 @@ type Pass = fn(&[u8], &mut dyn FnMut(&Canvas, u32) -> bool) -> Result<(), String
 
 /// A multi-frame APNG or a GIF decoded frame by frame on its own thread (`DecodedImage::stream`), each frame
 /// box-shrunk by `Canvas::image`, at most STREAM_AHEAD waiting (a card that isn't drawn pulls nothing, so the
-/// thread waits); starts over at the end, ends when the receiver is dropped or after a single frame. Returns
-/// with the first frame; None for other formats (or a failed first frame: `decode` then tries).
+/// thread waits); starts over at the end or on a rewind, ends when the receiver is dropped or after a single
+/// frame. Returns with the first frame; None for other formats (or a failed first frame: `decode` then tries).
 // shortcut: the compressed file stays in RAM (2-8 MB); read it from the disk-cache file if that turns out too much.
 fn stream_frames(bytes: &[u8], max_side: u32) -> Option<DecodedImage> {
     let pass: Pass = if apng_frames(bytes).is_some_and(|n| n > 1) {
@@ -260,22 +261,28 @@ fn stream_frames(bytes: &[u8], max_side: u32) -> Option<DecodedImage> {
     };
     let bytes: Arc<[u8]> = bytes.into();
     let (tx, rx) = std::sync::mpsc::sync_channel(STREAM_AHEAD);
+    let rewind = Arc::new(AtomicU32::new(0));
+    let asked = rewind.clone();
     let thread = std::thread::Builder::new().name("rustcord-anim".into()).spawn(move || {
         loop {
+            let n = asked.load(Relaxed);
             let (mut sent, mut open) = (0, true);
-            // A frame that fails ends the pass, like a truncated file.
+            // A frame that fails ends the pass, like a truncated file; a rewind too (the next starts at frame 0).
             let _ = pass(&bytes, &mut |canvas, delay_ms| {
-                open = tx.send(ImageFrame { image: canvas.image(max_side), delay_ms }).is_ok();
+                if asked.load(Relaxed) != n {
+                    return false;
+                }
+                open = tx.send((n, ImageFrame { image: canvas.image(max_side), delay_ms })).is_ok();
                 sent += 1;
                 open
             });
-            if !open || sent < 2 {
+            if !open || (sent < 2 && asked.load(Relaxed) == n) {
                 return; // card closed, or a still image: its frame stays
             }
         }
     });
-    let first = rx.recv().ok().filter(|_| thread.is_ok())?;
-    Some(DecodedImage { frames: vec![first], stream: Some(rx) })
+    let (_, first) = rx.recv().ok().filter(|_| thread.is_ok())?;
+    Some(DecodedImage { frames: vec![first], stream: Some(FrameStream { rx, rewind }) })
 }
 
 /// APNG frames through the `png` crate, composited here: `image`'s own compositor blends every pixel in
@@ -838,11 +845,15 @@ mod tests {
         let img = stream_frames(&apng(8, 4, &[r, g, b], 40), 4).unwrap();
         assert_eq!(img.frames.len(), 1);
         assert_eq!((img.frames[0].image.size, img.frames[0].delay_ms), ([4, 2], 40));
-        let rx = img.stream.unwrap();
-        let first = |f: ImageFrame| f.image.pixels[0];
+        let stream = img.stream.unwrap();
+        let first = |(_, f): (u32, ImageFrame)| f.image.pixels[0];
         let c = |c: [u8; 4]| egui::Color32::from_rgba_premultiplied(c[0], c[1], c[2], c[3]);
-        let got: Vec<_> = (0..4).map(|_| first(rx.recv().unwrap())).collect();
+        let got: Vec<_> = (0..4).map(|_| first(stream.rx.recv().unwrap())).collect();
         assert_eq!(got, [c(g), c(b), c(r), c(g)], "in order, then looping");
+        // A rewind: the next pass starts at the first frame (at most a frame of the old one is still queued).
+        stream.rewind.fetch_add(1, Relaxed);
+        let next = std::iter::from_fn(|| stream.rx.recv().ok()).find(|(n, _)| *n == 1).unwrap();
+        assert_eq!(first(next), c(r));
     }
 
     #[test]
@@ -885,12 +896,12 @@ mod tests {
         assert_eq!((img.frames[0].image.size, img.frames[0].delay_ms), ([4, 2], 20));
         let c = |r, g, b| egui::Color32::from_rgba_premultiplied(r, g, b, 255);
         assert_eq!(img.frames[0].image.pixels[1], c(0, 0, 255));
-        let rx = img.stream.unwrap();
-        let second = rx.recv().unwrap().image.pixels;
+        let rx = img.stream.unwrap().rx;
+        let second = rx.recv().unwrap().1.image.pixels;
         assert_eq!((second[1], second[2]), (c(255, 0, 0), c(0, 0, 255)), "drawn over the first frame");
-        let third = rx.recv().unwrap().image.pixels;
+        let third = rx.recv().unwrap().1.image.pixels;
         assert_eq!((third[0], third[1]), (c(0, 255, 0), egui::Color32::TRANSPARENT), "the red pixel cleared");
-        assert_eq!(rx.recv().unwrap().image.pixels[1], c(0, 0, 255), "loops");
+        assert_eq!(rx.recv().unwrap().1.image.pixels[1], c(0, 0, 255), "loops");
         assert!(stream_frames(b"\x89PNG not animated", 600).is_none());
     }
 }
