@@ -56,6 +56,7 @@
 <header class="site-header">
   <a class="brand" href="#top"><img src="favicon.svg" alt="" width="28" height="28"><span>Rustcord</span></a>
   <div class="hdr-end">
+    <a class="link-ext hdr-pl" href="#plugins">Plugins</a>
     <a class="link-ext" href="https://github.com/r0sc/Rustcord">GitHub <svg class="icon" aria-hidden="true"><use href="#i-ext"/></svg></a>
     <a class="btn btn-secondary btn-small" href="#download">Download</a>
   </div>
@@ -99,7 +100,7 @@
       </figure>
       <figure class="shot" id="s-plugins">
         <div class="frame"><img src="shots/plugins.webp" srcset="shots/plugins-960.webp 960w, shots/plugins.webp 1600w" sizes="(min-width: 960px) 1180px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="Settings open as a floating panel over the app, on the Plugins page: the built-in Vencord-style plugins, 4 of 51 turned on"></div>
-        <figcaption><h2>Built-in plugins modeled on Vencord’s.</h2></figcaption>
+        <figcaption><h2>The plugin list in Settings.</h2></figcaption>
       </figure>
       <figure class="shot" id="s-lilac">
         <div class="frame"><img src="shots/light.webp" srcset="shots/light-960.webp 960w, shots/light.webp 1600w" sizes="(min-width: 960px) 1180px, calc(100vw - 32px)" width="1600" height="1000" loading="lazy" decoding="async" alt="The same #general chat in the Lilac theme"></div>
@@ -108,6 +109,22 @@
     </div>
     <div class="pills" role="group" aria-label="Pick a screen" hidden>
       <button type="button" data-view="chat">Chat</button><button type="button" data-view="voice">Voice</button><button type="button" data-view="profile">Profiles</button><button type="button" data-view="plugins">Plugins</button><button type="button" data-view="lilac">Lilac</button>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="plugins" aria-labelledby="plugins-title">
+  <div class="wrap">
+    <h2 class="sec-title" id="plugins-title">Plugins</h2>
+    <p class="sec-lede">Rustcord has {{plugin-count}} plugins, all off until you turn them on in Settings → Plugins. Each is named after the plugin it is modeled on. The label shows which project that plugin comes from.</p>
+    <div class="pl-search" hidden>
+      <input type="search" id="pl-q" aria-label="Search plugins" placeholder="Search plugins" autocomplete="off" spellcheck="false">
+      <p class="meta pl-status" role="status"></p>
+    </div>
+    <ul class="pl-list pl-top"><!--plugins-top--></ul>
+    <div class="acc pl-acc">
+      <details class="pl-more"><summary>{{plugin-more}} more plugins <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="pl-groups"><!--plugins-rest--></div></details>
     </div>
   </div>
 </section>
@@ -179,7 +196,7 @@ sh rustcord-&lt;version&gt;/install.sh</code></pre><button class="btn btn-second
       </ul>
     </div>
     <div class="foot-text">
-      <p>Rustcord is MIT licensed and not affiliated with Discord. The plugins re-implement <a href="https://github.com/Vendicated/Vencord">Vencord</a>’s in Rust and contain none of its code.</p>
+      <p>Rustcord is MIT licensed and not affiliated with Discord. The plugins re-implement ones from <a href="https://github.com/Vendicated/Vencord">Vencord</a>, <a href="https://github.com/Equicord/Equicord">Equicord</a> and Illegalcord in Rust and contain none of their code.</p>
       <p>This site uses no cookies and no analytics.</p>
       <details class="credits"><summary>Credits <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
         <p>The screenshots use Rustcord’s offline demo data; people, servers and messages are made up. The stream and the profile banner show one frame of <a href="https://commons.wikimedia.org/wiki/File:Red_Eclipse_1,5_Gameplay_1.webm">Red Eclipse 1,5 Gameplay 1</a> by Premitre, <a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a> (a still frame, scaled). Avatars from Wikimedia Commons, cropped and scaled: <a href="https://commons.wikimedia.org/wiki/File:Cat_face_in_sunlight_%28Unsplash%29.jpg">Cat face in sunlight</a> by Alicja Koczaska (CC0), <a href="https://commons.wikimedia.org/wiki/File:Crab_Nebula.jpg">Crab Nebula</a> by NASA, ESA, J. Hester and A. Loll (public domain), <a href="https://commons.wikimedia.org/wiki/File:Neon_streets_%28Unsplash%29.jpg">Neon streets</a> by JINDONG H (CC0), <a href="https://commons.wikimedia.org/wiki/File:Portrait_of_a_labrador_retriever.jpg">Portrait of a labrador retriever</a> by Dktue (CC0). The avatar of the account rosc is not part of the repository. The site font is Archivo (SIL Open Font License).</p></details>

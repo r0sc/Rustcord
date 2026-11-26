@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { stageAt } from './stage.js';
 import { gate, renderScale, follow, ringAt, isSoftware } from './fx.js';
 import { detectOs, pickAssets, fetchLatest, buttonState, mb, LATEST, REPO } from './download.js';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { parseMeta, check, render, inject, CATS } from '../scripts/site-plugins.mjs';
 
 const UA = {
   win: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36',
@@ -125,4 +128,87 @@ test('effect math', () => {
   assert.ok(isSoftware('llvmpipe (LLVM 15.0.7, 256 bits)'));
   assert.ok(!isSoftware('ANGLE (AMD, AMD Radeon (TM) Graphics (0x000015E7) Direct3D11 vs_5_0 ps_5_0, D3D11)'));
   assert.ok(!isSoftware(''));
+});
+
+// ---- plugin list (scripts/site-plugins.mjs) ----
+const root = new URL('..', import.meta.url);
+const modRs = readFileSync(new URL('src/plugins/mod.rs', root), 'utf8');
+const srcJson = JSON.parse(readFileSync(new URL('site/plugins.json', root), 'utf8'));
+const one = (name, extra = {}) => ({ name, from: 'Vencord', url: `https://vencord.dev/plugins/${name}`, cat: 'Chat', ...extra });
+const M = (name, desc = 'd') => ({ name, desc });
+
+test('plugins.json covers every plugin in META', () => {
+  const meta = parseMeta(modRs);
+  assert.ok(meta.length > 0);
+  assert.equal(new Set(meta.map(m => m.name)).size, meta.length);
+  assert.deepEqual(check(meta, srcJson), []);
+});
+
+test('check names what is wrong', () => {
+  const ok = [one('A')];
+  assert.deepEqual(check([M('A')], ok), []);
+  assert.deepEqual(check([], ok), ['src/plugins/mod.rs has no plugins in META.']);
+  assert.deepEqual(check([M('A'), M('B')], ok), ['site/plugins.json has no entry for B. Add where it comes from (from, url, cat) before the site can build.']);
+  assert.deepEqual(check([M('A')], [...ok, one('Z')]), ['site/plugins.json: Z is not in META. Remove it.']);
+  assert.deepEqual(check([M('A')], [...ok, one('A')]), ['site/plugins.json: A is listed twice.']);
+  assert.deepEqual(check([M('A')], [one('A', { x: 1 })]), ['site/plugins.json: A has an unknown key "x".']);
+  assert.deepEqual(check([M('A')], [one('A', { from: 'Foo' })]), ['site/plugins.json: A: from must be Vencord, Equicord or Illegalcord.']);
+  assert.deepEqual(check([M('A')], [one('A', { url: 'https://example.com/A' })]), ['site/plugins.json: A: url must be "" or https://vencord.dev/plugins/A']);
+  assert.deepEqual(check([M('A')], [one('A', { from: 'Illegalcord', url: 'https://vencord.dev/plugins/A' })]), ['site/plugins.json: A: url must be ""']);
+  assert.deepEqual(check([M('A')], [one('A', { cat: 'Misc' })]), ['site/plugins.json: A: cat must be one of ' + CATS.join(', ') + '.']);
+  assert.deepEqual(check([M('A')], [one('A', { next: 'yes' })]), ['site/plugins.json: A: top and next must be true or left out.']);
+  const nine = Array.from({ length: 9 }, (_, i) => one('P' + i, { top: true }));
+  assert.deepEqual(check(nine.map(n => M(n.name)), nine), ['site/plugins.json: at most 8 plugins can have "top": true (found 9).']);
+});
+
+test('parseMeta reads names and descriptions', () => {
+  const rs = 'x\npub const META: &[Meta] = &[\n    meta(P::A, "A", "Say \\"hi\\".", &[\n        opt("k", "Label", Bool(true)),\n    ]),\n    meta(P::B, "B", "two", &[]),\n];\nmeta(P::C, "C", "after", &[])';
+  assert.deepEqual(parseMeta(rs), [M('A', 'Say "hi".'), M('B', 'two')]);
+  assert.throws(() => parseMeta('nothing here'));
+  assert.throws(() => parseMeta('pub const META: &[Meta] = &[\n    meta(P::A, "A", "bad \\n escape", &[]),\n];'));
+});
+
+test('render escapes, maps wording and groups', () => {
+  const meta = [M('A<b>', "it's & <x>"), M('B', 'colour Colourful greyed right in the chat'), M('C'), M('D')];
+  const src = [one('A<b>'), one('B', { from: 'Illegalcord', url: '', cat: 'People', next: true }), one('C', { top: true }), one('D', { cat: 'People' })];
+  const r = render(meta, src);
+  assert.ok(r.rest.includes('<span class="pl-name">A&lt;b&gt;</span>'));
+  assert.ok(r.rest.includes('it’s &amp; &lt;x&gt;'));
+  assert.ok(r.rest.includes('color Color'));
+  assert.ok(r.rest.includes('colorful') === false && r.rest.includes('Colorful gray'));
+  assert.ok(r.rest.includes('grayed in the chat'));
+  assert.ok(r.rest.includes('<span class="chip chip-src">Illegalcord</span>'));
+  assert.ok(r.rest.includes('<span class="chip chip-next">Next release</span>'));
+  assert.ok(r.rest.includes('aria-label="Vencord’s A&lt;b&gt;"'));
+  assert.ok(!r.rest.includes('Servers and DMs'), 'an empty group is left out');
+  assert.ok(r.rest.indexOf('<h3>Chat</h3>') < r.rest.indexOf('<h3>People</h3>'));
+  assert.equal(r.count, 4); assert.equal(r.more, 3);
+  assert.equal((r.top.match(/pl-row/g) || []).length, 1);
+  const real = render(parseMeta(modRs), srcJson);
+  assert.equal(((real.top + real.rest).match(/class="pl-row"/g) || []).length, real.count);
+  assert.equal((real.top.match(/class="pl-row"/g) || []).length, srcJson.filter(s => s.top).length);
+});
+
+test('inject needs every marker exactly once', () => {
+  const r = { count: 2, more: 1, top: '$&T', rest: 'R' };
+  const page = '{{plugin-count}} {{plugin-more}} <!--plugins-top--> <!--plugins-rest-->';
+  assert.equal(inject(page, r), '2 1 $&T R');
+  assert.throws(() => inject(page.replace('<!--plugins-rest-->', ''), r), /marker <!--plugins-rest--> must appear once/);
+  assert.throws(() => inject(page + ' {{plugin-count}}', r), /marker/);
+});
+
+test('Next release flags match the latest tag', t => {
+  const git = (...a) => execFileSync('git', a, { cwd: root, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+  let tag, old;
+  try { tag = git('describe', '--tags', '--abbrev=0').trim(); old = parseMeta(git('show', `${tag}:src/plugins/mod.rs`)); }
+  catch { return t.skip('no release tag in this clone'); }
+  const was = new Map(old.map(m => [m.name, m.desc]));
+  const err = [];
+  for (const m of parseMeta(modRs)) {
+    const s = srcJson.find(x => x.name === m.name);
+    if (!was.has(m.name) && !s.next) err.push(`${m.name} is not in ${tag}: set "next": true in site/plugins.json.`);
+    if (s.next && was.get(m.name) === m.desc)
+      err.push(`${m.name} ships in ${tag} as it is now: remove "next" in site/plugins.json, and the Next release chips in site/index.html for what ${tag} ships.`);
+  }
+  assert.deepEqual(err, []);
 });

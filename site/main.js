@@ -63,6 +63,25 @@ function copy(btn, text, done) {
 $$('[data-copy-link]').forEach(b => b.addEventListener('click', () => copy(b, location.origin + location.pathname, 'Link copied')));
 $$('[data-copy]').forEach(b => b.addEventListener('click', () => copy(b, b.parentElement.querySelector('code').textContent, 'Copied')));
 
+// ---- plugin search: instant, no motion (it is typed into, ux-motion 20) ----
+const pl = document.getElementById('plugins'), find = pl && pl.querySelector('.pl-search');
+if (find) {
+  const input = find.querySelector('input'), status = find.querySelector('[role="status"]'), more = pl.querySelector('.pl-more');
+  const rows = $$('.pl-row', pl), boxes = $$('.pl-top, .pl-group', pl);
+  let was = null; // the details' open state before a search opened it
+  find.hidden = false;
+  input.addEventListener('input', () => {
+    const raw = input.value.trim(), q = raw.toLowerCase();
+    if (q && was === null) was = more.open;
+    pl.classList.toggle('is-filtering', !!q); // before opening, so the open is instant
+    let n = 0;
+    for (const r of rows) { const hit = !q || r.textContent.toLowerCase().includes(q); r.hidden = !hit; n += hit; }
+    for (const b of boxes) b.hidden = !b.querySelector('.pl-row:not([hidden])');
+    if (q) more.open = true; else if (was !== null) { more.open = was; was = null; }
+    status.textContent = !q ? '' : n ? `${n} of ${rows.length} plugins` : `No plugin matches “${raw}”.`;
+  });
+}
+
 // ---- screens, then the effects once the page is complete ----
 const tour = document.querySelector('.tour');
 if (tour) initStage(tour, q.get('view'));

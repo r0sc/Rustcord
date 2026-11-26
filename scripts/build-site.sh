@@ -9,7 +9,8 @@ node --test site/test.mjs
 rm -rf _site
 mkdir -p _site/shots
 cp -r site/. _site/
-rm _site/test.mjs
+rm _site/test.mjs _site/plugins.json
+node scripts/site-plugins.mjs _site/index.html
 
 if [ -z "${SITE_NO_VIPS:-}" ] && ! command -v vips >/dev/null 2>&1; then
 	echo "error: vips (libvips-tools) is missing, cannot make the WebP shots" >&2
