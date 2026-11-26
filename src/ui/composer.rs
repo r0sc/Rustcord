@@ -213,6 +213,10 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
         ctx.data(|d| d.get_temp::<(egui::Id, u64)>(panel_box_id())).filter(|(_, p)| *p == pass).map(|(id, _)| id)
     };
     let focused = ctx.memory(|m| m.focused());
+    // QuickReply: Ctrl+Up / Down, taken before the text box sees them (also from an inline edit).
+    if (focused == Some(edit_id) || editing_here) && let Some((own, up)) = crate::plugins::compose::quick_reply_key(&ctx) {
+        crate::plugins::compose::quick_reply(cx, ch, own, up);
+    }
     // Two boxes on screen: the focused one takes drops and pastes, else the channel's.
     let takes_files = if panel { focused == Some(edit_id) } else { panel_box.is_none() || focused != panel_box };
     let mut trays: HashMap<Id, Tray> = ctx.data_mut(|d| d.remove_temp(trays_id())).unwrap_or_default();

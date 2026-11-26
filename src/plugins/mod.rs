@@ -82,6 +82,7 @@ pub enum Plugin {
     OnePingPerDm,
     PinDms,
     ClientDiagnostics,
+    QuickReply,
 }
 
 /// One option of a plugin (the settings page draws it from this).
@@ -212,6 +213,7 @@ pub const META: &[Meta] = &[
     meta(P::OnePingPerDm, "OnePingPerDM", "Only the first notification of a DM until you've read it.", &[]),
     meta(P::PinDms, "PinDMs", "Pin DMs to the top of the list from their menu.", &[]),
     meta(P::ClientDiagnostics, "ClientDiagnostics", "Settings → Advanced shows frame times, memory and the connection, with a button that copies them as text. Nothing is sent.", &[]),
+    meta(P::QuickReply, "QuickReply", "Ctrl+Up / Ctrl+Down pick the message to reply to; Ctrl+Shift+Up / Down pick one of yours to edit. Down past the newest cancels.", &[]),
 ];
 
 pub fn meta_of(p: Plugin) -> &'static Meta {
@@ -306,7 +308,7 @@ fn file() -> std::path::PathBuf {
 const FILES: &[(&str, &[Plugin])] = &[
     ("chat", &[P::TypingTweaks, P::SilentMessageToggle, P::NoReplyMention, P::NoBlockedMessages, P::WhoReacted, P::SilentTyping, P::ReplyTimestamp, P::FavoriteEmojiFirst]),
     ("clear_urls", &[P::ClearUrls]),
-    ("compose", &[P::TextReplace, P::CharacterCounter]),
+    ("compose", &[P::TextReplace, P::CharacterCounter, P::QuickReply]),
     ("idle", &[P::CustomIdle]),
     ("link_embeds", &[P::MessageLinkEmbeds]),
     ("media", &[P::ImageZoom, P::ViewIcons, P::OpenInApp, P::Translate, P::ClearUrls]),

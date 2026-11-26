@@ -187,9 +187,9 @@ What's in it so far:
   CopyUserURLs, CustomIdle, FavoriteEmojiFirst, FriendsSince, GameActivityToggle,
   ImageZoom, IrcColors, MemberCount, MessageLinkEmbeds, MessageLogger (memory only),
   MoreUserTags, MutualGroupDMs, NoBlockedMessages, NoReplyMention, OnePingPerDM, OpenInApp,
-  PermissionsViewer, PinDMs, PlatformIndicators, ReadAllNotificationsButton,
-  RelationshipNotifier, ReplyTimestamp, ReverseImageSearch, ServerInfo, ShowConnections,
-  ShowHiddenChannels, ShowMeYourName, ShowTimeoutDuration, SilentMessageToggle, SilentTyping,
+  PermissionsViewer, PinDMs, PlatformIndicators, QuickReply (Ctrl+Up / Down to reply, with
+  Shift to edit your own), ReadAllNotificationsButton, RelationshipNotifier, ReplyTimestamp,
+  ReverseImageSearch, ServerInfo, ShowConnections, ShowHiddenChannels, ShowMeYourName, ShowTimeoutDuration, SilentMessageToggle, SilentTyping,
   TextReplace, Translate, TypingIndicator, TypingTweaks, UserVoiceShow, ValidUser, VcNarrator
   (Windows speech, `say` on macOS, `spd-say` on Linux), ViewIcons, ViewRaw, VoiceMessages
   (playback), VolumeBooster (up to 400 %, local mix only), WhoReacted. Their options live in
