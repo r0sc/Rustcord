@@ -5,10 +5,14 @@
 <h1 align="center">Rustcord</h1>
 
 <p align="center">
-  A lightweight, unofficial desktop client for Discord that I built from scratch in Rust.<br>
-  No Electron – egui + tokio, talking to the HTTP API and the Gateway directly.<br>
-  Made by me, <a href="https://github.com/r0sc">rosc</a>.<br>
-  Website: <a href="https://getrustcord.netlify.app/">getrustcord.netlify.app</a>
+  Rustcord is an unofficial desktop client for Discord, written in Rust with egui and tokio.<br>
+  It runs on Windows, Linux and macOS and talks to Discord's HTTP API and Gateway directly.
+</p>
+
+<p align="center">
+  <a href="https://getrustcord.netlify.app/">Website</a> ·
+  <a href="#download">Download</a> ·
+  <a href="https://github.com/r0sc/Rustcord/issues">Issues</a>
 </p>
 
 <p align="center">
@@ -20,18 +24,25 @@
   <a href="https://github.com/r0sc/Rustcord/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/r0sc/Rustcord/total"></a>
 </p>
 
-> **Beta – expect bugs.** Rustcord is a beta and may still have bugs. I vibe-coded it: almost all
-> of the code was written with AI coding tools (Claude Code), not by hand. I've only tested many
-> features with offline demo data, not with a live account, and I've tested the Linux and macOS
-> builds the least. If something breaks, please tell me in an
-> [issue](https://github.com/r0sc/Rustcord/issues).
+Rustcord is in beta. Almost all of the code was written with AI coding tools (Claude Code).
+Many features have only been tested with offline demo data, not with a live account. The Linux
+and macOS builds have had the least testing. Please report bugs as a
+[GitHub issue](https://github.com/r0sc/Rustcord/issues).
+
+> [!WARNING]
+> Third-party clients that log in with a user account break Discord's Terms of Service and can
+> get the account banned. Use Rustcord at your own risk. Rustcord automates nothing, respects rate
+> limits and sends nothing on your behalf except your status and activity. That does not remove
+> the risk. By default your activity shows "Playing Rustcord", so friends and Discord can see that
+> you use a third-party client. Turn it off in Settings → Activity privacy. Rustcord is not
+> affiliated with Discord.
 
 <p align="center">
-  <img src="docs/screenshots/main.png" width="820" alt="Rustcord's main window in the Nightshade theme: the server bar, the Rust Workshop server's channels, the #general chat where rosc and friends talk about Rustcord, and the member list with rosc's custom status &quot;Rewriting it in Rust&quot;, a game and Spotify">
+  <img src="docs/screenshots/main.png" width="820" alt="Rustcord's main window in the Nightshade theme: the server bar, the Rust Workshop server's channels, the #general chat and the member list with rosc's custom status &quot;Rewriting it in Rust&quot;, a game and Spotify">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/stream.png" width="820" alt="A voice channel in Rustcord: Cara's live stream of Red Eclipse gameplay fills the stage, with Alice, Bob, Cara, dan_ops and rosc in the tiles below and rosc connected to Lounge in the voice panel">
+  <img src="docs/screenshots/stream.png" width="820" alt="A voice channel: Cara's live stream of Red Eclipse gameplay fills the stage, with Alice, Bob, Cara, dan_ops and rosc in the tiles below and rosc connected to Lounge in the voice panel">
 </p>
 
 <table>
@@ -40,217 +51,195 @@
     <td><img src="docs/screenshots/plugins.png" alt="Settings → Plugins: the built-in Vencord-style plugins, 4 of 51 turned on"></td>
   </tr>
   <tr>
-    <td align="center">My profile, with a local-only banner</td>
-    <td align="center">Settings → Plugins (Vencord-style, built in)</td>
+    <td align="center">Profile popout with a local-only banner</td>
+    <td align="center">Built-in plugins in Settings → Plugins</td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/viewer.png" alt="The built-in media viewer showing a Red Eclipse screenshot that rosc posted, with Save, Copy image and Copy link"></td>
+    <td><img src="docs/screenshots/viewer.png" alt="The media viewer showing a Red Eclipse screenshot that rosc posted, with Save, Copy image and Copy link"></td>
     <td><img src="docs/screenshots/light.png" alt="The same #general chat in the Lilac theme"></td>
   </tr>
   <tr>
-    <td align="center">Pictures and videos open in the app</td>
+    <td align="center">Media viewer</td>
     <td align="center">Lilac theme</td>
   </tr>
 </table>
 
-<sub>The screenshots use Rustcord's offline demo data, signed in as me (rosc). The other people,
-servers and messages are made up; the live stream and the shared picture show Red Eclipse
-gameplay (see <a href="#credits">Credits</a>). <code>scripts/readme-shots.py</code> takes them
-again.</sub>
-
-> **Warning.** Third-party clients that log in with a user account violate Discord's Terms of
-> Service and can get the account banned. You use this at your own risk. I made Rustcord behave
-> like a normal user client (no automation, nothing is sent on your behalf except your status and
-> activity, like the official app, all rate limits are respected), but that doesn't remove the
-> risk. Rustcord shows "Playing Rustcord" as your activity by default. Friends, and Discord, can
-> see that you use a third-party client. Turn it off in Settings → Activity privacy. Rustcord is
-> not affiliated with Discord.
-
-## Why Rustcord
-
-On November 4, 2026, Discord's co-founder and CTO Stanislav Vishnevskiy announced that Discord is
-rebuilding its desktop app in Rust instead of Electron. An early internal Windows build exists and
-is heading into private testing; there is no release date yet, and the Electron app carries on in
-the meantime ([mlq.ai](https://mlq.ai/news/discord-is-rebuilding-its-desktop-app-in-rust-to-cut-memory-use/),
-[andrealosavio.com](https://www.andrealosavio.com/en/blog/discord-rust-client-rewrite),
-[tech-insider.org](https://tech-insider.org/discord-electron-rust-gpui-rebuild-290mb-ram-2026/)).
-
-I didn't feel like waiting for it. So I vibe-coded my own Rust client and shipped it first:
-Rustcord 0.1.0 came out on November 15, 2026, for Windows, Linux and macOS, while Discord's Rust
-app still has no release date. I also built in plugins, the way [Vencord](https://vencord.dev)
-adds them to the official app: 51 of them, re-implemented in Rust, off by default, and they only
-change this app.
-
-— rosc ([@r0sc](https://github.com/r0sc))
+<sub>Offline demo data, signed in as rosc. The other people, servers and messages are made up.
+Image credits are under <a href="#credits">Credits</a>, and <code>scripts/readme-shots.py</code>
+retakes the screenshots.</sub>
 
 ## Features
 
-What's in it so far:
+### Chat and media
 
-- Login by QR code, by email/phone + password (with 2FA), or with a pasted token; the
-  session token is kept in the OS credential store, logout clears it (see [Logging in](#logging-in)).
-- Gateway with heartbeat, zombie detection, resume, reconnect backoff, zlib-stream compression.
-- REST rate limiting per bucket + global, honouring `retry_after`.
-- Server list with icons, channel list per server, DM list, member list.
-- Rustcord's own app sounds, made in code: message and mention pings, call rings, voice
-  join/leave, mute, deafen, push to talk and streams; each one can be switched off, with one
-  volume.
-- Keyword alerts (a notification and the mention look for your words, even in muted channels)
-  and quiet hours with a pause from the tray or the account menu; both local to this device.
-- Message history with lazy loading while scrolling up; markdown (bold, italic, underline,
-  strike, code, code blocks, links, spoilers, quotes, headings, lists, timestamps), mentions,
-  custom and unicode emoji, image/GIF attachments, basic embeds, stickers, forwarded messages.
-- Send, edit and delete own messages, reply (with or without ping), reactions, polls (vote, remove your vote, see who voted, create one), forward a message to
-  one channel.
-- Videos and pictures stay in the app, like on Discord: video uploads, video embeds and GIFV
-  play inline (MP4 with H.264 and AAC, decoded by Rustcord itself), and images, GIFs and videos
-  open in a viewer with zoom, pan, arrows, Save, Copy image and Copy link. The browser opens only
-  from "Open in browser", for videos the player can't play (WebM) and for YouTube or Twitch.
-- Unread indicators and mention badges; desktop notifications for mentions and DMs, also while
-  minimized (Windows notifications, freedesktop notifications on Linux, Notification Center on
-  macOS).
-- Disk cache of servers/channels/DMs/recent messages and images: the second start shows the
-  cached UI immediately and refreshes in the background.
-- Themes (TOML) with a live editor, three built-ins, import/export.
-- Local-only profile banner and (animated) avatar – only visible to you, never uploaded.
-- Profile cosmetics loaded from Discord: avatar decorations, nameplates, profile effects and
-  frames, display-name styles, profile themes, clan tags, badges, connections and games; an
-  uploaded banner fades into the profile's background colour.
-- Clicking a badge shows what it means in Rustcord's own words (with its date, such as
-  "Subscriber since …", when Discord gives one) instead of opening a link. Clicking a server
-  tag opens that server's card with Go to server, Join server or Apply to join; joining is sent
-  only on that click.
-- Server marks: verified, partnered and the boost level show before the server name in the
-  server bar tooltip and the server header ("Boost level 2, 9 boosts").
-- Discord Quests: a Quests row under Friends lists your quests, their rewards and your Orbs;
-  accept and claim each one with a click. Video quests count only while the video really plays
-  in Rustcord's player in a visible window. Play and stream quests say to finish them in the
-  Discord desktop app, because their progress needs the official desktop client. Rustcord never
-  fakes progress and doesn't complete quests for you.
-- Cosmetics editor with Discord's shop catalog: items you own go on your account only via
-  "Apply to account"; without (full) Nitro your picks show only in this client, never sent.
-- Gradient app themes (the Nitro colour themes), free and only on this device.
-- Discord-web layout (own branding): server bar with folders and drag & drop, own title bar
-  and window buttons, floating user panel, "new messages" bar, jump to present, message
+- Server list with folders and drag and drop, channel lists, DM list and member list.
+- Message history that loads more while you scroll up.
+- Markdown (bold, italic, underline, strike, code, code blocks, links, spoilers, quotes,
+  headings, lists, timestamps), mentions, custom and Unicode emoji, image and GIF attachments,
+  stickers, basic embeds and forwarded messages.
+- Send, edit and delete your messages, reply with or without a ping, react, and forward a
+  message to one channel.
+- Polls: vote, remove your vote, see who voted and create one.
+- File uploads by button, drag and drop or paste. Emoji and GIF pickers and `@ # :`
+  autocomplete.
+- Typing indicator, pins, search and mark unread.
+- Threads: sidebar rows, the thread panel and creating threads.
+- Forum and media channels with posts, tags and new posts.
+- Video uploads, video embeds and GIFV play inline. Rustcord decodes MP4 with H.264 and AAC
+  itself.
+- Images, GIFs and videos open in a viewer with zoom, pan, arrow keys, Save, Copy image and Copy
+  link. The browser opens only from "Open in browser", for videos the player cannot play (WebM)
+  and for YouTube or Twitch.
+- Unread indicators, mention badges, a "new messages" bar, jump to present and a message
   context menu.
-- Its own look (`docs/DESIGN.md`): near-black panes and floating rounded layers, with one
-  purple for what is yours and your main action. Settings open as a floating panel over the
-  app, and a call island in the title bar shows your voice call with mute and disconnect. One
-  type scale with bold titles, and Rustcord's own vector icon set drawn in code. Channel
-  icons read like Discord's (`#` for text, a speaker for voice, megaphone, forum, media,
-  stage, rules) with lock and age-restricted variants; I didn't copy any icon files from Discord.
-- Activities like Discord's: games with their art, party size and elapsed time, Spotify with
-  album art and a progress bar, streaming, watching; detected games show the game's icon, or
-  a controller when there is none. Member list, DMs, friends and profile cards show them.
-- Your activity shows Rustcord by default (with your version and how long it has been open); a
-  game you play shows first. Settings → Activity privacy has the switch, a preview and an
-  optional Application ID (an app you make in the Discord Developer Portal; its icon becomes
-  the picture).
-- Game detection: every 15 s Rustcord looks at the running programs (on Linux also Wine and
-  Proton games, on macOS app bundles) and matches them against Discord's list of detectable
-  games and the games you added in Settings → Registered games ("Add it!" picks an open
-  window). Others see your game only while Settings → Activity privacy → "Share detected
-  activity" is on (synced with your account, like in the official app); your added games stay
-  on this PC.
-- Tray icon (notification area on Windows, system tray on Linux, menu bar on macOS), close to
-  tray, open at login, and an installer for each system that keeps Rustcord up to date (see
-  [Install](#install) and [Updates](#updates)).
-- File uploads (button, drag & drop, paste), emoji and GIF pickers, `@ # :` autocomplete,
-  typing indicator, online status + custom status, pins, search, mark unread. Quick switcher (Ctrl+K: servers, channels, DMs and
-  friends; `@ # ! *` prefixes) and Discord's navigation keys (Alt+↑/↓, Alt+Shift+↑/↓, Ctrl+Alt+↑/↓,
-  Esc / Shift+Esc mark read, Ctrl+/), all changeable under Settings → Keybinds.
-- Threads (sidebar rows, thread panel, create), forum/media channels (posts, tags, new post).
-- Friends (online/all/pending/blocked, add by username), DMs and group DMs, message requests
-  (accept, ignore, spam), inbox (mentions/unreads), full user profiles with notes.
-- User settings with Discord's pages and order, searchable: My Account, Profiles, Content &
-  Social, Data & Privacy, Devices, Authorized Apps, Connections, Friend Requests, Appearance,
-  Accessibility, Voice & Video, Chat, Notifications, Keybinds, Language, Streamer Mode,
-  Advanced, Activity Privacy and more. Synced options are written to your account's settings;
-  I left out options whose meaning I couldn't confirm. Log Out and other destructive actions ask
-  first.
-- My Account security: email and phone, Change Password, authenticator app (QR code + key,
-  then backup codes) and its removal, SMS backup, View/Generate Backup Codes, security keys
-  (rename, remove), the 2FA re-check Discord asks for, Account Standing. Passwords and codes
-  are wiped from memory when their dialog closes; a rotated login token replaces the stored
-  one. Disable and Delete Account only open discord.com.
-- Server administration (channels, categories, roles, permission overwrites, members,
-  kick/ban, bans, invites, emoji, notification settings).
-- Discord's UI font (gg sans), downloaded at runtime from discord.com into the cache folder
-  (never bundled; Settings → Appearance switches it off); otherwise the system font (Segoe UI
-  on Windows, Noto Sans or DejaVu Sans on Linux, Arial on macOS). Decorated channel and role
-  names (`・〢┊꒰ᘏ`, 𝐛𝐨𝐥𝐝 letters, box drawing) use the system's fallback fonts instead of empty
-  boxes.
-- Crash reports: after a panic Rustcord saves a small text report in the config folder
-  (`crash/`, the newest 5): version, system, the panic's message and place, and which plugins
-  were on. The next start shows it in a card with Copy report, Report on GitHub and Dismiss; if
-  the panic came from a plugin's code, the card offers to turn that plugin off. Nothing is sent.
-- Plugins (Settings → Plugins), rebuilt from Vencord's, all off by default and local to this
-  app: AccountPanelServerProfile, BetterFolders, BetterRoleDot, CallTimer, CharacterCounter,
-  ClearURLs, ClientDiagnostics (frame, memory and connection numbers in Settings → Advanced),
-  CopyUserURLs, CustomIdle, FavoriteEmojiFirst, FriendsSince, GameActivityToggle,
-  ImageZoom, IrcColors, MemberCount, MessageLinkEmbeds, MessageLogger (memory only),
-  MoreUserTags, MutualGroupDMs, NoBlockedMessages, NoReplyMention, NotificationLog (a Recent
-  tab in the Inbox, with the silenced ones), OnePingPerDM, OpenInApp,
-  PermissionsViewer, PinDMs, PlatformIndicators, QuickReply (Ctrl+Up / Down to reply, with
-  Shift to edit your own), ReadAllNotificationsButton, RelationshipNotifier, ReplyTimestamp,
-  ReverseImageSearch, ServerInfo, ShowConnections, ShowHiddenChannels, ShowMeYourName, ShowTimeoutDuration, SilentMessageToggle, SilentTyping,
-  TextReplace, Translate, TypingIndicator, TypingTweaks, UserVoiceShow, ValidUser, VcNarrator
-  (Windows speech, `say` on macOS, `spd-say` on Linux), ViewIcons, ViewRaw, VoiceMessages
-  (playback), VolumeBooster (up to 400 %, local mix only), WhoReacted. Their options live in
-  `plugins.toml`.
-- Voice channels and calls with DAVE end-to-end encryption, camera, screen share (Go Live)
-  and watching streams. Camera and screen are only captured after an explicit click. Camera and
-  screen share are Windows only for now; on Linux and macOS you can still watch others.
-- Game overlay (Windows, Settings → Game overlay): while a detected game is in
-  front, two small click-through windows show who is talking in your voice channel and
-  notification cards. No injection into the game; borderless or windowed games only.
+- Quick switcher (Ctrl+K) for servers, channels, DMs and friends, with the `@ # ! *` prefixes.
+- Discord's navigation keys: Alt+↑/↓, Alt+Shift+↑/↓, Ctrl+Alt+↑/↓, Esc and Shift+Esc to mark
+  read, and Ctrl+/. All keys can be changed under Settings → Keybinds.
+- A disk cache of servers, channels, DMs, recent messages and images. The second start shows
+  the cached UI at once and refreshes in the background.
 
-Not included: other Nitro features, account creation, stickers picker, slash commands/bot
-components, completing quests automatically. Rustcord never solves captchas for you
-(see *Logging in*).
+### Servers and friends
 
-## Logging in
+- Friends (online, all, pending, blocked, add by username), DMs and group DMs.
+- Message requests (accept, ignore, spam) and the inbox with mentions and unreads.
+- Server administration: channels, categories, roles, permission overwrites, members, kick and
+  ban, bans, invites, emoji and notification settings.
+- Verified and partnered marks and the boost level show before the server name in the server
+  bar tooltip and the server header ("Boost level 2, 9 boosts").
 
-The login screen has three tabs:
+### Voice and video
 
-- **QR code** (default): open the Discord mobile app → Settings → Scan QR Code, scan the
-  code and confirm on the phone. Each code lives about two minutes; click *New code* after
-  that. Rustcord never retries on its own.
-- **Email**: e-mail address or phone number (`+49…`) and password. If the account uses
-  two-factor authentication, Rustcord then asks for a code from the authenticator app, an SMS
-  code (*Send SMS* first) or one of the backup codes.
-- **Token**: paste an account token (the tab explains where to find it).
+- Voice channels and calls with DAVE end-to-end encryption, camera, screen share (Go Live) and
+  watching streams.
+- Camera and screen are only captured after an explicit click. Camera and screen share are
+  Windows only for now. On Linux and macOS you can still watch others.
+- A call island in the title bar shows the current voice call with mute and disconnect.
 
-If Discord asks for a captcha (it does for logins it finds unusual, and after many sign-in
-attempts), Rustcord shows Discord's own hCaptcha right in the sign-in card, under the password or
-2FA code field (Windows and macOS). You solve it there, then Rustcord sends the same login again
-with the result; *Cancel* ends the attempt. If hCaptcha opens a picture challenge, it covers the
-window until you finish it or click beside it. The captcha only talks to hCaptcha, never to
-Discord, and its temporary profile is deleted afterwards. Details and the origin it runs under:
-`docs/AUTH_NOTES.md`.
+### Profiles and activity
 
-Limits:
+- Full user profiles with notes.
+- Online status and custom status.
+- Profile cosmetics from Discord: avatar decorations, nameplates, profile effects and frames,
+  display-name styles, profile themes, clan tags, badges, connections and games. An uploaded
+  banner fades into the profile's background color.
+- Clicking a badge shows what it means instead of opening a link, with its date when Discord
+  gives one ("Subscriber since …").
+- Clicking a server tag opens that server's card with Go to server, Join server or Apply to
+  join. The join is only sent on that click.
+- A local profile banner and avatar in Settings → Local profile. The banner can be any image or
+  GIF, the avatar a GIF, APNG, animated WebP or still image. They replace your banner and avatar
+  everywhere in this client and are only visible to you on this device. "Only on hover"
+  animation keeps idle CPU at zero, and each override has its own *Reset* button.
+- A cosmetics editor with Discord's shop catalog. Items you own go on your account only
+  through "Apply to account". Without full Nitro, your picks show only in this client and are
+  not sent.
+- Activities: games with their art, party size and elapsed time, Spotify with album art and a
+  progress bar, streaming and watching. They show in the member list, DMs, friends and profile
+  cards.
+- Your activity shows Rustcord by default, with the version and how long it has been open. A
+  game you play shows first. Settings → Activity privacy has the switch and a preview.
+- An optional Application ID in Settings → Activity privacy: the icon of an app you create in
+  the Discord Developer Portal becomes the activity's picture.
+- Game detection every 15 s, against Discord's list of detectable games and the games you add
+  in Settings → Registered games. "Add it!" picks an open window. On Linux it also finds Wine
+  and Proton games, on macOS app bundles.
+- Detected games show their icon, or a controller when there is none. Others only see your
+  game while "Share detected activity" in Settings → Activity privacy is on. That switch is
+  synced with your account, as in the official app. Your added games stay on this PC.
+- Discord Quests: a Quests row under Friends lists your quests, their rewards and your Orbs.
+  Accept and claim each one with a click.
+- Video quests only count while the video plays in Rustcord's player in a visible window. Play
+  and stream quests have to be finished in the Discord desktop app, because their progress needs
+  the official desktop client.
 
-- **Captchas are yours to solve.** Rustcord only shows Discord's captcha and passes your answer
-  on; it never tries to solve or bypass one. On Linux (and on a Windows without the WebView2
-  runtime) Rustcord cannot show the captcha: it says so, and more attempts do not help; wait a
-  while, use the token tab, or sign in once in the official app. Discord can still refuse an
-  answer given in Rustcord; the QR code and token tabs do not depend on it.
-- Accounts whose only 2FA method is a security key/passkey, and Discord's "new login
-  location" checks (e-mail link or SMS), need the QR code or one login in the official app.
-- Every login attempt is one click. Rate limits are shown ("Wait N s") and never retried
-  automatically.
+### Account and settings
 
-What is stored: only the resulting session token, and only with *Remember on this device*
-checked (OS credential store, see below). The password and 2FA code are never written to
-disk or logs, are not shown in error messages, and Rustcord wipes its own copies from
-memory after sending them. The QR login uses a new RSA key per code that only lives in memory.
+- Log in by QR code, with an email or phone number and password (with 2FA), or with a pasted
+  token. The session token is kept in the OS credential store, and logging out clears it (see
+  [Logging in](#logging-in)).
+- User settings follow Discord's pages and order and can be searched. The pages include My
+  Account, Profiles, Content & Social, Data & Privacy, Devices, Authorized Apps, Connections,
+  Friend Requests, Appearance, Accessibility, Voice & Video, Chat, Notifications, Keybinds,
+  Language, Streamer Mode, Advanced, Activity Privacy and more.
+- Synced options are written to your account's settings. Options whose effect could not be
+  confirmed are left out. Log Out and other destructive actions ask first.
+- My Account security: email and phone, Change Password, SMS backup, View/Generate Backup Codes
+  and Account Standing.
+- Authenticator app setup (QR code and key, then backup codes) and removal. Security keys can be
+  renamed and removed.
+- The 2FA re-check that Discord asks for is supported. Disable and Delete Account only open
+  discord.com.
+- Passwords and codes are wiped from memory when their dialog closes. A rotated login token
+  replaces the stored one.
+- Themes in TOML with a live editor, three built-in themes, and import and export (see
+  [Themes](#themes)).
+- Gradient app themes (the Nitro color themes), free and only on this device.
+- The design is described in `docs/DESIGN.md`. Settings open as a floating panel over the app.
+- A custom title bar with window buttons, and a floating user panel.
+- Channel icons keep Discord's meanings (`#` for text, a speaker for voice, megaphone, forum,
+  media, stage, rules), with lock and age-restricted variants. No icon files are copied from
+  Discord.
+- Discord's UI font (gg sans) is downloaded at runtime from discord.com into the cache folder
+  and never bundled. Settings → Appearance turns it off.
+- Without gg sans, Rustcord uses the system font: Segoe UI on Windows, Noto Sans or DejaVu Sans
+  on Linux, Arial on macOS.
+- Decorated channel and role names (`・〢┊꒰ᘏ`, 𝐛𝐨𝐥𝐝 letters, box drawing) use the system's
+  fallback fonts instead of empty boxes.
+
+### Desktop
+
+- A tray icon (notification area on Windows, system tray on Linux, menu bar on macOS), close to
+  tray and open at login.
+- An installer for each system, and automatic updates (see [Install](#install) and
+  [Updates](#updates)).
+- Desktop notifications for mentions and DMs, also while minimized. They use Windows
+  notifications, freedesktop notifications on Linux and Notification Center on macOS.
+- App sounds for messages, mentions, calls, voice join and leave, mute, deafen, push to talk and
+  streams. Each sound can be turned off, and one volume setting covers all of them.
+- Keyword alerts: your words get a notification and the mention highlight, even in muted
+  channels.
+- Quiet hours, with a pause from the tray or the account menu. Keyword alerts and quiet hours
+  stay on this device.
+- Game overlay on Windows (Settings → Game overlay). While a detected game is in front, two
+  small click-through windows show who is talking in your voice channel and notification cards.
+  Nothing is injected into the game, and only borderless or windowed games are supported.
+- Crash reports: after a panic, Rustcord saves a small text report in the config folder
+  (`crash/`, the newest 5). It holds the version, the system, the panic's message and place,
+  and which plugins were on.
+- The next start shows the report in a card with Copy report, Report on GitHub and Dismiss. If
+  the panic came from a plugin, the card offers to turn that plugin off. Nothing is sent.
+
+### Plugins
+
+- 51 plugins in Settings → Plugins, rebuilt from Vencord's. All of them are off by default and
+  only change this app. Their options are stored in `plugins.toml`.
+
+<details>
+<summary>The 51 plugins</summary>
+
+AccountPanelServerProfile, BetterFolders, BetterRoleDot, CallTimer, CharacterCounter,
+ClearURLs, ClientDiagnostics (frame, memory and connection numbers in Settings → Advanced),
+CopyUserURLs, CustomIdle, FavoriteEmojiFirst, FriendsSince, GameActivityToggle, ImageZoom,
+IrcColors, MemberCount, MessageLinkEmbeds, MessageLogger (memory only), MoreUserTags,
+MutualGroupDMs, NoBlockedMessages, NoReplyMention, NotificationLog (a Recent tab in the Inbox,
+with the silenced ones), OnePingPerDM, OpenInApp, PermissionsViewer, PinDMs, PlatformIndicators,
+QuickReply (Ctrl+Up and Ctrl+Down to reply, with Shift to edit your own),
+ReadAllNotificationsButton, RelationshipNotifier, ReplyTimestamp, ReverseImageSearch, ServerInfo, ShowConnections,
+ShowHiddenChannels, ShowMeYourName, ShowTimeoutDuration, SilentMessageToggle, SilentTyping,
+TextReplace, Translate, TypingIndicator, TypingTweaks, UserVoiceShow, ValidUser, VcNarrator
+(Windows speech, `say` on macOS, `spd-say` on Linux), ViewIcons, ViewRaw, VoiceMessages
+(playback), VolumeBooster (up to 400 %, local mix only), WhoReacted.
+
+</details>
+
+Not included: other Nitro features, account creation, a sticker picker, slash commands and bot
+components, and completing quests automatically.
 
 ## Download
 
-The newest version is on the [website](https://getrustcord.netlify.app/), which picks the file for
-your system, and on the [latest release](https://github.com/r0sc/Rustcord/releases/latest)
-page. There, pick the file for your system (`<version>` is the release's version, for example `0.1.0`):
+The [website](https://getrustcord.netlify.app/) offers the file for your system. All files are
+also on the [latest release](https://github.com/r0sc/Rustcord/releases/latest) page. `<version>`
+is the release's version, for example `0.1.5`.
 
 | System | File |
 |---|---|
@@ -259,43 +248,41 @@ page. There, pick the file for your system (`<version>` is the release's version
 | [Any Linux, 64-bit x86, glibc 2.35+](https://github.com/r0sc/Rustcord/releases/latest) | `rustcord-<version>-linux-x86_64.tar.gz` |
 | [macOS 11+, Apple silicon and Intel](https://github.com/r0sc/Rustcord/releases/latest) | `Rustcord-<version>-macos-universal.dmg` |
 
-The release also holds `Rustcord-<version>-macos-universal.app.tar.gz` (the macOS update
-package) and `latest.json` + `latest.json.sig` (the signed update feed), which the app fetches
-itself, and `SHA256SUMS` (see [Verifying downloads](#verifying-downloads)). I don't code-sign the
-Windows setup and the macOS app isn't notarized by Apple, so the first start needs one extra
-click (below). To build from source instead, see [Build](#build).
+The release also holds the macOS update package `.app.tar.gz`, the signed update feed
+`latest.json` with `latest.json.sig`, and `SHA256SUMS` for
+[verifying downloads](#verifying-downloads).
+
+The Windows setup is not code-signed and the macOS app is not notarized, so the first start
+needs one extra step (see [Install](#install)). To build from source, see [Build](#build).
 
 ## Install
 
-Installed copies update themselves (see [Updates](#updates)).
-
 ### Windows
 
-Get `Rustcord-Setup-<version>.exe`. I built the setup from Rustcord's own code: a single exe
-(about 23 MB with the app inside), no installer tools involved.
+`Rustcord-Setup-<version>.exe` is a single exe of about 23 MB with the app inside, built from
+`src/bin/rustcord-setup`. It installs for your Windows user only and needs no administrator
+rights.
 
-Run it. It installs for your Windows user only (no administrator rights), like Discord: the
-app goes to `%LOCALAPPDATA%\Programs\Rustcord`, with a Start menu shortcut, an optional
-desktop shortcut and an entry in Settings → Apps. "Open Rustcord when I sign in to Windows"
-(on by default) starts it hidden in the notification area. Rustcord updates itself; running a
-newer setup by hand also updates it in place (a running Rustcord is asked to quit first).
-`--silent` installs with the default options without a window.
+The app goes to `%LOCALAPPDATA%\Programs\Rustcord`, with a Start menu shortcut, an optional
+desktop shortcut and an entry in Settings → Apps. "Open Rustcord when I sign in to Windows" is
+on by default and starts Rustcord hidden in the notification area. Running a newer setup by hand
+updates Rustcord in place, after asking a running Rustcord to quit. `--silent` installs with the
+default options and no window.
 
-I don't code-sign the setup, so Windows SmartScreen may say "Windows protected your PC".
-Select **More info**, then **Run anyway**.
+The setup is not code-signed, so SmartScreen may show "Windows protected your PC". Select
+**More info**, then **Run anyway**.
 
-While Rustcord runs, its icon sits in the notification area: click it to open the window,
-right-click it for Open Rustcord, Mute, Deafen and Quit Rustcord. Closing the window
-(the × in the title bar) only hides it: Rustcord keeps running there, so notifications and
-voice keep working. Settings → Windows settings has "Minimize to tray when I close the window"
-(turn it off to quit on close), "Open Rustcord when I sign in to Windows" and "Start
-minimized". Starting Rustcord again brings the running window to the front;
+Click the icon in the notification area to open the window. Right-click it for Open Rustcord,
+Mute, Deafen and Quit Rustcord. Closing the window (the × in the title bar) only hides it, so
+notifications and voice keep working. Settings → Windows settings has "Minimize to tray when I
+close the window" (turn it off to quit on close), "Open Rustcord when I sign in to Windows" and
+"Start minimized". Starting Rustcord again brings the running window to the front.
 `rustcord.exe --quit` quits the running one.
 
 To uninstall, use Settings → Apps → Rustcord → Uninstall. "Also delete my local data and sign
 out" also removes the settings, the cache and the saved login.
 
-To build the setup yourself (Windows, see Build):
+To build the setup yourself (Windows, see [Build](#build)):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1   # -> dist\Rustcord-Setup-<version>.exe
@@ -317,87 +304,72 @@ Two packages for 64-bit x86 with glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+,
   ```
 
   It puts the app in `~/.local/bin/rustcord`, its app menu entry and icons in
-  `~/.local/share`, and the login start in `~/.config/autostart/rustcord.desktop`. Rustcord
-  updates itself; running a newer `install.sh` by hand also updates it in place and keeps your
-  login start choice (a running Rustcord is asked to quit first). The tarball uses the system's
-  libraries: ALSA, OpenSSL 3, OpenGL, X11 and libxkbcommon-x11 (install.sh says when that one is
-  missing).
+  `~/.local/share`, and the login start in `~/.config/autostart/rustcord.desktop`. Running a
+  newer `install.sh` by hand updates Rustcord in place and keeps your login start choice. A
+  running Rustcord is asked to quit first. The tarball uses the system's libraries: ALSA,
+  OpenSSL 3, OpenGL, X11 and libxkbcommon-x11. `install.sh` says when libxkbcommon-x11 is
+  missing.
 
-"Open Rustcord when I log in" is on by default (Rustcord turns it on at its first start;
-Settings → Linux settings turns it off). It starts hidden in the system tray. Rustcord runs on
-X11, through XWayland on Wayland desktops, like Discord's own app: Wayland doesn't let an app
-hide its window to a tray. The tray icon needs a desktop with a StatusNotifierItem tray, like
-KDE, Xfce, Cinnamon or Ubuntu's GNOME; plain GNOME (Fedora) needs the AppIndicator extension,
-otherwise closing the window quits Rustcord. The login is kept in the Secret Service keyring
-(GNOME Keyring or KWallet); without one, Rustcord can't remember it.
+"Open Rustcord when I log in" is on by default. Rustcord turns it on at its first start, and
+Settings → Linux settings turns it off. It starts Rustcord hidden in the system tray.
 
-Turn off "Open Rustcord when I log in" before `apt remove rustcord`: the login start belongs
-to your user and stays behind (it does nothing once the app is gone).
+Rustcord runs on X11, and through XWayland on Wayland desktops, as Discord's app does. Wayland
+does not let an app hide its window to a tray. The tray icon needs a desktop with a
+StatusNotifierItem tray, such as KDE, Xfce, Cinnamon or Ubuntu's GNOME. Plain GNOME (Fedora)
+needs the AppIndicator extension, otherwise closing the window quits Rustcord. The login is kept
+in the Secret Service keyring (GNOME Keyring or KWallet). Without one, Rustcord cannot remember
+it.
+
+Turn off "Open Rustcord when I log in" before `apt remove rustcord`. The login start belongs to
+your user and stays behind, though it does nothing once the app is gone.
 
 ### macOS
 
 `Rustcord-<version>-macos-universal.dmg` runs on Apple silicon and Intel Macs with macOS 11
 or newer. Open it and drag Rustcord onto Applications.
 
-I haven't had Rustcord notarized by Apple (that needs a paid Apple developer account), so macOS
-blocks the first start ("Apple could not verify…"). Open Rustcord once, then go to System
-Settings → Privacy & Security and click **Open Anyway** next to the Rustcord message (since
-macOS 15, right-click → Open no longer skips the check). Or, in Terminal:
-`xattr -dr com.apple.quarantine /Applications/Rustcord.app`. On macOS 14 and older,
-right-click Rustcord in Applications → **Open** → **Open** also works. The app is only ad-hoc signed,
-so macOS may ask again for the microphone and the keychain (the saved login) after each update.
+The app is not notarized by Apple, since notarization needs a paid Apple developer account.
+macOS therefore blocks the first start ("Apple could not verify…"). Open Rustcord once, then go to System Settings →
+Privacy & Security and click **Open Anyway** next to the Rustcord message. Since macOS 15,
+right-click → Open no longer skips the check. On macOS 14 and older, right-click Rustcord in
+Applications → **Open** → **Open** also works. In Terminal,
+`xattr -dr com.apple.quarantine /Applications/Rustcord.app` does the same.
 
-Closing the window keeps Rustcord in the menu bar; quit it from the menu bar icon or with
-Cmd+Q. "Open Rustcord when I log in" is on by default (a login item in
-`~/Library/LaunchAgents/io.github.r0sc.rustcord.plist`; macOS shows a notice when it is
-added). To uninstall, turn that off in Settings → macOS settings, quit Rustcord and move it
-from Applications to the Trash.
+The app is only ad-hoc signed, so macOS may ask again for the microphone and the keychain (the
+saved login) after each update.
+
+Closing the window keeps Rustcord in the menu bar. Quit it from the menu bar icon or with
+Cmd+Q. "Open Rustcord when I log in" is on by default. It adds a login item in
+`~/Library/LaunchAgents/io.github.r0sc.rustcord.plist`, and macOS shows a notice when it is
+added. To uninstall, turn that off in Settings → macOS settings, quit Rustcord and move it from
+Applications to the Trash.
 
 ### Updates
 
-Installed copies keep themselves up to date from this repository's releases:
+Installed copies update themselves from this repository's releases.
 
-- Rustcord checks for a new version in the background when it starts and every 6 hours while
-  it runs, also while it waits in the tray. The start never waits for the network.
-- A new version found right after the start, before you click or type anything, is installed
-  at once behind an update screen ("Downloading update", "Installing update", "Restarting"),
-  and Rustcord restarts into it.
-- Otherwise it downloads in the background and an **Update ready** button appears in the title
-  bar: click it to restart into the new version now. If you don't, the next start installs it
-  behind the same update screen before the main window.
-- Once Rustcord has waited hidden in the tray for 10 minutes (for example after the start at
-  sign-in), it installs a downloaded update quietly and restarts hidden, but never during a
-  voice or video call or a screen share: it waits until the call ends. On macOS it waits for
-  the next start or a click instead, because macOS may ask for permissions again (see below).
-- A failed update never blocks Rustcord: the update screen says in one line what went wrong and
-  Rustcord continues with the version you have. A version that failed to install is not tried
-  again on its own; the title-bar button (**Update ready**, or **Update available** when it
-  has to be downloaded again) still offers it.
+- Rustcord checks for a new version when it starts and every 6 hours while it runs, also while
+  it waits in the tray. The start never waits for the network.
+- A new version found right after the start, before you click or type, is installed at once
+  behind an update screen, and Rustcord restarts into it. Otherwise it downloads in the
+  background and **Update ready** appears in the title bar. Click it to restart now, or the next
+  start installs it.
 - Settings → Windows settings (Linux settings, macOS settings) → Updates has **Install updates
-  automatically** (on by default), the current version and **Check for updates**. With
-  automatic installs off, Rustcord still checks; the title-bar button then says **Update
-  available** and downloads and installs on click.
-- `.deb` installs (`/usr/bin/rustcord`) download the new package, but installing it asks for
-  your password: **Install** runs `apt-get install` through `pkexec`, the system's password
-  dialog. Without `pkexec`, Rustcord shows where it saved the `.deb`.
+  automatically**, on by default. With it off, Rustcord still checks, but downloads and installs
+  nothing until you click **Update available**. The check itself has no switch.
+- `.deb` installs download the new package. **Install** then runs `apt-get install` through
+  `pkexec`, which asks for your password. Without `pkexec`, Rustcord shows where it saved the
+  `.deb`.
 - On macOS the app updates itself only where it may write: `/Applications` (as an
-  administrator) or `~/Applications`. After an update macOS may ask once more for keychain
-  access and the microphone, because the app is only ad-hoc signed.
-- Copies that weren't installed by the setup, `install.sh`, the `.deb` or the dmg (a copied exe,
-  a build from source, a copy started with `RUSTCORD_HOME`) only show **Update available**,
-  which opens the release page. Development builds never update.
+  administrator) or `~/Applications`.
 
-Updates are signed: the release workflow signs the feed with an Ed25519 key that only this
-repository's release job holds, and the app checks the signature with the public key built
-into it before it trusts anything in the feed (details in [Verifying downloads](#verifying-downloads)).
+Installs while Rustcord waits in the tray, failed updates and copies that were not installed by
+a package are described in [`docs/UPDATER_DESIGN.md`](docs/UPDATER_DESIGN.md).
 
-Privacy: the check downloads `latest.json` and `latest.json.sig` from github.com (and a package
-from GitHub's download servers when there is one), so GitHub sees your IP address and
-`Rustcord/<version>` (the user agent) every 6 hours. Nothing else is sent; no Discord token,
-cookie, header or other personal data is involved.
-
-To stop automatic updates, turn off **Install updates automatically**: Rustcord then downloads
-and installs nothing until you click **Update available**. The check itself has no switch.
+Privacy: the check downloads `latest.json` and `latest.json.sig` from github.com, and a package
+from GitHub's download servers when there is one. GitHub sees your IP address and the user agent
+`Rustcord/<version>` every 6 hours. Nothing else is sent: no Discord token, cookie, header or
+other personal data.
 
 ### Verifying downloads
 
@@ -418,13 +390,54 @@ base64 -d latest.json.sig > latest.json.sig.bin
 openssl pkeyutl -verify -pubin -keyform DER -inkey pub.der -rawin -in latest.json -sigfile latest.json.sig.bin
 ```
 
+## Logging in
+
+The login screen has three tabs:
+
+- QR code (the default): open the Discord mobile app → Settings → Scan QR Code, scan the code
+  and confirm on the phone. Each code lives about two minutes. After that, click *New code*;
+  Rustcord never retries on its own.
+- Email: an e-mail address or phone number (`+49…`) and the password. If the account uses
+  two-factor authentication, Rustcord then asks for a code from the authenticator app, an SMS
+  code (*Send SMS* first) or one of the backup codes.
+- Token: paste an account token. The tab explains where to find it.
+
+Discord asks for a captcha for logins it finds unusual and after many sign-in attempts. On
+Windows and macOS, Rustcord then shows Discord's hCaptcha in the sign-in card, under the
+password or 2FA code field. After you solve it, Rustcord sends the same login again with the
+result, and *Cancel* ends the attempt. A picture challenge covers the window until you finish it
+or click beside it. The captcha only talks to hCaptcha, never to Discord, and its temporary
+profile is deleted afterwards. `docs/AUTH_NOTES.md` has the details and the origin it runs
+under.
+
+Limits:
+
+- Rustcord never solves or bypasses a captcha. It shows Discord's captcha and passes your answer
+  on, and Discord can still refuse an answer given in Rustcord. The QR code and token tabs do not
+  depend on the captcha.
+- On Linux, and on Windows without the WebView2 runtime, Rustcord cannot show the captcha. It
+  says so, and more attempts do not help. Wait a while, use the token tab, or sign in once in the
+  official app.
+- Accounts whose only 2FA method is a security key or passkey, and Discord's "new login
+  location" checks (e-mail link or SMS), need the QR code or one login in the official app.
+- Every login attempt is one click. Rate limits are shown ("Wait N s") and never retried
+  automatically.
+
+What is stored: only the resulting session token, and only with *Remember on this device*
+checked (in the OS credential store, see [Files and settings](#files-and-settings)). The password
+and 2FA code are never written to disk or logs and are not shown in error messages. Rustcord
+wipes its own copies from memory after sending them. The QR login uses a new RSA key per code
+that only lives in memory.
+
 ## Build
 
-Requirements: Rust stable (1.95+; I test with 1.99); on Windows, the MSVC build tools
-(Visual Studio Build Tools with "Desktop development with C++"); on Linux, a C/C++ compiler,
-`pkg-config` and the ALSA and OpenSSL development packages (Debian/Ubuntu:
-`sudo apt install build-essential pkg-config libasound2-dev libssl-dev`); on macOS, the Xcode
-command line tools (`xcode-select --install`).
+Requirements:
+
+- Rust stable, 1.95 or newer.
+- Windows: the MSVC build tools (Visual Studio Build Tools with "Desktop development with C++").
+- Linux: a C and C++ compiler, `pkg-config` and the ALSA and OpenSSL development packages. On
+  Debian and Ubuntu: `sudo apt install build-essential pkg-config libasound2-dev libssl-dev`.
+- macOS: the Xcode command line tools (`xcode-select --install`).
 
 ```bash
 cargo build --release
@@ -457,31 +470,32 @@ bash scripts/build-linux.sh   # on Linux (needs dpkg-deb): dist/rustcord_<versio
 bash scripts/build-macos.sh   # on a Mac: dist/Rustcord-<version>-macos-universal.dmg and .app.tar.gz (both architectures, ad-hoc signed)
 ```
 
-`.github/workflows/release.yml` builds all three on GitHub. It never runs on pushes or pull
-requests: start it under Actions → release → Run workflow (packages as workflow artifacts;
-"check_only" runs only fmt, clippy and the tests), or push a tag `v<version>` matching
-`Cargo.toml`'s version, which also creates a draft release with the packages, the signed update
-feed and `SHA256SUMS` to publish by hand (see [Releasing](#releasing)).
+`.github/workflows/release.yml` builds all three systems on GitHub. It never runs on pushes or
+pull requests. Start it under Actions → release → Run workflow to get the packages as workflow
+artifacts; "check_only" runs only fmt, clippy and the tests. Pushing a tag `v<version>` that
+matches the version in `Cargo.toml` also creates a draft release with the packages, the signed
+update feed and `SHA256SUMS`, to publish by hand (see [Releasing](#releasing)).
 
-To regenerate the icons after editing `assets/logo.svg` / `assets/logo-small.svg` (the same
-R-bubble, larger for <= 32 px; `assets/logo-mono.svg` is the flat one-colour mark without the
-tile, and `logo_mark` in `src/ui/sidebar.rs` paints the in-app vector copy) (dev-only
-dependency `resvg`):
+The app icons are made from `assets/logo.svg` and `assets/logo-small.svg`. `logo-small.svg` is
+the same R-bubble, drawn larger, for sizes up to 32 px. `assets/logo-mono.svg` is the flat
+one-color mark without the tile, and `logo_mark` in `src/ui/sidebar.rs` paints the in-app vector
+copy. After editing the SVGs, regenerate the icons with this command, which uses the dev-only
+dependency `resvg`:
 
 ```bash
 cargo run --example export_icons
 ```
 
-## Where things are stored
+## Files and settings
 
 | What | Windows | Linux | macOS |
 |---|---|---|---|
 | Config (`settings.toml`) | `%APPDATA%\Rustcord\config\` | `~/.config/rustcord/` | `~/Library/Application Support/Rustcord/` |
 | Themes (`*.toml`) | `…\config\themes\` | `…/themes/` | `…/themes/` |
-| Local profile overrides | `…\config\overrides\` (`overrides.toml` + image copies) | `…/overrides/` | `…/overrides/` |
+| Local profile overrides | `…\config\overrides\` (`overrides.toml` and image copies) | `…/overrides/` | `…/overrides/` |
 | Cache (snapshot, images) | `%LOCALAPPDATA%\Rustcord\cache\` | `~/.cache/rustcord/` | `~/Library/Caches/Rustcord/` |
 | Updates (downloads, `state.toml`) | `%LOCALAPPDATA%\Rustcord\cache\update\` | `~/.cache/rustcord/update/` | `~/Library/Caches/Rustcord/update/` |
-| Discord's device cookies and the logged-out fingerprint (`device.json`, kept across restarts and logouts; owner-only on Linux/macOS) | `…\config\device.json` | `…/device.json` | `…/device.json` |
+| Discord's device cookies and the logged-out fingerprint (`device.json`, kept across restarts and logouts; owner-only on Linux and macOS) | `…\config\device.json` | `…/device.json` | `…/device.json` |
 | Login token | Windows Credential Manager (generic credential `user-token.Rustcord`) | Secret Service | Keychain |
 | Added games, saved games list | `…\config\games.json`, `…\cache\detectable.tsv` | `…/games.json`, `~/.cache/rustcord/detectable.tsv` | `…/games.json`, `~/Library/Caches/Rustcord/detectable.tsv` |
 | Installed app (setup) | `%LOCALAPPDATA%\Programs\Rustcord\` | `/usr/bin/rustcord` (.deb), `~/.local/bin/rustcord` (install.sh) | `/Applications/Rustcord.app` |
@@ -500,7 +514,7 @@ theme = "Nightshade"          # built-in name or the name of a theme in the them
 desktop_notifications = true
 send_read_acks = true         # mark viewed channels read on your account (syncs other devices)
 show_member_list = true
-animate_others = "hover"      # "always" | "hover" – animated avatars/emoji of others
+animate_others = "hover"      # "always" or "hover": animated avatars and emoji of others
 minimize_to_tray = true       # × hides the window to the notification area (Quit is in the tray menu)
 auto_update = true            # install updates automatically (the check runs either way)
 # [sounds]                    # Notifications > Sounds
@@ -525,9 +539,9 @@ auto_update = true            # install updates automatically (the check runs ei
 
 ### Themes
 
-Built-in: **Nightshade** (default), **Lilac**, **High Contrast**. Create your own in
-Settings → Appearance (live preview, *Save as…*, *Import…*, *Export…*) or drop a file into the
-themes folder:
+Rustcord has three built-in themes: **Nightshade** (the default), **Lilac** and **High
+Contrast**. Create your own in Settings → Appearance (live preview, *Save as…*, *Import…*,
+*Export…*) or put a file into the themes folder:
 
 ```toml
 name = "Forest Night"
@@ -558,47 +572,43 @@ corner_radius = 12.0
 compact = false               # true = compact rows without avatars
 ```
 
-Colors are `#rrggbb` or `#rrggbbaa`. Font paths must be local files.
+Colors are `#rrggbb` or `#rrggbbaa`. Font paths must be local files. The old built-in theme
+names Ember Dark and Paper Light still load, as Nightshade and Lilac.
 
-A settings file from 0.1.x that names the old dark theme or Paper Light opens Nightshade or Lilac.
+## Performance
 
-### Local profile (banner and avatar)
+| Window visible (GL context ready) | First frame (cached UI) | RAM (working set) | Idle CPU |
+|---|---|---|---|
+| 183 ms | 199 ms | 96.0 MB (87.0 MB private) | 0 % |
 
-Settings → Local profile: pick any image/GIF as your banner and a GIF, APNG or animated WebP
-(or a still image) as your avatar. They replace your banner/avatar everywhere in this client
-(messages, member list, profile card, user panel) and are only visible to you on this device.
-"Only on hover" animation keeps idle CPU at zero. Each override has its own *Reset* button.
+Measured with a release build on a Ryzen 7 5825U with Windows 11, median of 5 runs, offline with
+cached data for 3 servers and DMs. No network images were loaded. With a live connection,
+avatars and attachments add to RAM; textures are capped at a 12 MB budget and evicted when
+unused.
 
-## Performance (release build, offline with cached data for 3 servers + DMs)
+## Development
 
-| Phase | Window visible | First frame (cached UI) | RAM (working set) | Idle CPU |
-|---|---|---|---|---|
-| 1 – core | 44 ms | 163 ms | 94.5 MB | 0 % |
-| 2 – customization | 45 ms | 154 ms | 94.6 MB (104 MB with animated avatar + banner) | 0 % (7 % of one core with an always-animating avatar) |
-| 3 – logo & polish | 30 ms (466 ms on the first, cold run) | 155 ms | 95.6 MB (103.6 MB with animated avatar + banner) | 0 % |
-| 4 – installer, tray, activities & new look | 161 ms (GL context ready) | 174 ms | 102.3 MB (87.6 MB private) | 0 % (game detection: ~16 ms CPU per 15 s scan) |
-| 5 – Linux & macOS, quests, media viewer | 183 ms (GL context ready) | 199 ms | 96.0 MB (87.0 MB private) | 0 % (16 ms CPU in 20 s) |
+The Gateway client handles heartbeats, zombie detection, resume, reconnect backoff and
+zlib-stream compression. REST requests follow the per-bucket and global rate limits and honor
+`retry_after`.
 
-I measured these on a Ryzen 7 5825U with Windows 11, median of 5 runs. These runs had no network
-images loaded; with a live connection, avatars and attachments add to RAM (textures are capped at a
-12 MB budget and evicted when unused).
-
-## Developer notes
-
-- `docs/ARCHITECTURE.md` – module layout (`gateway/`, `api/`, `cache/`, `ui/`, `theme/`,
-  `assets/`), data flow, rules, test hooks (`RUSTCORD_OFFLINE`, `RUSTCORD_SCREENSHOT`, …).
-- `docs/PROTOCOL_NOTES.md` – the user-API protocol details the client implements.
-- `docs/AUTH_NOTES.md` – password/2FA login and QR login (remote auth v2) protocol.
-- `docs/EGUI_0_37_NOTES.md` – egui 0.37 API notes.
-- `docs/FEATURES_NOTES.md` – endpoints/events for chat, social, account & server features.
-- `docs/VOICE_NOTES.md`, `docs/VOICE_DESIGN.md`, `docs/VIDEO_DESIGN.md` – voice/video
-  protocol (incl. DAVE) and the `src/voice/` engine.
+- `docs/ARCHITECTURE.md`: module layout (`gateway/`, `api/`, `cache/`, `ui/`, `theme/`,
+  `assets/`), data flow, rules and test hooks (`RUSTCORD_OFFLINE`, `RUSTCORD_SCREENSHOT`, …).
+- `docs/PROTOCOL_NOTES.md`: the user-API protocol details the client implements.
+- `docs/AUTH_NOTES.md`: the password, 2FA and QR login (remote auth v2) protocol.
+- `docs/EGUI_0_37_NOTES.md`: egui 0.37 API notes.
+- `docs/FEATURES_NOTES.md`: endpoints and events for chat, social, account and server features.
+- `docs/VOICE_NOTES.md`, `docs/VOICE_DESIGN.md`, `docs/VIDEO_DESIGN.md`: the voice and video
+  protocol (including DAVE) and the `src/voice/` engine.
 - `docs/CHAT_ESSENTIALS_DESIGN.md`, `docs/SOCIAL_DESIGN.md`, `docs/ACCOUNT_SERVER_DESIGN.md`,
-  `docs/SOCIAL_UI_DESIGN.md` – backend contracts and UI hook-up per feature block.
-- `docs/MEDIA_DESIGN.md` – the inline video player and the media viewer; `docs/QUESTS_NOTES.md` –
-  quests, the video progress rule and why play and stream quests aren't advanced.
-- `docs/UPDATER_DESIGN.md` – the self-updater: feed, signature, install per system, test hooks.
-- `scripts/readme-shots.py` – retakes the README screenshots from the offline fixture (Windows):
+  `docs/SOCIAL_UI_DESIGN.md`: backend contracts and UI hook-up per feature block.
+- `docs/MEDIA_DESIGN.md`: the inline video player and the media viewer.
+- `docs/QUESTS_NOTES.md`: quests, the video progress rule and why play and stream quests are not
+  advanced.
+- `docs/UPDATER_DESIGN.md`: the self-updater, with the feed, signature, install per system and
+  test hooks.
+- `docs/RELEASING.md`: the update signing key, key rotation and repository hardening.
+- `scripts/readme-shots.py`: retakes the README screenshots from the offline fixture (Windows):
   `python -I scripts/readme-shots.py --exe <rustcord.exe> [--avatar <picture>]`.
 
 ### Releasing
@@ -607,62 +617,39 @@ images loaded; with a live connection, avatars and attachments add to RAM (textu
    `cargo build` so `Cargo.lock` follows (CI builds with `--locked`), and commit both.
 2. Tag it with the same version and push the commit and the tag:
    `git tag v0.1.1 && git push origin main v0.1.1`.
-3. The release workflow builds the three systems, writes `latest.json` with
-   `scripts/make-update-manifest.py`, signs it with the repository secret
-   `RUSTCORD_UPDATE_SIGNING_KEY`, verifies the signature against `assets/update-signing.pub`
-   (a missing or wrong key fails the run), adds `SHA256SUMS` and creates a **draft** release.
+3. The release workflow builds the three systems and writes `latest.json` with
+   `scripts/make-update-manifest.py`. It signs the feed with the repository secret
+   `RUSTCORD_UPDATE_SIGNING_KEY` and verifies the signature against `assets/update-signing.pub`;
+   a missing or wrong key fails the run. Then it adds `SHA256SUMS` and creates a **draft**
+   release.
 4. Check the draft: the four packages from [Download](#download), the `.app.tar.gz`,
    `latest.json` (its `version` and the four URLs point at this tag), `latest.json.sig` and
    `SHA256SUMS`. Then publish it. Installed copies pick it up within 6 hours
    (`releases/latest` ignores drafts and prereleases, so only a published release counts).
 
-The signing key, made once with OpenSSL 3:
-
-```bash
-openssl genpkey -algorithm ed25519 -out update-signing.pem
-openssl pkey -in update-signing.pem -pubout -outform DER | tail -c 32 | base64 > assets/update-signing.pub
-```
-
-Commit `assets/update-signing.pub`. Paste the whole `update-signing.pem` into the secret
-`RUSTCORD_UPDATE_SIGNING_KEY` (Settings → Secrets and variables → Actions), keep an offline
-backup, and delete the file: whoever has the private key can ship code to every installed copy.
-
-Key rotation: release one version whose `assets/update-signing.pub` holds the new key, still
-signed with the old key; sign every release after it with the new key. Copies older than that
-release trust only the old key, so they must update through it.
-
-Lost key (no backup): installed copies can no longer update themselves, since they accept
-only feeds signed with the key they carry. Make a new key as above, commit its public half,
-store the private half as the secret and release; then tell users (release notes, README) to
-install that release once by hand. From there on updates work again. A leaked key: do the
-same, delete the old secret, and check the repository's access; the app only downloads from
-this repository's release downloads, so the key alone is not enough to ship code.
-
-Recommended hardening (GitHub settings): move the secret into an environment `release` with a
-required reviewer (and add `environment: release` to the workflow's `release` job), and protect
-`v*` tags so only you can push them.
+Creating, rotating and replacing the signing key is described in
+[`docs/RELEASING.md`](docs/RELEASING.md).
 
 ## Credits
 
-I'm rosc ([@r0sc](https://github.com/r0sc)). I made Rustcord and vibe-coded it with Claude Code.
-
-- The plugins do what [Vencord](https://github.com/Vendicated/Vencord)'s plugins (GPL-3.0) do;
-  they're re-implemented in Rust, and no Vencord code, keys or assets are included.
-- README screenshots (`docs/screenshot-assets/`, used by `scripts/readme-shots.py`). These files
-  keep their own licenses; the MIT license covers Rustcord itself.
+- The plugins do what [Vencord](https://github.com/Vendicated/Vencord)'s plugins (GPL-3.0) do.
+  They are re-implemented in Rust, and no Vencord code, keys or assets are included.
+- The README screenshots use the files in `docs/screenshot-assets/` (read by
+  `scripts/readme-shots.py`). These files keep their own licenses; the MIT license covers
+  Rustcord itself.
   - The live stream, the shared picture and the profile banner show one frame of
     [Red Eclipse 1,5 Gameplay 1](https://commons.wikimedia.org/wiki/File:Red_Eclipse_1,5_Gameplay_1.webm)
     by Premitre, licensed [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), via
     Wikimedia Commons (a still frame, scaled).
-  - Avatars from Wikimedia Commons: Alice –
+  - Avatars from Wikimedia Commons, cropped and scaled. Alice:
     [Cat face in sunlight](https://commons.wikimedia.org/wiki/File:Cat_face_in_sunlight_%28Unsplash%29.jpg)
-    by Alicja Koczaska (CC0); Bob – [Crab Nebula](https://commons.wikimedia.org/wiki/File:Crab_Nebula.jpg)
-    by NASA, ESA, J. Hester and A. Loll (public domain); Cara –
+    by Alicja Koczaska (CC0). Bob: [Crab Nebula](https://commons.wikimedia.org/wiki/File:Crab_Nebula.jpg)
+    by NASA, ESA, J. Hester and A. Loll (public domain). Cara:
     [Neon streets](https://commons.wikimedia.org/wiki/File:Neon_streets_%28Unsplash%29.jpg) by
-    JINDONG H (CC0); dan_ops –
+    JINDONG H (CC0). dan_ops:
     [Portrait of a labrador retriever](https://commons.wikimedia.org/wiki/File:Portrait_of_a_labrador_retriever.jpg)
-    by Dktue (CC0). Cropped and scaled.
-  - My avatar is my own picture and is not part of the repository.
+    by Dktue (CC0).
+  - The avatar of the account rosc is not part of the repository.
 
 ## License
 
