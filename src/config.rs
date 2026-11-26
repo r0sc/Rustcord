@@ -121,6 +121,9 @@ pub struct Settings {
     /// Emoji picker "Frequently used" (local only): unicode emoji or `<:name:id>`, use count;
     /// most used first, at most 27.
     pub frequent_emoji: Vec<(String, u32)>,
+    /// Account popout > status flyout: custom statuses saved on this device (newest first), at most
+    /// `MAX_STATUS_PRESETS`. Never synced to Discord.
+    pub status_presets: Vec<StatusPreset>,
     /// GIF picker favourites (local only), newest first, at most `MAX_FAVORITE_GIFS`.
     pub favorite_gifs: Vec<crate::model::GifItem>,
     /// UI text in Discord's font (gg sans, downloaded from discord.com into the cache dir;
@@ -288,6 +291,19 @@ pub fn role_colors() -> bool {
     ROLE_COLORS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Bound of `Settings::status_presets`.
+pub const MAX_STATUS_PRESETS: usize = 8;
+
+/// A saved custom status. `clear` is a `user_settings::status::Expiry` key: "today", "4h",
+/// "1h", "30m" or "never" (unknown keys read as "today"), so a renamed choice never breaks loading.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StatusPreset {
+    pub text: Option<String>,
+    pub emoji: Option<crate::model::Emoji>,
+    pub clear: String,
+}
+
 /// Bound of `Settings::favorite_gifs`.
 pub const MAX_FAVORITE_GIFS: usize = 100;
 
@@ -310,6 +326,7 @@ impl Default for Settings {
             push_to_talk_key: 0,
             camera: None,
             frequent_emoji: Vec::new(),
+            status_presets: Vec::new(),
             favorite_gifs: Vec::new(),
             use_discord_font: true,
             zoom: 1.0,
@@ -435,10 +452,15 @@ mod tests {
         assert_eq!((back.voice_input.as_deref(), back.push_to_talk, back.push_to_talk_key), (Some("Mic (USB)"), true, 5));
         assert_eq!((back.voice_output, back.voice_threshold_db, back.favorite_gifs.len()), (None, -50.0, 1));
         assert_eq!(back.voice_input_volume, 150);
+        // Status presets: none in an old file; a unicode emoji survives the round trip.
+        let preset = StatusPreset { text: Some("Rewriting it in Rust".into()), emoji: Some(crate::model::Emoji { name: Some("🦀".into()), ..Default::default() }), clear: "1h".into() };
+        let with: Settings = toml::from_str(&toml::to_string_pretty(&Settings { status_presets: vec![preset.clone()], ..Default::default() }).unwrap()).unwrap();
+        assert_eq!(with.status_presets, vec![preset]);
         // Older files lack the settings pages' fields: their defaults apply.
         let old: Settings = toml::from_str("theme = \"Ember Dark\"\n[streamer]\nenabled = true\n").unwrap();
         assert_eq!((old.zoom, old.flash_taskbar, old.streamer.enabled, old.streamer.hide_personal_info), (1.0, true, true, true));
         assert_eq!(old.voice_input_volume, 100);
+        assert!(old.status_presets.is_empty());
         assert_eq!(crate::theme::Theme::find(&old.theme).name, "Nightshade");
         assert!(old.streamer.hides_invites() && !old.streamer.hide_from_capture && !old.autostart_default_done);
         // Updates install automatically unless switched off; older files: on.

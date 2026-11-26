@@ -6,13 +6,14 @@
 use super::{Page, finish_op, op_line, op_state};
 use crate::api::cdn;
 use crate::backend::{AccountCommand, ChatCommand, Command, OpKind};
+use crate::config::{MAX_STATUS_PRESETS, StatusPreset};
 use crate::model::{CustomStatus, Emoji, UserStatus};
 use crate::state::AppState;
 use crate::state::account::OpState;
 use crate::ui::icons::{self, Icon};
-use crate::ui::messages::{Pal, icon_button};
+use crate::ui::messages::{Btn, Pal, button, icon_button};
 use crate::ui::sidebar::{paint_status, presence_label, status_label, user_presence};
-use crate::ui::{Modal, UiCx, dialog, dialog_buttons, pickers};
+use crate::ui::{Modal, UiCx, dialog, dialog_footer, pickers};
 use chrono::{DateTime, Duration, TimeZone};
 use egui::{Align2, FontId, Frame, Margin, Rect, Sense, TextEdit, Vec2, pos2, vec2};
 
@@ -43,6 +44,33 @@ enum Expiry {
 impl Expiry {
     const ALL: [Expiry; 5] = [Expiry::Today, Expiry::Hours4, Expiry::Hour1, Expiry::Min30, Expiry::Never];
 
+    /// The key stored in `StatusPreset::clear`.
+    fn key(self) -> &'static str {
+        match self {
+            Expiry::Today => "today",
+            Expiry::Hours4 => "4h",
+            Expiry::Hour1 => "1h",
+            Expiry::Min30 => "30m",
+            Expiry::Never => "never",
+        }
+    }
+
+    /// Unknown keys read as "Today".
+    fn from_key(k: &str) -> Expiry {
+        Expiry::ALL.into_iter().find(|e| e.key() == k).unwrap_or_default()
+    }
+
+    /// A preset row's tooltip.
+    fn clears(self) -> &'static str {
+        match self {
+            Expiry::Today => "Clears today",
+            Expiry::Hours4 => "Clears after 4 hours",
+            Expiry::Hour1 => "Clears after 1 hour",
+            Expiry::Min30 => "Clears after 30 minutes",
+            Expiry::Never => "Doesn't clear",
+        }
+    }
+
     fn label(self) -> &'static str {
         match self {
             Expiry::Today => "Today",
@@ -71,6 +99,39 @@ impl Expiry {
             Expiry::Never => None,
         }
     }
+}
+
+/// Adds `p` at the front, or says why it can't (the button's disabled tooltip).
+fn add_preset(list: &mut Vec<StatusPreset>, p: StatusPreset) -> Result<(), &'static str> {
+    preset_check(list, &p)?;
+    list.insert(0, p);
+    Ok(())
+}
+
+fn preset_check(list: &[StatusPreset], p: &StatusPreset) -> Result<(), &'static str> {
+    if p.text.is_none() && p.emoji.is_none() {
+        return Err("Add text or an emoji first.");
+    }
+    if list.contains(p) {
+        return Err("Already a preset");
+    }
+    if list.len() >= MAX_STATUS_PRESETS {
+        return Err("You have 8 presets. Remove one first.");
+    }
+    Ok(())
+}
+
+/// The modal's draft as a preset.
+fn draft_preset(f: &StatusForm) -> StatusPreset {
+    let text = f.text.trim();
+    StatusPreset { text: (!text.is_empty()).then(|| text.to_owned()), emoji: f.emoji.clone(), clear: f.clear.key().to_owned() }
+}
+
+/// The write one click on a preset sends.
+fn preset_command<Tz: TimeZone>(p: &StatusPreset, now: DateTime<Tz>) -> AccountCommand {
+    let set = p.text.is_some() || p.emoji.is_some();
+    let expires_at_ms = if set { Expiry::from_key(&p.clear).ends(now) } else { None };
+    AccountCommand::SetCustomStatus { text: p.text.clone(), emoji: p.emoji.clone(), expires_at_ms }
 }
 
 fn now_ms() -> u64 {
@@ -135,6 +196,9 @@ pub fn custom_status_modal(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let pal = Pal::new(theme);
     let (f, frequent) = (&mut cx.view.user_settings_ui.status, &cx.settings.frequent_emoji);
     let images = &mut *cx.images;
+    let preset = draft_preset(f);
+    let problem = preset_check(&cx.settings.status_presets, &preset).err();
+    let mut save_preset = false;
     let resp = dialog(ctx, theme, "rc_custom_status", 442.0, "Set a custom status", |ui| {
         ui.add_enabled_ui(!pending, |ui| {
             // An input (§9): the well fill and a 1 px `edge` border; focused, the 2 px focus ring
@@ -174,8 +238,30 @@ pub fn custom_status_modal(ctx: &egui::Context, cx: &mut UiCx<'_>) {
             });
         });
         op_line(ui, &pal, state.as_ref(), "Saving…");
-        dialog_buttons(ui, theme, if pending { "Saving…" } else { "Save" }, false, !pending)
+        ui.add_space(8.0);
+        dialog_footer(ui, |ui| {
+            if button(ui, &pal, Btn::Primary, if pending { "Saving…" } else { "Save" }, !pending).clicked() {
+                return Some(true);
+            }
+            if button(ui, &pal, Btn::Ghost, "Cancel", true).clicked() {
+                return Some(false);
+            }
+            // At the left end of the same row.
+            let mut left = ui.new_child(egui::UiBuilder::new().max_rect(ui.max_rect()).layout(egui::Layout::left_to_right(egui::Align::Center)));
+            let b = button(&mut left, &pal, Btn::Secondary, "Save as preset", !pending && problem.is_none());
+            save_preset = b.on_disabled_hover_text(problem.unwrap_or_default()).clicked();
+            None
+        })
     });
+    if save_preset {
+        let f = &cx.view.user_settings_ui.status;
+        if add_preset(&mut cx.settings.status_presets, draft_preset(f)).is_ok() {
+            match cx.settings.save() {
+                Ok(()) => cx.view.toast("Saved as a preset", false),
+                Err(e) => cx.view.toast(format!("Could not save settings: {e}"), true),
+            }
+        }
+    }
     match resp.inner {
         Some(true) => {
             let f = &cx.view.user_settings_ui.status;
@@ -282,6 +368,9 @@ pub(in crate::ui) fn account_popout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &
     let ctx = ui.ctx().clone();
     let flyout_id = egui::Id::unique("rc_status_flyout");
     let mut picked = None;
+    // The preset rows' results: set it / remove it (index).
+    let (mut preset_pick, mut preset_remove): (Option<usize>, Option<usize>) = (None, None);
+    let mine = current(cx.state, now_ms()).0.map(|s| (s.text.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned), s.emoji.clone()));
     // The pause flyout's pick: Some(Some(t)) pause until t, Some(None) resume.
     let mut pause_pick: Option<Option<DateTime<chrono::Local>>> = None;
     let now = chrono::Local::now();
@@ -328,6 +417,43 @@ pub(in crate::ui) fn account_popout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &
                     };
                     if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         picked = Some(s);
+                    }
+                }
+                if !cx.settings.status_presets.is_empty() {
+                    ui.separator();
+                }
+                for (i, p) in cx.settings.status_presets.iter().enumerate() {
+                    let (row, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
+                    let fill = if resp.hovered() || ui.rect_contains_pointer(row) || resp.has_focus() { ui.visuals().widgets.hovered.weak_bg_fill } else { ui.visuals().window_fill };
+                    ui.painter().rect_filled(row, item_r, fill);
+                    let text = ui.visuals().text_color();
+                    paint_emoji(ui, cx.images, p.emoji.as_ref(), pos2(row.left() + 14.0, row.center().y), pal.muted);
+                    let (label, color) = match p.text.as_deref() {
+                        Some(t) => (t, text),
+                        None => ("Emoji only", pal.muted),
+                    };
+                    let g = crate::ui::one_line(ui, label, FontId::new(pal.ui(), crate::theme::medium_family()), color, row.width() - 30.0 - 28.0);
+                    ui.painter().galley(pos2(row.left() + 30.0, row.center().y - g.size().y / 2.0), g, color);
+                    let is_mine = mine.as_ref().is_some_and(|m| *m == (p.text.clone(), p.emoji.clone()));
+                    let x = Rect::from_center_size(pos2(row.right() - 18.0, row.center().y), Vec2::splat(20.0));
+                    let hovered_row = ui.rect_contains_pointer(row);
+                    if hovered_row {
+                        let xr = ui.interact(x, ui.make_persistent_id(("rc_preset_remove", i)), Sense::click());
+                        if xr.hovered() {
+                            ui.painter().circle_filled(x.center(), 10.0, fill.blend(pal.tk.hover));
+                        }
+                        let c = if xr.hovered() { text } else { pal.muted };
+                        icons::paint(ui.painter(), Icon::Close, Rect::from_center_size(x.center(), Vec2::splat(16.0)), c, fill);
+                        xr.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Remove preset"));
+                        if xr.on_hover_text("Remove preset").on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            preset_remove = Some(i);
+                        }
+                    } else if is_mine {
+                        icons::paint(ui.painter(), Icon::Check, Rect::from_center_size(x.center(), Vec2::splat(16.0)), text, fill);
+                    }
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::MenuItem, true, label));
+                    if resp.on_hover_text(Expiry::from_key(&p.clear).clears()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && preset_remove.is_none() {
+                        preset_pick = Some(i);
                     }
                 }
             });
@@ -407,6 +533,18 @@ pub(in crate::ui) fn account_popout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &
         cx.cmd.send(Command::Account(AccountCommand::SetPersistentStatus { status }));
         cx.view.profile_card = None;
     }
+    if let Some(i) = preset_remove {
+        cx.settings.status_presets.remove(i);
+        if let Err(e) = cx.settings.save() {
+            cx.view.toast(format!("Could not save settings: {e}"), true);
+        }
+    } else if let Some(p) = preset_pick.and_then(|i| cx.settings.status_presets.get(i)) {
+        let cmd = preset_command(p, chrono::Local::now());
+        if cx.state.account.begin(cmd.op()) {
+            cx.cmd.send(Command::Account(cmd));
+        }
+        cx.view.profile_card = None;
+    }
     if let Some(until) = pause_pick {
         let toast = crate::alerts::pause(&mut cx.settings.quiet_hours, until, now);
         cx.view.toast(toast, false);
@@ -440,6 +578,43 @@ mod tests {
         assert_eq!(Expiry::Hour1.ends(now), Some(ms(now) + 3_600_000));
         assert_eq!(Expiry::Min30.ends(now), Some(ms(now) + 1_800_000));
         assert_eq!(Expiry::Never.ends(now), None);
+    }
+
+    #[test]
+    fn expiry_keys_round_trip() {
+        for e in Expiry::ALL {
+            assert_eq!(Expiry::from_key(e.key()), e);
+        }
+        assert_eq!(Expiry::from_key("bogus"), Expiry::Today);
+    }
+
+    #[test]
+    fn presets_reject_empty_duplicates_and_a_full_list() {
+        let p = |t: &str| StatusPreset { text: Some(t.into()), emoji: None, clear: "today".into() };
+        let mut list = Vec::new();
+        assert_eq!(add_preset(&mut list, StatusPreset::default()), Err("Add text or an emoji first."));
+        assert_eq!(add_preset(&mut list, p("a")), Ok(()));
+        assert_eq!(add_preset(&mut list, p("a")), Err("Already a preset"));
+        add_preset(&mut list, p("b")).unwrap();
+        assert_eq!(list[0].text.as_deref(), Some("b"), "newest first");
+        for i in 0..6 {
+            add_preset(&mut list, p(&format!("x{i}"))).unwrap();
+        }
+        assert_eq!(list.len(), MAX_STATUS_PRESETS);
+        assert_eq!(add_preset(&mut list, p("full")), Err("You have 8 presets. Remove one first."));
+    }
+
+    #[test]
+    fn a_preset_sets_its_expiry_from_now() {
+        let now = Utc.with_ymd_and_hms(2026, 11, 12, 21, 30, 0).unwrap();
+        let ms = now.timestamp_millis() as u64;
+        let expiry = |clear: &str| match preset_command(&StatusPreset { text: Some("x".into()), emoji: None, clear: clear.into() }, now) {
+            AccountCommand::SetCustomStatus { expires_at_ms, .. } => expires_at_ms,
+            _ => panic!("not a custom status write"),
+        };
+        assert_eq!(expiry("1h"), Some(ms + 3_600_000));
+        assert_eq!(expiry("never"), None);
+        assert_eq!(expiry("today"), Some(Utc.with_ymd_and_hms(2026, 11, 13, 0, 0, 0).unwrap().timestamp_millis() as u64));
     }
 
     #[test]

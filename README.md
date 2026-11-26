@@ -119,7 +119,7 @@ retakes the screenshots.</sub>
 ### Profiles and activity
 
 - User profiles with notes.
-- Online status and custom status.
+- Online status and custom status, with presets you set again in one click.
 - Profile cosmetics from Discord: avatar decorations, nameplates, profile effects and frames,
   display-name styles, profile themes, clan tags, badges, connections and games. An uploaded
   banner fades into the profile's background color.
