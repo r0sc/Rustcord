@@ -776,9 +776,10 @@ impl RustcordApp {
             Screen::Main => right_column_w(&self.view, &self.settings, &self.state, ctx.content_rect().width()),
             Screen::Login => 0.0,
         };
-        let right = right_column + 16.0;
-        // 8 px above the composer's top when it is on screen this pass, else 80 px from the bottom.
         let pass = ctx.cumulative_pass_nr();
+        let split_w = ctx.data(|d| d.get_temp::<(f32, u64)>(egui::Id::unique("rc_split_w"))).filter(|s| s.1 == pass).map(|s| s.0);
+        let right = split_w.unwrap_or(right_column) + 16.0;
+        // 8 px above the composer's top when it is on screen this pass, else 80 px from the bottom.
         let above = ctx.data(|d| d.get_temp::<(f32, u64)>(egui::Id::unique("rc_composer_top"))).filter(|c| c.1 == pass).map(|c| ctx.content_rect().bottom() - c.0 + 8.0);
         egui::Area::new(egui::Id::unique("toasts"))
             .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-right, -above.unwrap_or(80.0)))
@@ -1449,6 +1450,9 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
             split_rect = Some(r);
         }
         // The tab bar and the header span the page and the member list / search results, like the web client's title section.
+            // The toasts keep to the chat pane left of it (the lists may be folded or resized).
+            let pass = ui.ctx().cumulative_pass_nr();
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique("rc_split_w"), (r.width(), pass)));
         frame_stats::time("+tabs", || tabs::bar(ui, cx));
         frame_stats::time("+header", || messages::chat_header(ui, cx));
         // Open search results take the member list's place, so does the thread panel.
