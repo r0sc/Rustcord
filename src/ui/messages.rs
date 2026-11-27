@@ -1730,7 +1730,7 @@ fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
         hover_toolbar(ui, cx, lc, memo, h);
     } else {
         // Nothing hovered: the next toolbar arrives again, whichever row it lands on.
-        super::motion::arrive(&ctx, toolbar_in_id(), 0, super::motion::FAST);
+        super::motion::arrive(&ctx, toolbar_in_id(lc.ch), 0, super::motion::FAST);
     }
     if let Some((_, until)) = flash {
         // The highlight fades out over its last half second.
@@ -2087,14 +2087,22 @@ fn message_block(
         let tint = if h > 0.0 { pal.mention.blend(pal.tk.hover.gamma_multiply(h)) } else { pal.mention };
         shapes.push(Shape::rect_filled(rect, 0.0, tint));
         // A live arrival draws its bar top down over BASE and, on dark themes, flashes once.
-        let mark = memo.mark.filter(|m| m.0 == msg.id).map(|(_, at)| (super::motion::since(ui.ctx(), at, super::motion::BASE), super::motion::since(ui.ctx(), at, super::motion::BASE + super::motion::LARGE)));
-        if mark.is_some_and(|m| m.1 >= 1.0) {
-            memo.mark = None;
+        let ctx = ui.ctx();
+        let at = memo.mark.filter(|m| m.0 == msg.id).map(|m| m.1);
+        let draw = at.map_or(1.0, |at| super::motion::since(ctx, at, super::motion::BASE));
+        // The light is held while the bar draws, then leaves on the exit curve (ease-in) over LARGE.
+        let large = super::motion::secs(ctx, super::motion::LARGE);
+        let lin = at.map_or(1.0, |at| if large > 0.0 { ((ctx.input(|i| i.time) - at) as f32 - super::motion::secs(ctx, super::motion::BASE)) / large } else { 1.0 }).clamp(0.0, 1.0);
+        if at.is_some() {
+            if lin >= 1.0 {
+                memo.mark = None;
+            } else {
+                ctx.request_repaint();
+            }
         }
-        let (draw, flash) = mark.unwrap_or((1.0, 1.0));
         let bar = Rect::from_min_size(rect.min, vec2(2.0, rect.height() * draw));
-        if flash < 1.0 && super::light::lit(&pal.tk) {
-            shapes.push(super::light::glow(bar.expand2(vec2(4.0, 6.0)), 3.0, pal.tk.accent_ink.gamma_multiply(0.8 * (1.0 - flash)).additive(), 14.0));
+        if lin < 1.0 && super::light::lit(&pal.tk) {
+            shapes.push(super::light::glow(bar.expand2(vec2(4.0, 6.0)), 3.0, pal.tk.accent_ink.gamma_multiply(0.8 * (1.0 - lin.powi(3))).additive(), 14.0));
         }
         shapes.push(Shape::rect_filled(bar, 0.0, pal.tk.accent_ink));
     } else if h > 0.0 {
@@ -3267,7 +3275,7 @@ fn hover_toolbar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
     // A child that is not allocated in the list, so it neither moves the cursor nor the content size.
     let mut bar = ui.new_child(UiBuilder::new().max_rect(area).layout(Layout::right_to_left(Align::Center)));
     // It rises 4 px and fades in each time it lands on a row (paint only: the hit area is where it settles).
-    let t = super::motion::arrive(ui.ctx(), toolbar_in_id(), h.id.0, super::motion::FAST);
+    let t = super::motion::arrive(ui.ctx(), toolbar_in_id(lc.ch), h.id.0, super::motion::FAST);
     bar.multiply_opacity(t);
     let shadow = egui::Shadow { offset: [0, 2], blur: 8, spread: 0, color: Color32::from_black_alpha(if pal.dark { 60 } else { 18 }) };
     // A float (E2 colours; a small shadow, the bar sits on the message it belongs to).
@@ -3339,9 +3347,10 @@ fn hover_toolbar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
     memo.toolbar = Some((h.id, rect));
 }
 
-/// The hover toolbar's arrival clock: keyed by the message it sits on, 0 when none.
-fn toolbar_in_id() -> egui::Id {
-    egui::Id::unique("rc_toolbar_in")
+/// The hover toolbar's arrival clock of one list: keyed by the message it sits on, 0 when none.
+/// One per list, or two panes on screen would reset each other's stamp every pass.
+fn toolbar_in_id(ch: Id) -> egui::Id {
+    egui::Id::unique("rc_toolbar_in").with(ch.0)
 }
 
 /// `RUSTCORD_MSG_DEMO=menu` opens the menu once, as if "…" was clicked.
