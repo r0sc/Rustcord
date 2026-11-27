@@ -76,6 +76,10 @@ pub fn save_token(token: &Token) -> Result<(), String> {
 }
 
 pub fn clear_token() -> Result<(), String> {
+    // Offline demo and test runs must never touch the real credential.
+    if crate::config::offline_mode() {
+        return Ok(());
+    }
     match entry()?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("could not remove token: {e}")),
