@@ -112,13 +112,16 @@ fn members(state: &AppState, ch: Id, guild_id: Option<Id>, q: &str) -> Vec<Row> 
         if out.len() >= MAX_ROWS || !seen.insert(user.id) {
             return;
         }
+        // The row shows my local name; what goes into the text is the real one (the wire form is the
+        // id), so a local name never reaches a sent message.
         let shown = state.member_display_name(guild_id, user, member);
+        let real = state.real_display_name(guild_id, user, member);
         let nick = member.and_then(|m| m.nick.as_deref()).unwrap_or_default();
-        if !name_match(q, &[&shown, nick, user.global_name.as_deref().unwrap_or_default(), &user.username]) {
+        if !name_match(q, &[&shown, &real, nick, user.global_name.as_deref().unwrap_or_default(), &user.username]) {
             return;
         }
         let icon = Icon::User(Box::new((user.clone(), member.cloned())));
-        let mut row = Row::new(format!("@{shown} "), Some(format!("<@{}>", user.id.0)), icon, shown).detail(user.username.clone());
+        let mut row = Row::new(format!("@{real} "), Some(format!("<@{}>", user.id.0)), icon, shown).detail(user.username.clone());
         row.color = guild_id.zip(member).and_then(|(g, m)| state.role_color(g, &m.roles)).map(rgb);
         out.push(row);
     };
@@ -364,6 +367,19 @@ mod tests {
 
     fn pair(insert: &str, wire: Option<&str>) -> (String, Option<String>) {
         (insert.to_owned(), wire.map(str::to_owned))
+    }
+
+    #[test]
+    fn a_local_name_is_found_but_never_inserted() {
+        let (s, ch) = state();
+        let list = [crate::names::CustomName { id: Id(2), name: Some("Ali".into()), ..Default::default() }];
+        crate::names::with_names(&list, || {
+            let found = suggest(&s, ch, "@ali", &|_| true);
+            assert_eq!(found.len(), 1);
+            assert_eq!((found[0].insert.as_str(), found[0].wire.as_deref(), found[0].label.as_str()), ("@Alice ", Some("<@2>"), "Ali"));
+            // The real name still finds them.
+            assert_eq!(suggest(&s, ch, "@al", &|_| true).len(), 1);
+        });
     }
 
     #[test]

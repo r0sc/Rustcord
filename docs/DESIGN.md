@@ -765,6 +765,11 @@ Unchanged in shape. Segments and Friends tabs stay neutral (`selected` fill): a 
 items use the purple checkbox. Tooltips: `raised` + `rule` + E2, radius r (light tooltips stay
 white, no inversion).
 
+Edit name (person menus, `friends::name_submenu`): a submenu form 240 wide, like "Change
+nickname": "Name" (meta, `text_muted`) and a field (32 chars), "Tag" and a field (16 chars), "Colour"
+with nine 20 px discs 4 apart (None: 1.5 px `edge` ring with a slash; picked: 2 px `focus` ring), one
+meta line, Ghost "Reset" and Primary "Save". For a friend the name is Discord's friend nickname.
+
 ### 9.6 Popouts and modals
 
 - Profile popout (profile.rs): radius float 16, `raised`, `rule`, E2, sheen, display name via
@@ -949,6 +954,7 @@ fn tile_corners(t: f32) -> CornerRadius {
 - The Members toggle uses the icon-button on state.
 
 **Messages:**
+- Edit name: a name, colour and tag only this device shows (`src/names.rs`). The colour replaces the role colour (through `readable_on_pane`); the tag is a neutral chip (`selected` fill, `text` label, badge 11/700, chip radius, 4 px padding, as tall as the Bot chip) after the guild tag in cozy rows and before the name in compact rows; hovering the name shows the real name and `@username`.
 - Avatar 40, author body 15/600 in the role colour, the server tag, the role icon 20 (the highest role with one; `ROLE_ICONS` servers; cozy only, like Discord), Bot, time meta.
 - ShowBadgesInChat (plugin): 16 `text_muted` badge glyphs in the decorations after the time (§8.7), 4 apart, tooltip with the badge title.
 - Body 15 with line height 21. 16 between groups. Compact mode unchanged.
@@ -1038,6 +1044,8 @@ fn tile_corners(t: f32) -> CornerRadius {
 - The caret is `accent`.
 
 ### 10.4 Member list and DM list
+
+Edit name's colour replaces the role colour on a member row and its tag chip follows the name (its width is taken before the name is cut); the name's tooltip shows the real name.
 
 **Group header:**
 - Label role "Maintainers" on the left. The count is meta `text_muted`, right-aligned, so counts
@@ -1744,7 +1752,7 @@ in `docs/ARCHITECTURE.md`.
   32 / 40; inputs 40 / 32; switch 40x24; checkbox / radio 20; icon buttons 32 with 20 icons.
 - Status meanings and shapes: online green dot, idle amber crescent, DnD red bar, offline ring,
   mobile phone, streaming dot with a play cut-out (now pink); red badges, red "New", red "Live".
-- Discord data colours: role colours, profile colours and effects, platform colours, emoji skin
+- Discord data colours (a colour given with Edit name replaces that person's role colour on this screen): role colours, profile colours and effects, platform colours, emoji skin
   tones, avatar initial hues, MoreUserTags chips; Windows `CLOSE_RED`; media tokens.
 - `ThemeColors` fields and the TOML format; `corner_radius` 8 / HC 4; font size 15 / HC 16; the
   23 gradient presets and their names; the Saturation setting.

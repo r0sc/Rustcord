@@ -48,6 +48,8 @@ pub struct FriendsUi {
     pub pick_query: String,
     /// `Modal::GroupDm` of a group in rename mode: the name typed.
     pub rename: Option<String>,
+    /// The open Edit name form of a person's menu.
+    pub name_edit: Option<NameDraft>,
 }
 
 /// Group DMs hold 10 people, me included (§2.4).
@@ -575,6 +577,7 @@ pub fn user_menu_items(ui: &mut egui::Ui, cx: &mut UiCx<'_>, user: Id) {
         message_user(cx, user);
     }
     call_items(ui, cx, user);
+    name_submenu(ui, cx, user);
     relationship_items(ui, cx, user, ContextLocation::ContextMenu);
 }
 
@@ -639,6 +642,7 @@ pub fn dm_menu_items(ui: &mut egui::Ui, cx: &mut UiCx<'_>, channel_id: Id) {
     let (text, danger) = (cx.theme.colors.text.to_color32(), cx.theme.colors.danger.to_color32());
     if !group {
         if let Some(u) = other {
+            name_submenu(ui, cx, u);
             relationship_items(ui, cx, u, ContextLocation::ContextMenu);
         }
         return;
@@ -654,6 +658,104 @@ pub fn dm_menu_items(ui: &mut egui::Ui, cx: &mut UiCx<'_>, channel_id: Id) {
         let name = cx.state.channel_name(channel_id);
         let then = Command::Social(SocialCommand::CloseDm { channel_id, silent: false });
         cx.view.confirm(format!("Leave {name}?"), "You can come back only if someone in the group adds you again.", "Leave group", then);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Edit name (crate::names)
+// ---------------------------------------------------------------------------
+
+/// The open "Edit name" form (in `FriendsUi::name_edit`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NameDraft {
+    user: Id,
+    name: String,
+    tag: String,
+    color: Option<u32>,
+}
+
+/// Edit name ▸: a small form in the submenu (no dialog). For a friend the name is Discord's friend
+/// nickname (one PATCH on Save, only when it changed); for anyone else a name only this device
+/// shows. The tag and colour always stay on this device.
+fn name_submenu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, user: Id) {
+    use super::messages::{Btn, button};
+    use crate::names::{NAME_MAX, PALETTE, TAG_MAX};
+    let pal = Pal::new(cx.theme);
+    let keep_open = egui::containers::menu::MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+    let friend = cx.state.social.relationships.get(&user).is_some_and(|r| r.kind == relationship_type::FRIEND);
+    egui::containers::menu::SubMenuButton::new(RichText::new("Edit name").color(pal.text)).config(keep_open).ui(ui, |ui| {
+        menu_setup(ui);
+        ui.set_width(240.0);
+        if cx.view.friends_ui.name_edit.as_ref().is_none_or(|d| d.user != user) {
+            let local = cx.settings.custom_names.iter().find(|n| n.id == user).cloned().unwrap_or_default();
+            let name = if friend { cx.state.friend_nickname(user).map(str::to_owned) } else { local.name };
+            cx.view.friends_ui.name_edit = Some(NameDraft { user, name: name.unwrap_or_default(), tag: local.tag.unwrap_or_default(), color: local.color });
+        }
+        let hint = cx.state.users.get(&user).map(|u| u.display_name().to_owned()).unwrap_or_default();
+        let Some(d) = cx.view.friends_ui.name_edit.as_mut() else { return };
+        let meta = |ui: &mut egui::Ui, text: &str| ui.add(egui::Label::new(RichText::new(text).size(pal.meta()).color(pal.muted)).selectable(false));
+        meta(ui, "Name");
+        let name = ui.add(egui::TextEdit::singleline(&mut d.name).char_limit(NAME_MAX).hint_text(hint).desired_width(f32::INFINITY));
+        meta(ui, "Tag");
+        let tag = ui.add(egui::TextEdit::singleline(&mut d.tag).char_limit(TAG_MAX).hint_text("Add a tag").desired_width(f32::INFINITY));
+        meta(ui, "Colour");
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            for pick in std::iter::once(None).chain(PALETTE.iter().map(|&(c, w)| Some((c, w)))) {
+                let word = pick.map_or("None", |(_, w)| w);
+                let value = pick.map(|(c, _)| c);
+                let (r, resp) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::click());
+                let on = d.color == value;
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, on, word));
+                match pick {
+                    Some((c, _)) => _ = ui.painter().circle_filled(r.center(), 10.0, super::rgb(c)),
+                    None => {
+                        let ring = Stroke::new(1.5, pal.tk.edge);
+                        ui.painter().circle_stroke(r.center(), 9.25, ring);
+                        let o = 9.25 * std::f32::consts::FRAC_1_SQRT_2;
+                        ui.painter().line_segment([r.center() + vec2(-o, o), r.center() + vec2(o, -o)], ring);
+                    }
+                }
+                if on {
+                    ui.painter().circle_stroke(r.center(), 13.0, Stroke::new(2.0, pal.tk.focus));
+                }
+                if resp.on_hover_text(word).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                    d.color = value;
+                }
+            }
+        });
+        meta(ui, if friend { "Discord keeps the nickname. Tag and colour stay on this device." } else { "Only you see this, on this device." });
+        let enter = (name.lost_focus() || tag.lost_focus()) && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let (reset, save) = ui
+            .horizontal(|ui| {
+                let reset = button(ui, &pal, Btn::Ghost, "Reset", true).clicked();
+                let save = button(ui, &pal, Btn::Primary, "Save", true).clicked();
+                (reset, save)
+            })
+            .inner;
+        if reset || save || enter {
+            let draft = if reset { NameDraft { user, name: String::new(), tag: String::new(), color: None } } else { d.clone() };
+            cx.view.friends_ui.name_edit = None;
+            apply_name(cx, draft, friend);
+            ui.close();
+        }
+    });
+}
+
+/// Saves the form: the tag and colour (and a stranger's name) on this device, a friend's name as
+/// Discord's friend nickname (one request, only when it differs from what Discord has).
+fn apply_name(cx: &mut UiCx<'_>, d: NameDraft, friend: bool) {
+    let nickname = Some(d.name.trim().to_owned()).filter(|n| !n.is_empty());
+    let entry = crate::names::CustomName { id: d.user, name: if friend { None } else { nickname.clone() }, tag: Some(d.tag), color: d.color };
+    if let Err(e) = crate::names::set(&mut cx.settings.custom_names, entry) {
+        cx.view.toast(e, true);
+    }
+    cx.settings.publish();
+    if let Err(e) = cx.settings.save() {
+        cx.view.toast(format!("Could not save settings: {e}"), true);
+    }
+    if friend && nickname.as_deref() != cx.state.friend_nickname(d.user) {
+        cx.cmd.send(Command::Social(SocialCommand::SetFriendNickname { user_id: d.user, nickname }));
     }
 }
 

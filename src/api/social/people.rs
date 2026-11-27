@@ -183,6 +183,16 @@ impl ApiClient {
         }
     }
 
+    /// `PATCH /users/@me/relationships/{u} {"nickname": name | null}` (null clears) -> 204; the gateway's
+    /// RELATIONSHIP_UPDATE carries the change. At most 32 characters (limit unconfirmed).
+    pub async fn set_friend_nickname(&self, user_id: Id, nickname: Option<&str>) -> Result<(), ApiError> {
+        let nickname = nickname.map(str::trim).filter(|n| !n.is_empty());
+        if nickname.is_some_and(|n| n.chars().count() > 32) {
+            return Err(local("A friend nickname can be at most 32 characters long."));
+        }
+        self.send(Method::PATCH, relationship_url(user_id), Some(json!({ "nickname": nickname }))).await.map(drop)
+    }
+
     /// `PUT /users/@me/notes/{u} {"note"}` (≤ 256 chars, `""` clears) -> 204.
     pub async fn set_note(&self, user_id: Id, note: &str) -> Result<(), ApiError> {
         if note.chars().count() > MAX_NOTE_CHARS {

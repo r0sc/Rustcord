@@ -815,12 +815,12 @@ impl AppState {
         if !ch.is_dm_like() {
             return "unnamed".into();
         }
-        let names: Vec<&str> = ch
+        let names: Vec<String> = ch
             .recipient_ids
             .iter()
             .filter(|id| !self.is_me(**id))
             .filter_map(|id| self.users.get(id))
-            .map(|u| u.display_name())
+            .map(|u| crate::names::name(u.id).or_else(|| self.friend_nickname(u.id).map(str::to_owned)).unwrap_or_else(|| u.display_name().to_owned()))
             .collect();
         if names.is_empty() { "Unnamed conversation".into() } else { names.join(", ") }
     }
@@ -914,8 +914,16 @@ impl AppState {
 
     // ----- display helpers -----------------------------------------------------
 
-    /// Nick > global name > username.
+    /// My local name for them (Edit name) > friend nickname (DMs only, as on Discord) > server
+    /// nick > global name > username.
     pub fn member_display_name(&self, guild_id: Option<Id>, user: &User, member: Option<&Member>) -> String {
+        let member = member.or_else(|| guild_id.and_then(|g| self.find_member(g, user.id)));
+        let local = crate::names::name(user.id);
+        crate::names::shown(local.as_deref(), self.friend_nickname(user.id), guild_id.is_none(), member.and_then(|m| m.nick.as_deref()), user.display_name())
+    }
+
+    /// Nick > global name > username: what everyone else sees (shown on hover over a local name).
+    pub fn real_display_name(&self, guild_id: Option<Id>, user: &User, member: Option<&Member>) -> String {
         let member = member.or_else(|| guild_id.and_then(|g| self.find_member(g, user.id)));
         match member.and_then(|m| m.nick.as_deref()) {
             Some(nick) if !nick.is_empty() => nick.to_string(),
@@ -2411,6 +2419,27 @@ mod tests {
         s.member_lists.clear();
         s.apply_gateway(list_update("everyone", vec![MemberListOp::Delete { index: 0 }]), None);
         assert!(s.member_lists.is_empty());
+    }
+
+    #[test]
+    fn local_names_come_first_and_friend_nicknames_only_in_dms() {
+        use crate::names::{CustomName, with_names};
+        let mut s = state();
+        let id = Id(9_990_100);
+        let u = user(id, "alice");
+        s.users.insert(id, u.clone());
+        s.social.relationships.insert(id, crate::model::Relationship { id, kind: crate::model::relationship_type::FRIEND, nickname: Some("Al".into()), ..Default::default() });
+        let dm = Id(9_990_101);
+        s.channels.insert(dm, Channel { id: dm, kind: channel_type::DM, recipient_ids: vec![id], ..Default::default() });
+        // The friend nickname is Discord's own: DMs only.
+        assert_eq!((s.member_display_name(Some(G), &u, None), s.member_display_name(None, &u, None)), ("alice".into(), "Al".into()));
+        assert_eq!(s.channel_name(dm), "Al");
+        with_names(&[CustomName { id, name: Some("Ali".into()), ..Default::default() }], || {
+            assert_eq!((s.member_display_name(Some(G), &u, None), s.member_display_name(None, &u, None)), ("Ali".into(), "Ali".into()));
+            assert_eq!(s.real_display_name(Some(G), &u, None), "alice", "what everyone else sees");
+            assert_eq!(s.channel_name(dm), "Ali");
+        });
+        assert_eq!(s.channel_name(dm), "Al");
     }
 
     #[test]

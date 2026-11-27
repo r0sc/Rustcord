@@ -105,6 +105,7 @@ retakes the screenshots.</sub>
 ### Servers and friends
 
 - Friends (online, all, pending, blocked, add by username), DMs and group DMs.
+- Edit name: set a friend's nickname (saved on Discord) or give anyone a name, tag or colour that only you see; their own name shows on hover.
 - Message requests (accept, ignore, spam) and the inbox with mentions and unreads.
 - Server administration: channels, categories, roles, permission overwrites, members, kick and
   ban, bans, invites, emoji and notification settings.
@@ -544,6 +545,11 @@ auto_update = true            # install updates automatically (the check runs ei
 # [[hidden_words]]           # Content & social > Hidden words (messages fold into one line)
 # text = "spoilerword"
 # whole_word = true
+# [[custom_names]]            # Edit name (this device only)
+# id = "123"                  # their user id
+# name = "Ali"
+# tag = "work"
+# color = 4886754             # 0xRRGGBB
 # [[saved]]                   # Inbox > Saved: ids only, the text loads when shown
 # owner = "123"               # your user id
 # channel_id = "456"

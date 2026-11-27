@@ -180,6 +180,8 @@ pub struct Settings {
     pub quiet_hours: crate::alerts::QuietHours,
     /// Inbox > Saved (crate::saved): ids only, the text loads when shown.
     pub saved: Vec<crate::saved::Saved>,
+    /// Edit name (crate::names): names, tags and colours only this device shows, for all accounts.
+    pub custom_names: Vec<crate::names::CustomName>,
 }
 
 /// Notifications > Sounds (`src/sounds.rs`): Rustcord's own sounds.
@@ -387,6 +389,7 @@ impl Default for Settings {
             hidden_words: Vec::new(),
             quiet_hours: Default::default(),
             saved: Vec::new(),
+            custom_names: Vec::new(),
         }
     }
 }
@@ -409,6 +412,7 @@ impl Settings {
     pub fn publish(&self) {
         ROLE_COLORS.store(self.role_colors, std::sync::atomic::Ordering::Relaxed);
         crate::theme::set_saturation(self.saturation);
+        crate::names::publish(&self.custom_names);
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -529,6 +533,12 @@ mod tests {
         let text = toml::to_string_pretty(&Settings { saved: saved.clone(), ..Default::default() }).unwrap();
         assert!(text.contains("[[saved]]") && text.contains("message_id = \"3\""), "{text}");
         assert_eq!(toml::from_str::<Settings>(&text).unwrap().saved, saved);
+        // Custom names: none in an old file; a round trip keeps them (`[[custom_names]]` tables).
+        assert!(old.custom_names.is_empty());
+        let names = vec![crate::names::CustomName { id: crate::model::Id(7), name: Some("Ali".into()), tag: None, color: Some(0x4A90E2) }];
+        let text = toml::to_string_pretty(&Settings { custom_names: names.clone(), ..Default::default() }).unwrap();
+        assert!(text.contains("[[custom_names]]") && text.contains("id = \"7\""), "{text}");
+        assert_eq!(toml::from_str::<Settings>(&text).unwrap().custom_names, names);
         // Keyword alerts: an old file has none and watches every server; a round trip keeps them.
         assert!(old.keyword_alerts.keywords.is_empty() && old.keyword_alerts.everywhere);
         let k = crate::alerts::KeywordAlerts {

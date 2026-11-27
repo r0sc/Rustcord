@@ -278,9 +278,10 @@ impl AppState {
             .iter()
             .filter(|(_, t)| t.until > now)
             .filter_map(|(id, t)| {
-                let name = match &t.nick {
-                    Some(n) => n.clone(),
-                    None => self.member_display_name(guild_id, self.users.get(id)?, None),
+                let name = match (crate::names::name(*id), &t.nick) {
+                    (Some(local), _) => local,
+                    (None, Some(n)) => n.clone(),
+                    (None, None) => self.member_display_name(guild_id, self.users.get(id)?, None),
                 };
                 Some((t.until, name))
             })
@@ -482,6 +483,17 @@ mod tests {
 
     fn msg(id: u64, channel: Id, author: Id) -> Message {
         Message { id: Id(id), channel_id: channel, author: user(author, "a"), ..Default::default() }
+    }
+
+    #[test]
+    fn typing_shows_the_local_name_over_a_nick() {
+        let mut s = state();
+        let (t0, id) = (Instant::now(), Id(9_990_120));
+        s.users.insert(id, user(id, "alice"));
+        let nick = Member { nick: Some("Nick".into()), user: Some(user(id, "alice")), ..Default::default() };
+        s.on_typing_start(TEXT, id, Some(Box::new(nick)), t0);
+        assert_eq!(s.typing_users(TEXT, t0), ["Nick"]);
+        crate::names::with_names(&[crate::names::CustomName { id, name: Some("Ali".into()), ..Default::default() }], || assert_eq!(s.typing_users(TEXT, t0), ["Ali"]));
     }
 
     #[test]

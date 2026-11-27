@@ -424,11 +424,15 @@ impl AppState {
         v.into_iter().map(|(_, id)| id).collect()
     }
 
-    /// Friend nickname > global name > username (> the id while the user is unknown).
+    /// Discord's friend nickname (my name for them on every device), when there is one.
+    pub fn friend_nickname(&self, user_id: Id) -> Option<&str> {
+        self.social.relationships.get(&user_id).and_then(|r| r.nickname.as_deref()).filter(|n| !n.is_empty())
+    }
+
+    /// Local name (Edit name) > friend nickname > global name > username (> the id while the user is unknown).
     pub fn friend_name(&self, user_id: Id) -> String {
-        let nick = self.social.relationships.get(&user_id).and_then(|r| r.nickname.as_deref()).filter(|n| !n.is_empty());
-        match (nick, self.users.get(&user_id)) {
-            (Some(n), _) => n.to_owned(),
+        match (crate::names::name(user_id).or_else(|| self.friend_nickname(user_id).map(str::to_owned)), self.users.get(&user_id)) {
+            (Some(n), _) => n,
             (None, Some(u)) => u.display_name().to_owned(),
             (None, None) => user_id.to_string(),
         }
@@ -828,6 +832,16 @@ mod tests {
 
     fn gw(s: &mut AppState, ev: GatewayEvent) {
         s.apply_gateway(ev, None);
+    }
+
+    #[test]
+    fn friend_name_prefers_the_local_name() {
+        let mut s = state();
+        let id = Id(9_990_110);
+        s.users.insert(id, user(id, "alice"));
+        s.social.relationships.insert(id, Relationship { nickname: Some("Al".into()), ..rel(id, relationship_type::FRIEND) });
+        assert_eq!(s.friend_name(id), "Al");
+        crate::names::with_names(&[crate::names::CustomName { id, name: Some("Ali".into()), ..Default::default() }], || assert_eq!(s.friend_name(id), "Ali"));
     }
 
     #[test]

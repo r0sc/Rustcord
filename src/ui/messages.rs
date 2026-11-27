@@ -624,7 +624,7 @@ pub(super) fn vector_icon(ui: &mut egui::Ui, icon: Icon, side: f32, color: Color
 pub(super) fn message_card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, guild_id: Option<Id>, msg: &Message, highlight: &[String]) -> egui::Response {
     let member = message_member(cx.state, guild_id, msg);
     let name = cx.state.member_display_name(guild_id, &msg.author, member.as_ref());
-    let color = name_color(cx, guild_id, member.as_ref(), pal.bg).unwrap_or(pal.text);
+    let color = name_color(cx, guild_id, msg.author.id, member.as_ref(), pal.bg).unwrap_or(pal.text);
     let bg = ui.painter().add(Shape::Noop);
     let rect = Frame::new()
         .inner_margin(Margin::symmetric(12, 10))
@@ -714,8 +714,27 @@ fn current_user<'a>(state: &'a AppState, author: &'a User) -> &'a User {
 
 /// A member's role colour as text on `bg` (the chat, or the row under the name), moved just far
 /// enough for 4.5:1.
-pub(super) fn name_color(cx: &UiCx<'_>, guild_id: Option<Id>, member: Option<&Member>, bg: Color32) -> Option<Color32> {
-    cx.state.role_color(guild_id?, &member?.roles).map(|c| cx.theme.readable_on_pane(rgb(c), bg))
+/// A colour given with Edit name comes first (this screen only).
+pub(super) fn name_color(cx: &UiCx<'_>, guild_id: Option<Id>, user_id: Id, member: Option<&Member>, bg: Color32) -> Option<Color32> {
+    let color = crate::names::color(user_id).or_else(|| cx.state.role_color(guild_id?, &member?.roles));
+    color.map(|c| cx.theme.readable_on_pane(rgb(c), bg))
+}
+
+/// Edit name's tag chip after a name: neutral (`selected` fill, `text` label), as tall as the
+/// "Bot" chip. `base` is the name's baseline from the row top; None centres it on the row.
+fn custom_tag(ui: &mut egui::Ui, pal: &Pal, text: &str, h: f32, base: Option<f32>) {
+    let g = ui.painter().layout_no_wrap(text.to_owned(), FontId::new(pal.badge(), bold_family()), pal.text);
+    let (r, _) = ui.allocate_exact_size(vec2(g.size().x + 8.0, h), Sense::hover());
+    let top = base.map_or(r.center().y - g.size().y / 2.0, |b| r.top() + b - baseline(&g));
+    ui.painter().rect_filled(Rect::from_min_size(pos2(r.left(), top - 1.0), vec2(r.width(), g.size().y + 2.0)), pal.radius / 2, pal.tk.selected);
+    ui.painter().galley(pos2(r.left() + 4.0, top), g, pal.text);
+}
+
+/// The tooltip over a name that shows a local name or friend nickname: who they really are.
+fn real_name_tip(cx: &UiCx<'_>, guild_id: Option<Id>, user: &User, member: Option<&Member>, shown: &str) -> Option<String> {
+    let real = cx.state.real_display_name(guild_id, user, member);
+    (real != shown).then(|| format!("{real}
+@{}", user.username))
 }
 
 /// The colour under a message row's text while it is hovered (the pointer usually rests on the
@@ -2052,11 +2071,20 @@ fn compact_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, 
             ui.painter().galley(chip.center() - g.size() / 2.0, g, pal.link);
             ui.add_space(6.0);
         }
+        if let Some(t) = crate::names::tag(msg.author.id) {
+            custom_tag(ui, &pal, &t, row_h, None);
+            ui.add_space(6.0);
+        }
         let name = cx.state.member_display_name(lc.guild_id, &msg.author, member.as_ref());
-        let color = name_color(cx, lc.guild_id, member.as_ref(), row_bg(cx, &pal, msg)).unwrap_or(pal.text);
+        let name_tip = real_name_tip(cx, lc.guild_id, &msg.author, member.as_ref(), &name);
+        let color = name_color(cx, lc.guild_id, msg.author.id, member.as_ref(), row_bg(cx, &pal, msg)).unwrap_or(pal.text);
         let style = crate::overrides::effective_for(current_user(cx.state, &msg.author), member.as_ref()).name_style;
         let name_g = super::cosmetics::name_galley(ui, &format!("{name}:"), FontId::new(pal.size, crate::theme::semibold_family()), style.as_ref(), color, f32::INFINITY);
         let r = ui.add(Label::new(name_g).selectable(false).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand);
+        let r = match name_tip {
+            Some(t) => r.on_hover_text(t),
+            None => r,
+        };
         if r.clicked() {
             cx.view.open_profile(msg.author.id, lc.guild_id, r.rect.right_top() + vec2(8.0, 0.0));
         }
@@ -2072,7 +2100,7 @@ fn compact_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, 
 fn author_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, user: &User, member: Option<&Member>, (time, time_tip): (&str, &str), bg: Color32) {
     let pal = lc.pal;
     let name = cx.state.member_display_name(lc.guild_id, user, member);
-    let color = name_color(cx, lc.guild_id, member, bg).or_else(|| crate::plugins::people::irc_color(lc.guild_id, user.id, pal.dark).map(|c| cx.theme.readable_on_pane(c, bg))).unwrap_or(pal.text);
+    let color = name_color(cx, lc.guild_id, user.id, member, bg).or_else(|| crate::plugins::people::irc_color(lc.guild_id, user.id, pal.dark).map(|c| cx.theme.readable_on_pane(c, bg))).unwrap_or(pal.text);
     // Painted galleys instead of labels: labels of different sizes are centered, not
     // baseline-aligned.
     let p = ui.painter().clone();
@@ -2081,6 +2109,8 @@ fn author_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, user: &User, memb
     let style = crate::overrides::effective_for(current, member).name_style;
     // Author 15/600 (docs/DESIGN.md §10.3).
     let name_g = super::cosmetics::name_galley(ui, &name, FontId::new(pal.size, crate::theme::semibold_family()), style.as_ref(), color, f32::INFINITY);
+    let name_tip = real_name_tip(cx, lc.guild_id, user, member, &name);
+    let my_tag = crate::names::tag(user.id);
     let tag = super::cosmetics::guild_tag(current, member).cloned();
     let time_g = p.layout_no_wrap(time.to_owned(), FontId::proportional(pal.meta()), pal.muted);
     let bot_g = user.bot.then(|| p.layout_no_wrap("Bot".into(), FontId::new(pal.badge(), bold_family()), pal.link));
@@ -2091,6 +2121,10 @@ fn author_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, user: &User, memb
         ui.set_row_height(h);
         let (r, resp) = ui.allocate_exact_size(name_g.size(), Sense::click());
         let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
+        let resp = match name_tip {
+            Some(t) => resp.on_hover_text(t),
+            None => resp,
+        };
         if resp.hovered() {
             p.hline(r.x_range(), r.top() + base + 2.0, Stroke::new(1.0, color));
         }
@@ -2100,6 +2134,9 @@ fn author_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, user: &User, memb
         }
         if let Some(pg) = &tag {
             super::cosmetics::tag_button(ui, cx, pg, pal.size, h, pal.text);
+        }
+        if let Some(t) = &my_tag {
+            custom_tag(ui, &pal, t, h, Some(base));
         }
         if let Some(role) = role_icon_of(ui, cx, lc.guild_id, member) {
             let (r, resp) = ui.allocate_exact_size(vec2(20.0, h), Sense::hover());
@@ -2146,7 +2183,7 @@ fn reply_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, msg: &Message) {
                     let url = images::user_avatar_url(lc.guild_id, &rm.author, member.as_ref(), 32, false);
                     images::avatar(ui, cx.images, &url, 16.0, false, Some((rm.author.id, &name)));
                 }
-                let color = name_color(cx, lc.guild_id, member.as_ref(), row_bg(cx, &pal, msg)).unwrap_or(pal.text);
+                let color = name_color(cx, lc.guild_id, rm.author.id, member.as_ref(), row_bg(cx, &pal, msg)).unwrap_or(pal.text);
                 ui.add(Label::new(RichText::new(name).size(pal.meta()).family(bold_family()).color(color)).selectable(false));
                 let mut preview = if hidden_word(cx, rm) { "Hidden message".to_owned() } else { resolve_tokens(&reply_preview(rm), |tok| token_name(cx.state, lc.guild_id, &rm.mentions, tok)) };
                 while let Some((r, code)) = missing_emoji(ui, &preview) {

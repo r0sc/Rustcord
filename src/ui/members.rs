@@ -188,7 +188,8 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
             user_dot(ui.painter(), avatar, cx.state, user.id, c, ring);
         }
     }
-    let role_color = guild_id.zip(member).and_then(|(g, m)| cx.state.role_color(g, &m.roles)).map(rgb).or_else(|| crate::plugins::people::irc_color(guild_id, user.id, ui.visuals().dark_mode));
+    // A colour given with Edit name replaces the role colour (this screen only).
+    let role_color = crate::names::color(user.id).map(rgb).or_else(|| guild_id.zip(member).and_then(|(g, m)| cx.state.role_color(g, &m.roles)).map(rgb)).or_else(|| crate::plugins::people::irc_color(guild_id, user.id, ui.visuals().dark_mode));
     let color = if offline { c.text_muted.to_color32() } else { role_color.map_or(c.text.to_color32(), |rc| cx.theme.readable_on_pane(rc, ring)) };
     let chip_color = if offline { color } else { c.text.to_color32() };
     let (text_left, mut max_w) = (avatar.right() + 12.0, row.right() - PAD - avatar.right() - 12.0);
@@ -203,7 +204,11 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
     }
     let size = cx.theme.font.size;
     let tag = cosmetics::guild_tag(user, member);
-    let chip_w = tag.map_or(0.0, |pg| cosmetics::tag_chip_width(ui, pg, size) + 4.0);
+    // Edit name's tag: a neutral chip right after the name, its width taken before the name is cut.
+    let mine = crate::names::tag(user.id).filter(|_| !is_me);
+    let mine_g = mine.map(|t| ui.painter().layout_no_wrap(t, FontId::new(super::messages::Pal::new(cx.theme).badge(), crate::theme::bold_family()), cx.theme.colors.text.to_color32()));
+    let mine_w = mine_g.as_ref().map_or(0.0, |g| g.size().x + 12.0);
+    let chip_w = mine_w + tag.map_or(0.0, |pg| cosmetics::tag_chip_width(ui, pg, size) + 4.0);
     // Discord's role icon: after the name and tag, not on offline rows.
     let role_icon = (!offline).then(|| super::messages::role_icon_of(ui, cx, guild_id, member)).flatten();
     let icon_w = if role_icon.is_some() { 20.0 } else { 0.0 };
@@ -219,8 +224,14 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
     ui.painter().set(under, cosmetics::name_underlay(name_rect.min, &g, style, ui.visuals().dark_mode));
     // Chips over a nameplate get the row's own colour under them (opaque on the art).
     let surface = fx.nameplate.as_ref().map(|_| ring);
+    if let Some(g) = mine_g {
+        let chip = Rect::from_center_size(pos2(name_rect.right() + 4.0 + (g.size().x + 8.0) / 2.0, name_rect.center().y), vec2(g.size().x + 8.0, g.size().y + 2.0));
+        let radius = cx.theme.layout.corner_radius.round() as u8 / 2;
+        ui.painter().rect_filled(chip, radius, cx.theme.tokens().selected);
+        ui.painter().galley(chip.center() - g.size() / 2.0, g, cx.theme.colors.text.to_color32());
+    }
     if let Some(pg) = tag {
-        let at = pos2(name_rect.right() + 4.0, name_rect.center().y);
+        let at = pos2(name_rect.right() + 4.0 + mine_w, name_rect.center().y);
         match surface {
             Some(s) => cosmetics::tag_chip_on(ui, cx.images, pg, at, size, chip_color, s),
             None => cosmetics::tag_chip(ui, cx.images, pg, at, size, chip_color),
@@ -252,6 +263,10 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
     // The anchor is the card's top-left; the card (300 wide, profile.rs) opens left of the list.
     let anchor = pos2(row.left() - 8.0 - 300.0, row.top());
     super::sidebar::user_context_menu(&resp, cx, user.id, guild_id, anchor);
+    // Over a local name or friend nickname: who they really are.
+    let real = cx.state.real_display_name(guild_id, user, member);
+    let tip = (name != real && ui.rect_contains_pointer(name_rect)).then(|| format!("{real}
+@{}", user.username)).or(tip);
     let resp = match tip {
         Some(t) => resp.on_hover_text(t),
         None => resp,

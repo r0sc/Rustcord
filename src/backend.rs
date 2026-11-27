@@ -374,6 +374,9 @@ pub enum SocialCommand {
     FetchProfile { user_id: Id, guild_id: Option<Id> },
     /// `PUT /users/@me/notes/{u} {"note"}` (≤ 256 chars, `""` clears) -> USER_NOTE_UPDATE.
     SetNote { user_id: Id, note: String },
+    /// `PATCH /users/@me/relationships/{id} {"nickname": name | null}`: my friend nickname for them (Edit name).
+    /// RELATIONSHIP_UPDATE carries the change back. One request per Save, only when it changed.
+    SetFriendNickname { user_id: Id, nickname: Option<String> },
     /// Cosmetics editor (COSMETICS_NOTES §12): `GET /collectibles-categories/v2` (saved for
     /// 24 h) -> `CollectiblesLoaded`. Only when the editor opens without a fresh saved copy.
     FetchCollectibles,
@@ -1685,6 +1688,12 @@ fn handle_social(cmd: SocialCommand, session: &mut Option<Session>, sink: &Event
                 Ok(Box::new(p))
             },
             move |result| Some(ev(SocialEvent::ProfileLoaded { user_id, guild_id, result })),
+        ),
+        C::SetFriendNickname { user_id, nickname } => rest(
+            session,
+            sink,
+            move |api| async move { api.set_friend_nickname(user_id, nickname.as_deref()).await },
+            failed("Could not save the friend nickname"),
         ),
         C::SetNote { user_id, note } => {
             rest(session, sink, move |api| async move { api.set_note(user_id, &note).await }, failed("Could not save the note"));

@@ -16,6 +16,7 @@ mod gateway;
 mod lock;
 mod media;
 mod model;
+mod names;
 mod notify;
 mod now_playing;
 mod overrides;
