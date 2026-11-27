@@ -72,7 +72,9 @@ pub fn guild_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
             ui.spacing_mut().item_spacing.y = 8.0;
             // The pill's content-space origin, and the slot for its light under the tiles.
             let top = ui.max_rect().top();
-            let light = ui.painter().add(Shape::Noop);
+            // Its clip reaches into the title bar's band (same colour), so the light fades there
+            // instead of being cut by the rail's edge.
+            let light = ui.painter().with_clip_rect(ui.clip_rect().expand2(vec2(0.0, 40.0))).add(Shape::Noop);
             ui.add_space(4.0);
             home_button(ui, cx);
             crate::plugins::sidebar::read_all_button(ui, cx);
@@ -506,9 +508,10 @@ fn travelling_pill(ui: &mut egui::Ui, light: egui::layers::ShapeIdx, top: f32, t
     let pill = Rect::from_min_size(pos2(ui.max_rect().left(), top + y - h / 2.0), vec2(4.0, h));
     if super::light::lit(&tk) && h >= 21.0 {
         let t = pill_t(h);
-        let near = Rect::from_min_max(pill.left_top() - vec2(0.0, 8.0), pos2(pill.left() + 24.0, pill.bottom() + 8.0));
+        // The mockup's `8px 0 24px 4px` and its Gaussian peak, not the literal numbers.
+        let near = Rect::from_min_max(pos2(pill.left() + 4.0, pill.top() - 4.0), pos2(pill.left() + 16.0, pill.bottom() + 4.0));
         let glow = |r: Rect, radius: f32, a: f32, blur: f32| super::light::glow(r, radius, tk.accent.gamma_multiply(a * t).additive(), blur);
-        ui.painter().set(light, Shape::Vec(vec![glow(pill, 4.0, 0.75, 12.0), glow(near, 8.0, 0.35, 24.0)]));
+        ui.painter().set(light, Shape::Vec(vec![glow(pill, 4.0, 0.45, 12.0), glow(near, 8.0, 0.15, 24.0)]));
     }
     rail_pill(ui.painter(), pill, theme.colors.text.to_color32(), tk.accent);
 }
@@ -1665,6 +1668,10 @@ impl Plate {
             return;
         };
         let to = r.top() - self.shift - self.origin;
+        // A trip from or to a row out of view appears in place (§7), as the rail pill does.
+        if self.now.is_some_and(|now| jumps(ui.clip_rect().y_range(), now, self.origin + to)) {
+            super::motion::set_value(ctx, self.id, to);
+        }
         ctx.data_mut(|d| d.insert_temp(to_id, to));
         if folding(ui) {
             // A category folding above moves the row each frame: the plate stays on it.
@@ -2437,15 +2444,19 @@ pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32, shift: f32
             let split = top + quest_h + voice_now;
             // Laid out against the account row at its final size and clipped to the part that is
             // open (the rising top edge reveals it); the camera row joining it moves the rest up.
-            let target = voice_target(cx.state);
-            if target > 0.0 {
-                ui.scope(|ui| {
-                    ui.set_clip_rect(ui.clip_rect().intersect(Rect::from_min_max(pos2(rect.left(), split - voice_now), pos2(rect.right(), split))));
-                    ui.multiply_opacity((voice_now / target).min(1.0));
-                    let full = (voice_now - 1.0).max(VOICE_PANEL_H);
-                    voice_panel(ui, cx, Rect::from_min_max(pos2(rect.left(), split - 1.0 - full), pos2(rect.right(), split - 1.0)));
-                });
-            }
+            // Fades only on the first entry and the last exit: a target change (the camera row
+            // joining) keeps full opacity.
+            ui.scope(|ui| {
+                ui.set_clip_rect(ui.clip_rect().intersect(Rect::from_min_max(pos2(rect.left(), split - voice_now), pos2(rect.right(), split))));
+                ui.multiply_opacity((voice_now / (VOICE_PANEL_H + 1.0)).min(1.0));
+                let full = (voice_now - 1.0).max(VOICE_PANEL_H);
+                let at = Rect::from_min_max(pos2(rect.left(), split - 1.0 - full), pos2(rect.right(), split - 1.0));
+                if voice_target(cx.state) > 0.0 {
+                    voice_panel(ui, cx, at);
+                } else {
+                    voice_ghost(ui, cx, at);
+                }
+            });
             ui.painter().hline(rect.x_range(), split - 0.5, line(&c));
         }
         account_row(ui, cx, rect.with_min_y(top + quest_h + voice_now), rect.left_top());
@@ -2553,6 +2564,7 @@ fn voice_panel(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect) {
     let link = ui.interact(link_rect, ui.make_persistent_id("voice_place"), Sense::click());
     let link_color = if link.hovered() { c.text } else { c.text_muted }.to_color32();
     // Label role over meta (docs/DESIGN.md §10.5).
+    ui.ctx().data_mut(|d| d.insert_temp(voice_info_id(), VoiceInfo { connected: cx.state.voice.connected, word: word.clone(), color, place: place.clone() }));
     let top_g = one_line(ui, word, super::semibold(cx.theme.font.size - 2.0), color, max_w - if sharing { 44.0 } else { 0.0 });
     let sub_g = one_line(ui, place.as_str(), FontId::proportional(cx.theme.font.size - 3.0), link_color, max_w);
     let top = row.center().y - (top_g.size().y + sub_g.size().y) / 2.0;
@@ -2598,6 +2610,46 @@ fn voice_panel(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect) {
     }
     if screen.show(ui, Rect::from_min_size(pos2(row.right() - w, row.bottom() + 8.0), vec2(w, 32.0)), radius, "voice_screen", colors).clicked() {
         super::call::toggle_share(cx);
+    }
+}
+
+/// What the voice section last showed, so it keeps its look while it shrinks after leaving.
+#[derive(Clone)]
+struct VoiceInfo {
+    connected: bool,
+    word: String,
+    color: Color32,
+    place: String,
+}
+
+fn voice_info_id() -> egui::Id {
+    egui::Id::unique("rc_voice_info")
+}
+
+/// The voice section after leaving: the last look, without interaction, until it has shrunk away.
+fn voice_ghost(ui: &mut egui::Ui, cx: &UiCx<'_>, rect: Rect) {
+    let Some(info) = ui.ctx().data(|d| d.get_temp::<VoiceInfo>(voice_info_id())) else { return };
+    let c = &cx.theme.colors;
+    let row = Rect::from_min_size(rect.min + Vec2::splat(12.0), vec2(rect.width() - 24.0, 32.0));
+    let button = Rect::from_min_size(pos2(row.right() - 32.0, row.center().y - 16.0), Vec2::splat(32.0));
+    let max_w = button.left() - 8.0 - row.left();
+    let top_g = one_line(ui, info.word.as_str(), super::semibold(cx.theme.font.size - 2.0), info.color, max_w);
+    let sub_g = one_line(ui, info.place.as_str(), FontId::proportional(cx.theme.font.size - 3.0), c.text_muted.to_color32(), max_w);
+    let top = row.center().y - (top_g.size().y + sub_g.size().y) / 2.0;
+    let sub_y = top + top_g.size().y;
+    ui.painter().galley(pos2(row.left(), top), top_g, info.color);
+    ui.painter().galley(pos2(row.left(), sub_y), sub_g, c.text_muted.to_color32());
+    let base = user_panel_fill(c);
+    ui.painter().rect_filled(button, CornerRadius::from(cx.theme.layout.corner_radius), base);
+    icons::paint(ui.painter(), Icon::Hangup, button.shrink(6.0), c.danger.to_color32(), base);
+    if info.connected {
+        let w = (row.width() - 8.0) / 2.0;
+        let tint = base.blend(c.text.to_color32().gamma_multiply(0.06));
+        for (x, icon) in [(row.left(), Icon::Camera), (row.right() - w, Icon::Screen)] {
+            let r = Rect::from_min_size(pos2(x, row.bottom() + 8.0), vec2(w, 32.0));
+            ui.painter().rect_filled(r, CornerRadius::from(cx.theme.layout.corner_radius), tint);
+            icons::paint(ui.painter(), icon, Rect::from_center_size(r.center(), Vec2::splat(20.0)), c.text.to_color32(), tint);
+        }
     }
 }
 
