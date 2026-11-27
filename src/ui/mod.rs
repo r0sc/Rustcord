@@ -1776,16 +1776,17 @@ const PANEL_NAV_W_NARROW: f32 = 208.0;
 const LAYER_PAGE_W: f32 = 740.0;
 const NARROW_W: f32 = 960.0;
 
-/// Fade at the top and bottom of a scrolled settings column, in the column's own colour (flat,
-/// opaque in every theme). `x0` / `x1` keep it off the panel's rounded corners.
-fn scroll_fades<R>(ui: &egui::Ui, out: &egui::scroll_area::ScrollAreaOutput<R>, area: egui::Rect, (x0, x1): (f32, f32), color: egui::Color32) {
+/// Fade at the top and bottom of a scrolled settings column or a long list (member, channel, DM,
+/// inbox and thread lists, flat themes), in the pane's own `(top, bottom)` colours (flat, opaque).
+/// `x0` / `x1` keep it off rounded corners.
+fn scroll_fades<R>(ui: &egui::Ui, out: &egui::scroll_area::ScrollAreaOutput<R>, area: egui::Rect, (x0, x1): (f32, f32), (top_color, bottom_color): (egui::Color32, egui::Color32)) {
     use egui::{Rect, pos2};
     let fade = 20.0;
     let top = out.state.clamped_offset().y;
     let below = out.content_size.y - out.inner_rect.height() - top;
-    for (t, rect, is_top) in [
-        (top, Rect::from_min_max(pos2(x0, area.top()), pos2(x1, area.top() + fade)), true),
-        (below, Rect::from_min_max(pos2(x0, area.bottom() - fade), pos2(x1, area.bottom())), false),
+    for (t, rect, is_top, color) in [
+        (top, Rect::from_min_max(pos2(x0, area.top()), pos2(x1, area.top() + fade)), true, top_color),
+        (below, Rect::from_min_max(pos2(x0, area.bottom() - fade), pos2(x1, area.bottom())), false, bottom_color),
     ] {
         if t <= 0.0 {
             continue;
@@ -1855,8 +1856,8 @@ pub fn settings_layer(
         })
     });
     let rf = f32::from(r);
-    scroll_fades(ui, &nav_out.inner, nav_rect, (nav_rect.left() + rf, nav_rect.right()), sidebar);
-    scroll_fades(ui, &page_out.inner, page_rect, (page_rect.left(), page_rect.right() - rf), background);
+    scroll_fades(ui, &nav_out.inner, nav_rect, (nav_rect.left() + rf, nav_rect.right()), (sidebar, sidebar));
+    scroll_fades(ui, &page_out.inner, page_rect, (page_rect.left(), page_rect.right() - rf), (background, background));
     // Edges over the content: the outline (heavier in high contrast), the nav / page line, the lit top edge.
     let outline = if super::theme::is_high_contrast(&cx.theme.colors) { Stroke::new(1.5, pal.muted) } else { Stroke::new(1.0, pal.tk.rule) };
     p.rect_stroke(panel, r, outline, egui::StrokeKind::Inside);

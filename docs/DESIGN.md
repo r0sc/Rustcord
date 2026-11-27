@@ -36,7 +36,8 @@ Rules:
 3. **Colour plus a word or a shape.** Switches show a check or a cross. Status dots keep their
    shapes. The island says "Voice connected" or "Connecting…".
 4. **Light comes from above.** Raised layers have a 1 px lit top edge on dark themes. The logo is
-   lit from the top left. No other gradients in the UI. No glows.
+   lit from the top left. No other gradients in the UI (exception, approved: the 20 px fades at the
+   scrolled edges of long lists and settings columns, `scroll_fades`, flat themes). No glows.
 5. **Calm by default, loud for exceptions.** Grey panes; colour means something happened.
 6. **Motion only answers an action** and always stops (0 % idle CPU). Exception (approved): the
    user panel's music section eases in and out when the computer starts or stops playing, which
@@ -850,6 +851,9 @@ lines next to `button`.
 - Channel card, channel rows, DM rows, categories, voice users: unchanged. No purple in rows.
 - Member list (and thread panel, search results): new 1 px `rule` on the left edge (§6.3).
   Streaming dot and icon in pink `live` (token change, no code).
+- Member, channel and DM lists, the Inbox and Threads lists fade out 20 px at a scrolled edge in their
+  pane colour (`scroll_fades`; the channel list's top fade takes the server band into account).
+  Gradient themes: egui's own fade.
 - User panel (sidebar.rs `user_panel`): E1 `surface`, radius 12, 56 tall, 8 margin,
   **1 px `rule` outline on every theme** (today light/HC only), **sheen**. Content
   unchanged. Voice section words: "Voice connected" `positive_text`, "Connecting…"

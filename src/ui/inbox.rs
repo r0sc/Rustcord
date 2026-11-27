@@ -135,7 +135,11 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
     let r = egui::Rect::from_x_y_ranges(ui.max_rect().x_range(), header.response.rect.y_range());
     ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, pal.tk.rule));
     sheen(ui.painter(), r, f32::from(pal.float_radius()), &pal.tk);
-    ScrollArea::vertical()
+    let flat = cx.theme.gradient.is_none();
+    if flat {
+        ui.spacing_mut().scroll.fade.strength = 0.0;
+    }
+    let out = ScrollArea::vertical()
         .id_salt(("rc_inbox_list", cx.view.inbox_ui.tab as u8))
         .max_height((screen.height() * 0.7 - 56.0).max(160.0))
         .auto_shrink([false, true])
@@ -151,6 +155,11 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
                 }
             });
         });
+    // Faded into the popout at the scrolled edges, off its rounded corners (flat themes).
+    if flat {
+        let r = f32::from(pal.float_radius());
+        super::scroll_fades(ui, &out, out.inner_rect, (out.inner_rect.left() + r, out.inner_rect.right() - r), (pal.surface, pal.surface));
+    }
 }
 
 /// A header tab: tinted while selected or hovered.

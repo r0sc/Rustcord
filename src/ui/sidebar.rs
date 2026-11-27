@@ -334,7 +334,8 @@ fn demo_boost(state: &mut AppState) {
 /// (every vector icon over the window, `icons::sheet`), `no-tray` (Linux: the settings page as
 /// without a tray host, `user_settings/app.rs`), `press:<shortcut>` (that key combination,
 /// e.g. `Alt+Down`, pressed once at frame 14 where the focus is; `user_settings::parse` names),
-/// `ping` (3 s after start one mention reaches a server that is not open), `collapsed` (the open server's first category folded at start; a click opens it), `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
+/// `long-list` (40 local channels in the open server's first category), `scroll:<px>` (the channel list opens
+/// scrolled by that much), `ping` (3 s after start one mention reaches a server that is not open), `collapsed` (the open server's first category folded at start; a click opens it), `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
 /// not read; a click on Play / Pause flips it).
 pub(super) fn nav_demo(flag: &str) -> bool {
     nav_flags().split(',').any(|f| f.trim() == flag)
@@ -1178,9 +1179,12 @@ pub fn channel_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
 
     // The server's aura from its icon: a band under its name that fades out over 150 px, in the
     // card's 12 px corner (`paint_card`).
+    let card_top = ui.max_rect().top();
+    let mut aura = None;
     if let Some(a) = guild.and_then(|g| super::aura::of_guild(ui.ctx(), cx, g)) {
         let band = ui.max_rect().with_max_y(ui.max_rect().top() + 150.0);
         let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode);
+        aura = Some(a.gamma_multiply(alpha));
         ui.painter().add(super::aura::ramp(ui.ctx(), band, CornerRadius { nw: 12, ..Default::default() }, a.gamma_multiply(alpha), false));
     }
     // No fill: the card's rounded corner shows through.
@@ -1200,16 +1204,30 @@ pub fn channel_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     user_panel_space(ui, cx, "channel_list_panel_space");
 
     ui.spacing_mut().item_spacing.y = 2.0;
-    let area = egui::ScrollArea::vertical()
+    let flat = super::members::flat_fades(ui, cx);
+    let mut area = egui::ScrollArea::vertical()
         .id_salt(("channels", guild))
         .auto_shrink(false)
         .content_margin(egui::Margin { left: 0, right: 0, top: 12, bottom: 12 });
-    match guild {
-        Some(gid) => {
-            area.show(ui, |ui| guild_channels(ui, cx, gid));
-        }
-        None => dm_list(ui, cx, area.content_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 12 })),
+    if let Some(px) = nav_demo_value("scroll").and_then(|v| v.parse::<f32>().ok()) {
+        area = area.vertical_scroll_offset(px);
     }
+    let out = match guild {
+        Some(gid) => Some(area.show(ui, |ui| guild_channels(ui, cx, gid))),
+        None => dm_list(ui, cx, area.content_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 12 })),
+    };
+    // The list fades into the card at its scrolled edges; the top one takes the server's band along.
+    if let (true, Some(out)) = (flat, out) {
+        let side = cx.theme.colors.sidebar.to_color32();
+        let top = band_under(side, aura, out.inner_rect.top() + 10.0 - card_top);
+        super::scroll_fades(ui, &out, out.inner_rect, (out.inner_rect.left(), out.inner_rect.right()), (top, side));
+    }
+}
+
+/// The channel card's colour `from_top` px under its top: `sidebar` with the server's band (its
+/// colour at full strength) blended in as it fades out over 150 px (`channel_list`).
+fn band_under(sidebar: Color32, band: Option<Color32>, from_top: f32) -> Color32 {
+    band.map_or(sidebar, |b| sidebar.blend(b.gamma_multiply((1.0 - from_top / 150.0).clamp(0.0, 1.0))))
 }
 
 /// DM home header: a field that filters the DM list by name.
@@ -1234,7 +1252,25 @@ fn dm_search(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect) {
     ui.put(Rect::from_center_size(rect.center(), vec2(rect.width() - 20.0, 28.0)), edit);
 }
 
+/// RUSTCORD_NAV_DEMO=long-list: once, 40 local text channels "demo-1" .. "demo-40" under the open
+/// server's first category (`state.channels` only; nothing is sent).
+fn demo_long_list(state: &mut AppState, guild_id: Id) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    if !nav_demo("long-list") {
+        return;
+    }
+    ONCE.call_once(|| {
+        let Some(SidebarItem::Category { id: parent, .. }) = state.sidebar_channels(guild_id).into_iter().find(|i| matches!(i, SidebarItem::Category { .. })) else { return };
+        for n in 1..=40u64 {
+            let id = Id(9_000_000_000_000_000 + n);
+            let channel = crate::model::Channel { id, kind: crate::model::channel_type::GUILD_TEXT, guild_id: Some(guild_id), name: Some(format!("demo-{n}")), parent_id: Some(parent), position: 100 + n as i32, ..Default::default() };
+            state.channels.insert(id, channel);
+        }
+    });
+}
+
 fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
+    demo_long_list(cx.state, guild_id);
     let mut items = cx.state.sidebar_channels_with(guild_id, crate::plugins::sidebar::show_hidden());
     if cx.view.hide_muted.contains(&guild_id) {
         drop_muted(cx.state, &mut items);
@@ -1670,7 +1706,7 @@ fn voice_user_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, u: &VoiceU
 
 /// DM rows under a "Direct messages" header, filtered by the header field; closed DMs are
 /// left out until a new message arrives in them.
-fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) {
+fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) -> Option<egui::containers::scroll_area::ScrollAreaOutput<()>> {
     // Opening a closed DM (notification, quick restore of the last channel) lists it again.
     if let Some(open) = cx.state.selected_channel {
         cx.view.hidden_dms.remove(&open);
@@ -1688,13 +1724,13 @@ fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) {
         }
         dm_header(ui, cx, false);
         empty_state(ui, cx, 24.0, if query.is_empty() { "No direct messages yet. Start one from your friends list." } else { "No conversations match that name." });
-        return;
+        return None;
     }
     // Rows are uniform (Friends, Quests, [Message requests], ["Pinned", the pinned DMs],
     // "Direct messages", the rest): only the visible ones are laid out.
     let head = usize::from(pins > 0);
     let top = 2 + req;
-    area.show_rows(ui, DM_ROW_H, ids.len() + 3 + req + head, |ui, range| {
+    Some(area.show_rows(ui, DM_ROW_H, ids.len() + 3 + req + head, |ui, range| {
         for i in range {
             match i {
                 0 => friends_row(ui, cx, Home::Friends),
@@ -1706,7 +1742,7 @@ fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) {
                 i => dm_row(ui, cx, ids[i - top - 1 - head]),
             }
         }
-    });
+    }))
 }
 
 /// The DM ids as the list shows them (not closed, matching the filter, PinDMs' pinned ones on
@@ -2681,6 +2717,18 @@ mod tests {
         assert!(!pops(Some(1), 2, true, 5.0, 5.0), "muted");
         assert!(!pops(Some(1), 2, false, 1.0, 5.0), "the connection just changed");
         assert!(!pops(Some(1), 2, false, 5.0, 0.5), "popped a moment ago");
+    }
+
+    #[test]
+    fn the_top_fade_matches_the_band() {
+        let s = Color32::from_rgb(20, 20, 30);
+        let b = Color32::from_rgba_unmultiplied(200, 40, 40, 140);
+        assert_eq!(band_under(s, None, 40.0), s);
+        assert_eq!(band_under(s, Some(b), 0.0), s.blend(b));
+        assert_eq!(band_under(s, Some(b), 150.0), s);
+        assert_eq!(band_under(s, Some(b), 400.0), s);
+        let mid = band_under(s, Some(b), 75.0);
+        assert!(mid != s && mid != s.blend(b), "between: a weaker band");
     }
 
     #[test]

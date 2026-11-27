@@ -49,7 +49,8 @@ fn guild_members(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
         return;
     }
     crate::plugins::people::member_count(ui, cx, guild_id);
-    egui::ScrollArea::vertical()
+    let flat = flat_fades(ui, cx);
+    let out = egui::ScrollArea::vertical()
         .id_salt(("members", guild_id))
         .auto_shrink(false)
         .show_rows(ui, ROW_H, total, |ui, range| {
@@ -71,6 +72,25 @@ fn guild_members(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
                 }
             }
         });
+    fade_edges(ui, cx, &out, flat);
+}
+
+/// Flat themes fade a long list into its pane at the scrolled edges (`scroll_fades`): egui's own
+/// fade goes off then (gradient themes keep it: their panes show the window gradient).
+pub(super) fn flat_fades(ui: &mut egui::Ui, cx: &UiCx<'_>) -> bool {
+    let flat = cx.theme.gradient.is_none();
+    if flat {
+        ui.spacing_mut().scroll.fade.strength = 0.0;
+    }
+    flat
+}
+
+/// The member list's fades, in the sidebar colour.
+fn fade_edges<R>(ui: &egui::Ui, cx: &UiCx<'_>, out: &egui::containers::scroll_area::ScrollAreaOutput<R>, flat: bool) {
+    if flat {
+        let side = cx.theme.colors.sidebar.to_color32();
+        super::scroll_fades(ui, out, out.inner_rect, (out.inner_rect.left(), out.inner_rect.right()), (side, side));
+    }
 }
 
 /// Group DM: me plus the recipients.
@@ -82,7 +102,8 @@ fn group_dm_members(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         .into_iter()
         .chain(ch.recipient_ids.iter().filter(|&&id| Some(id) != my_id).filter_map(|id| cx.state.users.get(id).cloned()))
         .collect();
-    egui::ScrollArea::vertical().id_salt("group_dm_members").auto_shrink(false).show_rows(
+    let flat = flat_fades(ui, cx);
+    let out = egui::ScrollArea::vertical().id_salt("group_dm_members").auto_shrink(false).show_rows(
         ui,
         ROW_H,
         users.len() + 1,
@@ -95,6 +116,7 @@ fn group_dm_members(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
             }
         },
     );
+    fade_edges(ui, cx, &out, flat);
 }
 
 /// Section header text: role name for hoisted-role groups.

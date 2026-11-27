@@ -348,7 +348,11 @@ fn popout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id) {
             return;
         }
         let mut open = None;
-        ScrollArea::vertical().id_salt(("rc_threads_list", ch.0)).max_height(max_h).auto_shrink([false, true]).show_rows(ui, LIST_ROW_H, ids.len(), |ui, range| {
+        let flat = cx.theme.gradient.is_none();
+        if flat {
+            ui.spacing_mut().scroll.fade.strength = 0.0;
+        }
+        let out = ScrollArea::vertical().id_salt(("rc_threads_list", ch.0)).max_height(max_h).auto_shrink([false, true]).show_rows(ui, LIST_ROW_H, ids.len(), |ui, range| {
             ui.spacing_mut().item_spacing.y = 0.0;
             let at_end = range.end >= ids.len();
             for &t in &ids[range] {
@@ -364,6 +368,9 @@ fn popout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, ch: Id) {
                 cx.cmd.send(Command::Social(SocialCommand::FetchThreads { channel_id: ch, list: next }));
             }
         });
+        if flat {
+            super::scroll_fades(ui, &out, out.inner_rect, (out.inner_rect.left(), out.inner_rect.right()), (pal.surface, pal.surface));
+        }
         if let Some(e) = error.filter(|_| !loading) {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(e).size(pal.meta()).color(pal.danger));
