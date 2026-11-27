@@ -204,6 +204,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
 
     let row_h = ui.text_style_height(&egui::TextStyle::Body);
     let edit_id = ui.make_persistent_id(("rc_composer", ch.0));
+    super::tabs::note_composer(&ctx, ch, edit_id);
     // QuickMention's click (messages.rs) lands in the box of its channel.
     if ctx.data(|d| d.get_temp::<(Id, String, String)>(mention_queue_id()).is_some_and(|q| q.0 == ch))
         && let Some((_, readable, wire)) = ctx.data_mut(|d| d.remove_temp::<(Id, String, String)>(mention_queue_id()))
@@ -447,7 +448,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
         ctx.request_repaint();
     } else if up && empty && resp.has_focus() {
         edit_last(cx, ch);
-    } else if want_focus && (panel || panel_box.is_none()) {
+    } else if super::tabs::take_focus_request(&ctx, edit_id) || (want_focus && (panel || panel_box.is_none())) {
         // A thread panel opening beside the chat takes the focus.
         resp.request_focus();
     }

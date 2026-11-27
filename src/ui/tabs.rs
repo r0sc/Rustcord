@@ -190,7 +190,7 @@ pub(super) fn menu_items(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     if cx.state.selected_channel == Some(id) || !(ch.is_text_chat() || ch.kind == crate::model::channel_type::GUILD_FORUM) {
         return;
     }
-    let (split, text) = (ch.is_text_chat() && !ch.is_thread(), Pal::new(cx.theme).text);
+    let (split, text) = (ch.is_text_chat() && !ch.is_thread() && cx.state.selected_channel.is_some(), Pal::new(cx.theme).text);
     let ctx = ui.ctx().clone();
     if menu_item(ui, "Open in new tab", MenuIcon::Icon(Icon::Plus), text) {
         open(&ctx, cx, id);
@@ -272,7 +272,7 @@ fn tabs(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, bar: Rect) {
         let hot = ui.rect_contains_pointer(rect) && drag.is_none() || held.is_some();
         let x_rect = Rect::from_center_size(pos2(rect.right() - 6.0 - 10.0, rect.center().y), Vec2::splat(20.0));
         let show_x = hot || selected;
-        let x_resp = show_x.then(|| ui.interact(x_rect, ui.make_persistent_id(("rc_tab_x", ch.0)), Sense::click()));
+        let x_resp = show_x.then(|| ui.interact(x_rect, ui.make_persistent_id(("rc_tab_x", ch.0)), Sense::CLICK)); // no focus stop: Delete closes the focused tab
         let x_hot = x_resp.as_ref().is_some_and(|r| r.hovered());
         if resp.drag_started()
             && let Some(p) = pointer
@@ -437,10 +437,32 @@ pub(super) fn split_panel(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id) {
     });
 }
 
+fn composer_key(ch: Id) -> egui::Id {
+    egui::Id::unique(("rc_composer_of", ch.0))
+}
+
+/// The composer calls this every pass, so a press in its pane can focus it.
+pub(super) fn note_composer(ctx: &egui::Context, ch: Id, edit: egui::Id) {
+    ctx.data_mut(|d| d.insert_temp(composer_key(ch), edit));
+}
+
+fn focus_request_key() -> egui::Id {
+    egui::Id::unique("rc_composer_focus")
+}
+
+/// Whether a click in this composer's pane asked for its focus (taken once).
+pub(super) fn take_focus_request(ctx: &egui::Context, edit: egui::Id) -> bool {
+    ctx.data_mut(|d| d.get_temp::<egui::Id>(focus_request_key()).filter(|e| *e == edit).inspect(|_| d.remove::<egui::Id>(focus_request_key())).is_some())
+}
+
+fn composer_id(ctx: &egui::Context, ch: Id) -> Option<egui::Id> {
+    ctx.data(|d| d.get_temp(composer_key(ch)))
+}
+
 /// Which pane has the focus: the one last pressed in, or where the keyboard focus just moved
 /// (Tab). `split`: its rect (None = no split: the main chat). `main`: the open chat's area. A
 /// press that leaves the keyboard focus in the other pane's box takes it away from there.
-pub(super) fn track_focus(ctx: &egui::Context, view: &mut ViewState, split: Option<Rect>, main: Rect) {
+pub(super) fn track_focus(ctx: &egui::Context, view: &mut ViewState, split: Option<Rect>, main: Rect, chats: (Option<Id>, Option<Id>)) {
     let Some(split) = split else {
         (view.tabs_ui.split_focus, view.tabs_ui.focused) = (false, None);
         return;
@@ -458,11 +480,24 @@ pub(super) fn track_focus(ctx: &egui::Context, view: &mut ViewState, split: Opti
             && pane(r.center()).is_some_and(|other| other != in_split)
         {
             ctx.memory_mut(|m| m.surrender_focus(id));
+            focus = None;
         }
     } else if focus != t.focused
         && let Some(in_split) = focus_rect.and_then(|r| pane(r.center()))
     {
         t.split_focus = in_split;
+    }
+    // A click that hit no input in the pane gives its composer the keyboard. On the click (the
+    // release), not the press: a box clicked away from gives up its focus on the click.
+    let clicked = ctx.input(|i| i.pointer.any_click().then(|| i.pointer.interact_pos()).flatten());
+    if focus.is_none()
+        && let Some(in_split) = clicked.and_then(pane)
+        && let Some(edit) = (if in_split { chats.1 } else { chats.0 }).and_then(|c| composer_id(ctx, c))
+    {
+        // Asked of the composer itself (it must be drawn after the request to keep the focus).
+        ctx.data_mut(|d| d.insert_temp(focus_request_key(), edit));
+        ctx.request_repaint();
+        focus = Some(edit);
     }
     t.focused = focus;
 }
@@ -545,6 +580,17 @@ mod tests {
         assert_eq!((list.clone(), active), (ids(&[1, 2, 3, 4]), 1));
         move_tab(&mut list, &mut active, 1, 2);
         assert_eq!((list, active), (ids(&[1, 3, 2, 4]), 2));
+    }
+
+    #[test]
+    fn narrow_split_keeps_the_focus() {
+        // Too narrow for two panes: the split fills the page (`main` empty) and keeps the focus.
+        let (ctx, mut view) = (egui::Context::default(), ViewState::default());
+        view.tabs_ui.split_focus = true;
+        let page = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 600.0));
+        ctx.run_ui(Default::default(), |ui| track_focus(ui.ctx(), &mut view, Some(page), Rect::NOTHING, (Some(Id(1)), Some(Id(2))))).textures_delta.clear();
+        assert!(view.tabs_ui.split_focus);
+        assert_eq!(focused_channel(Some(Id(1)), Some(Id(2)), view.tabs_ui.split_focus), Some(Id(2)));
     }
 
     #[test]

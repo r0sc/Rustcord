@@ -1401,6 +1401,7 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
         pickers::close_if_open(ui.ctx(), cx);
         // The DM home: Friends, or Quests / Message requests (the rows under Friends).
         let (quests, requests) = (cx.view.quests_ui.open, cx.view.requests_ui.open);
+        cx.view.tabs_ui.split_focus = false; // a split is not on screen here
         egui::CentralPanel::default().frame(page).show(ui, |ui| {
             if quests {
                 quests::show(ui, cx)
@@ -1413,6 +1414,7 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
     } else if call::is_open(cx.state) && !dm_call::in_chat(cx.state) {
         // The open channel is my call: the stage (call.rs), with its chat column (`right`). A DM
         // call stays above the DM's chat (dm_call.rs).
+        cx.view.tabs_ui.split_focus = false; // a split is not on screen here
         call::show(ui, cx, right);
     } else {
         let thread = cx.view.thread_panel;
@@ -1448,11 +1450,11 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
                 .rect;
             ui.painter().vline(r.left() + 0.5, r.y_range(), edge);
             split_rect = Some(r);
-        }
-        // The tab bar and the header span the page and the member list / search results, like the web client's title section.
             // The toasts keep to the chat pane left of it (the lists may be folded or resized).
             let pass = ui.ctx().cumulative_pass_nr();
             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique("rc_split_w"), (r.width(), pass)));
+        }
+        // The tab bar and the header span the page and the member list / search results, like the web client's title section.
         frame_stats::time("+tabs", || tabs::bar(ui, cx));
         frame_stats::time("+header", || messages::chat_header(ui, cx));
         // Open search results take the member list's place, so does the thread panel.
@@ -1471,7 +1473,7 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
             ui.painter().vline(r.left() + 0.5, r.y_range(), edge);
         }
         let _t = frame_stats::scope("+chat");
-        egui::CentralPanel::default().frame(page).show(ui, |ui| match (thread, split, forum::open_forum(cx.state)) {
+        let central = egui::CentralPanel::default().frame(page).show(ui, |ui| match (thread, split, forum::open_forum(cx.state)) {
             // Too narrow for a split: the thread panel or the split pane takes the page (and the focus).
             (Some(t), _, _) if right == 0.0 => threads::panel(ui, cx, t),
             (None, Some(s), _) if right == 0.0 => {
@@ -1481,8 +1483,12 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
             (_, _, Some(f)) => forum::show(ui, cx, f),
             _ => focus_column(ui, lists, |ui| messages::show(ui, cx)),
         });
-        let main = egui::Rect::from_min_max(egui::pos2(list.right(), origin.top()), egui::pos2(split_rect.map_or(origin.right(), |r| r.left()), origin.bottom()));
-        tabs::track_focus(ui.ctx(), cx.view, split_rect, main);
+        // Too narrow for a side-by-side split: the split pane is the whole page.
+        let mut main = egui::Rect::from_min_max(egui::pos2(list.right(), origin.top()), egui::pos2(split_rect.map_or(origin.right(), |r| r.left()), origin.bottom()));
+        if split.is_some() && right == 0.0 && thread.is_none() {
+            (split_rect, main) = (Some(central.response.rect), egui::Rect::NOTHING);
+        }
+        tabs::track_focus(ui.ctx(), cx.view, split_rect, main, (cx.state.selected_channel, cx.state.split_channel));
     }
     drop(_t);
     // The card's top hairline continues over the message area and the member list.
