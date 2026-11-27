@@ -406,7 +406,9 @@ pub(super) fn stage(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id) {
     // The tiles arrive one after another when the stage opens (not drawn last pass): armed here, run by `arrives`.
     let (ctx, pass) = (ui.ctx().clone(), ui.ctx().cumulative_pass_nr());
     let (seen, tiles_in) = (egui::Id::unique("rc_stage_seen"), egui::Id::unique("rc_tiles_in"));
-    if ctx.data(|d| d.get_temp::<u64>(seen)).is_none_or(|last| last + 1 < pass) {
+    // Only the guild call stage: the call area above a DM keeps its plain tiles and no light.
+    let lit = cx.state.channels.get(&ch).is_some_and(|c| c.guild_id.is_some());
+    if lit && ctx.data(|d| d.get_temp::<u64>(seen)).is_none_or(|last| last + 1 < pass) {
         super::motion::stagger(&ctx, tiles_in, false, 0);
     }
     ctx.data_mut(|d| d.insert_temp(seen, pass));
@@ -417,6 +419,25 @@ pub(super) fn stage(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id) {
     match focus {
         Some(i) => focused(ui, cx, &tiles, i, area, &mut glow),
         None => grid_view(ui, cx, &tiles, area, &mut glow),
+    }
+    if !lit {
+        glow.clear();
+    }
+    if !glow.is_empty() {
+        // The light fades to the stage at its top and bottom edge instead of ending in a cut line.
+        let ramp = |r, dir| super::aura::ramp(ui.ctx(), r, 0.into(), STAGE, dir);
+        let top = Rect::from_min_size(rect.min, vec2(rect.width(), pad));
+        let mut low = Rect::from_min_max(pos2(rect.left(), bar.top() - 16.0), pos2(rect.right(), bar.top()));
+        low.min.y = low.min.y.max(top.bottom());
+        glow.push(ramp(top, false));
+        // The ramp runs opaque -> clear downwards; the bottom band needs the reverse, so a mesh.
+        let mut mesh = egui::Mesh::default();
+        for (pos, color) in [(low.left_top(), Color32::TRANSPARENT), (low.right_top(), Color32::TRANSPARENT), (low.right_bottom(), STAGE), (low.left_bottom(), STAGE)] {
+            mesh.colored_vertex(pos, color);
+        }
+        mesh.add_triangle(0, 1, 2);
+        mesh.add_triangle(0, 2, 3);
+        glow.push(Shape::mesh(mesh));
     }
     lights.set(slot, Shape::Vec(glow));
     controls(ui, cx, bar);
