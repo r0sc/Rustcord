@@ -811,14 +811,16 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
             p.rect_filled(place, CornerRadius { nw: 14, sw: 14, ne: 4, se: 4 }, tk.hover);
         }
         let mid = pill.center().y;
-        p.circle_filled(pos2(pill.left() + 12.0 + 4.0, mid), 4.0 * pop, tk.attention.lerp_to_gamma(tk.positive, dot));
+        // The text is laid out for the final width: cut it at the buttons while the pill catches up.
+        let q = p.with_clip_rect(place.intersect(p.clip_rect()));
+        q.circle_filled(pos2(pill.left() + 12.0 + 4.0, mid), 4.0 * pop, tk.attention.lerp_to_gamma(tk.positive, dot));
         let mut x = pill.left() + 12.0 + 8.0 + 8.0;
-        p.galley(pos2(x, mid - word_g.size().y / 2.0), word_g.clone(), word_color);
+        q.galley(pos2(x, mid - word_g.size().y / 2.0), word_g.clone(), word_color);
         x += word_g.size().x + 8.0;
         let chan = if chan_w < chan_full.size().x { one_line(ui, info.place.clone(), super::semibold(14.0), text, chan_w) } else { chan_full.clone() };
-        p.galley(pos2(x, mid - chan.size().y / 2.0), chan.clone(), text);
+        q.galley(pos2(x, mid - chan.size().y / 2.0), chan.clone(), text);
         if let (true, Some(g)) = (show_server, &server_full) {
-            p.galley(pos2(x + chan.size().x + 6.0, mid - g.size().y / 2.0), g.clone(), muted);
+            q.galley(pos2(x + chan.size().x + 6.0, mid - g.size().y / 2.0), g.clone(), muted);
         }
         if live {
             let name = match &info.server {
