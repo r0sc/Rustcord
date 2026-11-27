@@ -630,6 +630,8 @@ zlib-stream compression. REST requests follow the per-bucket and global rate lim
 
 1. Set `version` in `Cargo.toml` (plain `X.Y.Z`, higher than the last release), run
    `cargo build` so `Cargo.lock` follows (CI builds with `--locked`), and commit both.
+   In the same commit, clear the `next` flags in `site/plugins.json` and the "Next release"
+   chips in `site/index.html`, and retake `docs/screenshots/` if the app changed.
 2. Tag it with the same version and push the commit and the tag:
    `git tag v0.1.1 && git push origin main v0.1.1`.
 3. The release workflow builds the three systems and writes `latest.json` with
