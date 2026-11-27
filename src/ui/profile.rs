@@ -113,6 +113,9 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     // it became visible, so a card that glides to the next person does not start over.
     super::motion::own(ctx, layer);
     let secs = super::motion::open_for(ctx, layer, super::motion::SPRING_T);
+    // The corner nearest the row is the speech corner (§5, §9.6); the last pass's rect says whether the window pushed the card off its anchor.
+    let cr = speech(t.pivot, r, egui::AreaState::load(ctx, layer.id).map(|s| s.rect()), at);
+    let aura = look.aura.then(|| super::aura::of(ctx, cx, &user, guild_id)).flatten();
     let resp = egui::Area::new(egui::Id::unique("rc_profile_card"))
         .order(Order::Foreground)
         .pivot(t.pivot)
@@ -122,16 +125,19 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
         .constrain_to(bounds)
         .show(ctx, |ui| {
             let behind = ui.ctx().layer_painter(ui.layer_id()).add(egui::Shape::Noop);
+            let glow_slot = ui.ctx().layer_painter(ui.layer_id()).add(egui::Shape::Noop);
             // A themed card gets the theme's gradient outline instead (`theme_outline`); an aura the edge.
             let stroke = match look.theme.filter(|_| !look.aura) {
                 Some(_) => Stroke::NONE,
+                // An aura card's edge is the lit one, drawn over the content.
+                None if aura.is_some() => Stroke::NONE,
                 // High contrast floats have no shadow, a 1.5 px muted edge instead.
                 None if pal.tk.mode == crate::theme::Mode::HighContrast => Stroke::new(1.5, pal.muted),
                 None => Stroke::new(1.0, pal.tk.rule),
             };
             let framed = Frame::new()
                 .fill(pal.surface)
-                .corner_radius(r)
+                .corner_radius(cr)
                 .stroke(stroke)
                 .shadow(shadow)
                 .show(ui, |ui| {
@@ -144,7 +150,7 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
                     let max_h = bounds.height() - 2.0;
                     // Fixed width like Discord's: content never widens the card.
                     egui::ScrollArea::vertical().max_width(WIDTH).max_height(max_h).min_scrolled_height(max_h).show(ui, |ui| {
-                        banner_bottom = card(ui, cx, &pal, &user, member.as_ref(), guild_id, (is_me, account), look.theme, r, secs);
+                        banner_bottom = card(ui, cx, &pal, &user, member.as_ref(), guild_id, (is_me, account), look.theme, cr, secs);
                         part(ui, secs, 3, |ui| {
                             if account {
                                 // Status picker, custom status, Edit Profile (user_settings.rs).
@@ -155,14 +161,26 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
                         });
                     });
                     if let Some(colors) = look.theme {
-                        ui.painter().set(theme_slot, cosmetics::theme_shapes(ui.ctx(), "card", ui.min_rect(), r, colors, banner_bottom, pal.dark));
+                        ui.painter().set(theme_slot, cosmetics::theme_shapes(ui.ctx(), "card", ui.min_rect(), cr, colors, banner_bottom, pal.dark));
                     }
                 });
             let rect = framed.response.rect;
             if let Some(colors) = look.theme.filter(|_| !look.aura) {
-                ui.painter().add(cosmetics::theme_outline(rect, r, colors));
+                ui.painter().add(cosmetics::theme_outline(rect, cr, colors));
             } else {
                 sheen(ui.painter(), rect, f32::from(r), &pal.tk);
+            }
+            // Their light under the card (a tinted shadow in Lilac) and the edge lit in their colour.
+            if let Some(a) = aura {
+                let k = match cx.theme.tokens().mode {
+                    crate::theme::Mode::Dark => 0.48,
+                    crate::theme::Mode::Light => 0.14,
+                    crate::theme::Mode::HighContrast => 0.0,
+                };
+                if k > 0.0 {
+                    ui.ctx().layer_painter(ui.layer_id()).set(glow_slot, super::light::soft_glow(rect.translate(vec2(0.0, 10.0)).shrink(6.0), f32::from(r) - 6.0, a.gamma_multiply(k), 56.0));
+                }
+                ui.painter().add(super::light::edge_light(rect, cr, a, pal.tk.rule));
             }
             let animate = cosmetics::animates(cx, ui.rect_contains_pointer(rect));
             look.finish(ui, cx.images, rect, r, behind, cosmetics::shown_for(ui.ctx(), ("card", user.id)), animate);
@@ -179,6 +197,26 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     }
 }
 
+/// The card's corners: `r` each, but the corner of `pivot` is the 2 px speech corner when the card
+/// (`last` pass's rect) still sits on its anchor `at` (the window edge did not push it more than
+/// 12 px). Centred pivots have none.
+fn speech(pivot: Align2, r: u8, last: Option<Rect>, at: egui::Pos2) -> CornerRadius {
+    let (top, bottom) = (pivot.y() == egui::Align::Min, pivot.y() == egui::Align::Max);
+    let edge = if top { last.map(|l| l.top()) } else { last.map(|l| l.bottom()) };
+    if !(top || bottom) || pivot.x() == egui::Align::Center || edge.is_some_and(|e| (e - at.y).abs() > 12.0) {
+        return CornerRadius::same(r);
+    }
+    let mut cr = CornerRadius::same(r);
+    let corner = match (top, pivot.x() == egui::Align::Max) {
+        (true, true) => &mut cr.ne,
+        (true, false) => &mut cr.nw,
+        (false, true) => &mut cr.se,
+        (false, false) => &mut cr.sw,
+    };
+    *corner = 2;
+    cr
+}
+
 /// A part of the card arriving: its `k`-th stagger after the card opened, rising 4 px and fading in over
 /// FAST (`secs`: time since the card opened; done by 240 ms at k = 3).
 fn part<R>(ui: &mut egui::Ui, secs: f32, k: usize, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
@@ -191,10 +229,10 @@ fn part<R>(ui: &mut egui::Ui, secs: f32, k: usize, add: impl FnOnce(&mut egui::U
 /// cosmetics (ui/cosmetics.rs): decoration, name style, guild tag, badges; `theme`: the
 /// profile theme the caller paints under it. Returns the banner's bottom edge.
 #[allow(clippy::too_many_arguments, reason = "one call site; the card's whole context")]
-fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Option<&Member>, guild_id: Option<Id>, (is_me, account): (bool, bool), theme: Option<(u32, u32)>, r: u8, secs: f32) -> f32 {
+fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Option<&Member>, guild_id: Option<Id>, (is_me, account): (bool, bool), theme: Option<(u32, u32)>, cr: CornerRadius, secs: f32) -> f32 {
     ui.set_width(WIDTH);
     ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
-    let top = CornerRadius { nw: r, ne: r, sw: 0, se: 0 };
+    let top = CornerRadius { sw: 0, se: 0, ..cr };
 
     let (banner_url, fill) = banner(cx, user, guild_id, is_me);
     let banner_h = if banner_url.is_some() { 106.0 } else { 60.0 };
@@ -889,6 +927,16 @@ mod tests {
         let uv = cover_uv(vec2(400.0, 100.0), vec2(100.0, 100.0));
         assert!((uv.min.x - 0.375).abs() < 1e-5 && (uv.max.x - 0.625).abs() < 1e-5);
         assert_eq!(cover_uv(Vec2::ZERO, vec2(1.0, 1.0)), full);
+    }
+
+    #[test]
+    fn the_speech_corner_points_at_the_row() {
+        let (at, card) = (pos2(500.0, 100.0), |top: f32| Some(Rect::from_min_size(pos2(160.0, top), vec2(340.0, 300.0))));
+        assert_eq!(speech(Align2::RIGHT_TOP, 16, card(108.0), at), CornerRadius { ne: 2, ..CornerRadius::same(16) });
+        assert_eq!(speech(Align2::LEFT_TOP, 16, card(100.0), at), CornerRadius { nw: 2, ..CornerRadius::same(16) });
+        assert_eq!(speech(Align2::RIGHT_TOP, 16, card(140.0), at), CornerRadius::same(16), "pushed 40 px off its anchor");
+        assert_eq!(speech(Align2::CENTER_TOP, 16, card(100.0), at), CornerRadius::same(16));
+        assert_eq!(speech(Align2::LEFT_BOTTOM, 16, card(-200.0), at), CornerRadius { sw: 2, ..CornerRadius::same(16) }, "bottom edge 100 on the anchor");
     }
 
     #[test]

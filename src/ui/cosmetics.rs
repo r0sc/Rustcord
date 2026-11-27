@@ -512,7 +512,7 @@ pub fn theme_ring(primary: u32, dark: bool) -> Color32 {
 /// The theme gradient (primary at the top → accent at the bottom) over `card` with `radius`
 /// corners, and the body overlay below `body_top` (black 60 % in a dark card, white in a light
 /// one: `theme_pal`'s mode). `salt`: one gradient texture per surface.
-pub fn theme_shapes(ctx: &egui::Context, salt: &str, card: Rect, radius: u8, (primary, accent): (u32, u32), body_top: f32, dark: bool) -> Shape {
+pub fn theme_shapes(ctx: &egui::Context, salt: &str, card: Rect, radius: impl Into<CornerRadius>, (primary, accent): (u32, u32), body_top: f32, dark: bool) -> Shape {
     let id = egui::Id::unique(("rc_theme_tex", salt));
     let cached = ctx.data(|d| d.get_temp::<((u32, u32), egui::TextureHandle)>(id)).filter(|(k, _)| *k == (primary, accent));
     let tex = cached.map(|(_, t)| t).unwrap_or_else(|| {
@@ -523,20 +523,23 @@ pub fn theme_shapes(ctx: &egui::Context, salt: &str, card: Rect, radius: u8, (pr
     });
     // Texel centres of the 1×2 texture: an exact linear gradient top to bottom.
     let uv = Rect::from_min_max(pos2(0.0, 0.25), pos2(1.0, 0.75));
+    let radius = radius.into();
     let gradient = Shape::Rect(RectShape::filled(card, radius, Color32::WHITE).with_texture(tex.id(), uv));
     // On the pixel grid like the banner fade above it (`profile::paint_banner`).
     let body_top = egui::emath::GuiRounding::round_to_pixels(body_top, ctx.pixels_per_point());
     let body = Rect::from_min_max(pos2(card.left(), body_top.clamp(card.top(), card.bottom())), card.max);
-    let overlay = Shape::rect_filled(body, CornerRadius { nw: 0, ne: 0, sw: radius, se: radius }, theme_veil(dark));
+    let overlay = Shape::rect_filled(body, CornerRadius { nw: 0, ne: 0, sw: radius.sw, se: radius.se }, theme_veil(dark));
     Shape::Vec(vec![gradient, overlay])
 }
 
 /// A themed card's border like Discord's: primary at the top → accent at the bottom, 3 px inside
-/// `card`'s `radius` corners. Painted over the card's content (the banner too).
-pub fn theme_outline(card: Rect, radius: u8, (primary, accent): (u32, u32)) -> Shape {
+/// `card`'s `radius` corners (each its own: a speech corner). Painted over the card's content (the banner too).
+pub fn theme_outline(card: Rect, radius: impl Into<CornerRadius>, (primary, accent): (u32, u32)) -> Shape {
     const W: f32 = 3.0;
     let mut pts = Vec::new();
-    let path = egui::epaint::RoundedRect::new(card.shrink(W / 2.0), (radius as f32 - W / 2.0).max(0.0));
+    let r = radius.into();
+    let inner = |c: u8| (f32::from(c) - W / 2.0).max(0.0);
+    let path = egui::epaint::RoundedRect::new(card.shrink(W / 2.0), egui::epaint::CornerRadiusF32 { nw: inner(r.nw), ne: inner(r.ne), sw: inner(r.sw), se: inner(r.se) });
     egui::epaint::tessellator::path::rounded_rectangle(&mut pts, path);
     let (a, b) = (rgb(primary), rgb(accent));
     let stroke = egui::epaint::PathStroke::new_uv(W, move |bb, p| a.lerp_to_gamma(b, egui::remap_clamp(p.y, bb.y_range(), 0.0..=1.0)));
