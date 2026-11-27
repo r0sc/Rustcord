@@ -309,9 +309,12 @@ fn empty_state(ui: &mut egui::Ui, pal: &Pal, icon: Icon, heading: &str, text: &s
     ui.add_space((ui.available_height() * 0.3 - 76.0).max(24.0));
     ui.vertical_centered(|ui| {
         ui.spacing_mut().item_spacing.y = 4.0;
-        let rings = ui.painter().add(egui::Shape::Noop);
+        // Clipped to above the heading, so the rings read as a halo over the tile, not as lines through the text.
+        let top = ui.cursor().top();
+        let halo = ui.painter().with_clip_rect(ui.clip_rect().intersect(egui::Rect::everything_above(top + 64.0 + 8.0)));
+        let rings = halo.add(egui::Shape::Noop);
         let tile = super::messages::hero_tile(ui, pal, (icon, None));
-        ui.painter().set(rings, super::messages::hero_rings(tile.center(), pal.tk.rule));
+        halo.set(rings, super::messages::hero_rings(tile.center(), pal.tk.rule));
         ui.add_space(12.0);
         ui.label(RichText::new(heading).font(FontId::new(pal.heading(), crate::theme::semibold_family())).color(pal.text));
         ui.add(Label::new(RichText::new(text).size(pal.meta()).color(pal.muted)).wrap());
