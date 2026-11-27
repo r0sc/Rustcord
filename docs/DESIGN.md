@@ -358,7 +358,12 @@ Ending cleanly (0 % idle CPU):
 ### 7.1 Sound
 
 Rustcord's own sounds are synthesized in code (`src/sounds/synth.rs`), never files. They follow
-the same ux-motion principles as the motion above.
+the same ux-motion principles as the motion above. Exception (approved): the user's own WAV or
+Ogg Opus file can replace the message, mention and incoming call sound, everywhere or for one
+server, channel or DM (Settings > Notifications > Custom sounds). Rustcord ships no sound files;
+without one, the synthesized sound plays. A file over 5 MB is refused, only its first 10 s play
+(10 ms linear end fade), it is read and decoded locally and never uploaded; a looping ring loops
+the file (still capped at 60 s and stopped within one pass of Accept / Decline).
 
 - Families: bell for chat, rings and streams; knock (bell plus a soft tick) for voice
   presence; click for switches. Pitches are D major pentatonic (D4 to F#6).
@@ -1394,9 +1399,10 @@ it. If it is built later, use Secondary buttons 40 tall with a 20 px icon, in a 
 - Selected nav row: `selected` fill only.
 - Page title in the title role.
 - Section heading in the heading role with 32 above. No rule under it (ui/mod.rs:1292 `section`).
-- Notifications page order: Desktop notifications, Flash the taskbar, Quiet hours, (Keyword alerts), Sounds, Discord's synced groups, Servers. "Quiet hours": a switch row; when on, "From" [time] "to" [time] (two 96 px combos in 30-minute steps), then seven day check rows (Mon to Sun). An error line in `danger`, meta size, under them: "Pick an end time different from the start." or "Pick at least one day."
+- Notifications page order: Desktop notifications, Flash the taskbar, Quiet hours, (Keyword alerts), Sounds, Custom sounds, Discord's synced groups, Servers. "Quiet hours": a switch row; when on, "From" [time] "to" [time] (two 96 px combos in 30-minute steps), then seven day check rows (Mon to Sun). An error line in `danger`, meta size, under them: "Pick an end time different from the start." or "Pick at least one day."
 - Account popout: directly under the status row a pause row ("Pause notifications", "Paused until 14:30" or "Quiet hours until 07:00"), a bell (muted: bell off) at x+16 and the submenu arrow. Its flyout (same helper as the status flyout, 188 px, 32 px items): "For 1 hour", "Until tomorrow", and "Resume notifications" only while paused. A pick toasts the result and closes the popout.
 - Status flyout presets: under the four statuses a separator, then the presets (32 px rows, emoji at x+14, text at x+30, check while it is my status, × on hover "Remove preset", tooltip "Clears after …"); a click sets it and closes the popout. Set a custom status: "Save as preset" (secondary) at the left of the footer.
+- Notifications > Custom sounds: section "Custom sounds" with a hint ("Your own WAV or Ogg Opus files. Only the first 10 seconds play. Where there's none, Rustcord's sound plays."), a "Where" row (220 px combo: Everywhere, then every place with a file by name, plus the place a menu opened; meta "Right-click a server, channel or DM and pick Custom sounds to add it."), then a setting row each for Message, Mention and Incoming call (the call only for Everywhere and DMs). Meta: the file's name, else "Rustcord's sound" (Everywhere) or "Same as everywhere". Controls right to left: 28 px play button, 8 px, × "Remove this file" (only while a file is set), 8 px, secondary "Choose file" (WAV or Ogg Opus; toasts "This file is over 5 MB. Pick a shorter sound." / "Rustcord can't play this file. Pick a WAV or Ogg Opus file."). The context menus of servers, channels and DMs have a "Custom sounds" item (no icon, after Notifications) that opens it for that place.
 - Notifications > Keyword alerts: section "Keyword alerts" with a hint, then a 320 px field ("Add a word or phrase", Enter adds and keeps focus) and a secondary "Add" button; errors in `danger` meta under it. One setting row per keyword (the word as title, a "Whole word" check and a × on the right). Once there is a keyword: an "All servers" switch row; off, a row per server or channel (× on the right) and an add row (Server combo, Channel combo with "Whole server", "Add").
 - Content & social > Hidden words: like Keyword alerts without the places (section "Hidden words" first, a hint, the 320 px field + Add, rows with Whole word and ×). Local only; the words apply everywhere, DMs included.
 - Notifications > Sounds: section "Sounds", the "Play sounds" switch row, a "Volume" label with a slider (a release plays the message sound), then a row per sound (title, optional meta) with a 28 px play button, 8 px, and a switch on the right. Play buttons are disabled while deafened (a hint says so); the rows are disabled while Play sounds is off.

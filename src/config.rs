@@ -188,11 +188,19 @@ pub struct SoundSettings {
     /// `sounds::Sound::key`s switched off. Strings, so a removed or renamed sound never breaks
     /// loading settings.toml; unknown keys are ignored.
     pub off: Vec<String>,
+    /// Custom sounds everywhere: `sounds::Sound::key` -> absolute file path. Only the keys of
+    /// `Sound::CUSTOM` are read. The user's own file, never copied or uploaded.
+    pub files: std::collections::BTreeMap<String, String>,
+    /// Custom sounds for one server, channel or DM (its id): key -> path. Beats `files`.
+    pub places: std::collections::BTreeMap<crate::model::Id, std::collections::BTreeMap<String, String>>,
 }
+
+/// Bound of `SoundSettings::places`.
+pub const MAX_SOUND_PLACES: usize = 50;
 
 impl Default for SoundSettings {
     fn default() -> Self {
-        Self { enabled: true, volume: 70, off: Vec::new() }
+        Self { enabled: true, volume: 70, off: Vec::new(), files: Default::default(), places: Default::default() }
     }
 }
 
@@ -507,6 +515,15 @@ off = [\"mention\", \"gone\"]
 volume = 30
 ").unwrap();
         assert_eq!((s.sounds.volume, s.sounds.off.as_slice()), (30, ["mention".to_string(), "gone".to_string()].as_slice()));
+        // Custom sounds: none in an old file; a round trip keeps them (an `Id` as the table key).
+        assert!(old.sounds.files.is_empty() && old.sounds.places.is_empty());
+        let mut custom = Settings::default();
+        custom.sounds.files.insert("message".into(), "C:/Users/Public/ping.wav".into());
+        custom.sounds.places.insert(crate::model::Id(1565443437363200010), [("mention".to_owned(), "ding.ogg".to_owned())].into());
+        let text = toml::to_string_pretty(&custom).unwrap();
+        assert!(text.contains("[sounds.places.1565443437363200010]"), "{text}");
+        let back: Settings = toml::from_str(&text).unwrap();
+        assert_eq!((back.sounds.files, back.sounds.places), (custom.sounds.files, custom.sounds.places));
     }
 
     #[test]

@@ -1855,6 +1855,7 @@ fn dm_menu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, anchor: egui::Pos2) {
         close_dm(cx, id);
     }
     crate::plugins::sidebar::pin_item(ui, cx, id, &mut |ui, label, glyph| menu_item(ui, label, MenuIcon::Glyph(glyph), text));
+    server_menu::sounds_item(ui, cx, id);
     super::friends::dm_menu_items(ui, cx, id);
     let dev = cx.state.account.settings.developer_mode();
     if dev {

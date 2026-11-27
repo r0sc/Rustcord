@@ -156,7 +156,7 @@ impl Page {
             Page::VoiceVideo => ("Voice & video", "voice", "microphone speaker camera push to talk input output"),
             Page::Clips => ("Clips", "clips", "clips recording record voice"),
             Page::Chat => ("Chat", "chat", "text images embeds links media emoji reactions spoilers"),
-            Page::Notifications => ("Notifications", "notifications", "desktop taskbar push mute servers sound sounds ping ring ringtone volume keyword alerts words quiet hours schedule pause snooze"),
+            Page::Notifications => ("Notifications", "notifications", "desktop taskbar push mute servers sound sounds ping ring ringtone volume keyword alerts words quiet hours schedule pause snooze custom file wav ogg opus own"),
             Page::Keybinds => ("Keybinds", "keybinds", "shortcuts hotkeys keyboard"),
             Page::Language => ("Language", "language", "locale"),
             // One id on every OS; title and rows say Windows, Linux or macOS.
@@ -198,6 +198,9 @@ impl Page {
                 "Whole word",
                 "All servers",
                 "Sounds",
+                "Custom sounds",
+                "Where",
+                "Choose file",
                 "Play sounds",
                 "Volume",
                 "Message",
@@ -316,6 +319,10 @@ pub struct UserSettingsUi {
     /// Profiles > Server Profiles: the server and its nickname draft (None until first shown);
     /// None = the User Profile tab. Cleared when the layer closes.
     server_tab: Option<(crate::model::Id, Option<String>)>,
+    /// Notifications > Custom sounds: the place shown (None = Everywhere); cleared when the layer
+    /// closes. `sound_scroll`: bring the section into view once (the context menus' item).
+    sound_place: Option<crate::model::Id>,
+    sound_scroll: bool,
     /// Log Out was clicked: the "Are you sure?" dialog is open.
     ask_logout: bool,
 }
@@ -325,6 +332,15 @@ pub fn open_server_profile(view: &mut ViewState, guild_id: crate::model::Id) {
     view.profile_card = None;
     (view.settings_open, view.settings_page) = (true, Page::Profiles);
     view.user_settings_ui.server_tab = Some((guild_id, None));
+}
+
+/// Server / channel / DM menu > Custom sounds: Notifications, "Where" set to that place, the
+/// section in view.
+pub fn open_sounds(view: &mut ViewState, place: crate::model::Id) {
+    view.profile_card = None;
+    (view.settings_open, view.settings_page) = (true, Page::Notifications);
+    view.user_settings_ui.sound_place = Some(place);
+    view.user_settings_ui.sound_scroll = true;
 }
 
 /// The layer (main_layout calls it while `settings_open`).
@@ -385,6 +401,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         cx.view.settings_open = false;
         opened(cx);
         cx.view.user_settings_ui.server_tab = None;
+        cx.view.user_settings_ui.sound_place = None;
     }
     if changed
         && let Err(e) = cx.settings.save()

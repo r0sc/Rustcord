@@ -481,7 +481,7 @@ impl RustcordApp {
         let ring = main.then(|| crate::sounds::ring(&self.state)).flatten();
         // Quiet hours silence the incoming ring only; the popup stays. The clock is read only while one rings.
         let quiet = matches!(ring, Some(crate::sounds::Sound::IncomingRing)) && self.settings.quiet_hours.quiet_now();
-        crate::sounds::set_ring(ring, &self.settings, deaf, dnd || quiet);
+        crate::sounds::set_ring(ring, self.state.incoming_call(), &self.settings, deaf, dnd || quiet);
     }
 
     fn drain_events(&mut self, ctx: &egui::Context) {
@@ -542,7 +542,7 @@ impl RustcordApp {
                         if n.author_id.is_some() {
                             let deaf = crate::sounds::deafened(&self.state, self.view.self_deaf);
                             let sound = if n.mentioned { crate::sounds::Sound::Mention } else { crate::sounds::Sound::Message };
-                            crate::sounds::play(sound, &self.settings, deaf, false);
+                            crate::sounds::play_in(sound, &self.settings, deaf, false, &crate::sounds::places(&self.state, n.channel_id));
                         }
                         // Off, or Streamer Mode: none, or without sender and text.
                         if let Some((title, body)) = self.settings.notification(&n.title, &n.body) {

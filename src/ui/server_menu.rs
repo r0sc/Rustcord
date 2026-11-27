@@ -251,6 +251,7 @@ fn header_menu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
     create_items(ui, cx, guild_id, text);
     ui.separator();
     notification_menu(ui, cx, guild_id, None, true);
+    sounds_item(ui, cx, guild_id);
     privacy_item(ui, cx, guild_id, text);
     ui.separator();
     server_profile_item(ui, cx, guild_id, text);
@@ -278,6 +279,7 @@ pub fn guild_menu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
     }
     mute_items(ui, cx, guild_id, None, "server");
     notification_menu(ui, cx, guild_id, None, false);
+    sounds_item(ui, cx, guild_id);
     hide_muted_item(ui, cx, guild_id, text);
     privacy_item(ui, cx, guild_id, text);
     server_profile_item(ui, cx, guild_id, text);
@@ -350,6 +352,15 @@ fn create_items(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, text: Color3
 fn privacy_item(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, text: Color32) {
     if menu_item(ui, "Privacy", MenuIcon::Icon(Icon::Shield), text) {
         open(cx, Modal::PrivacySettings { guild_id });
+    }
+}
+
+/// Custom sounds: Settings > Notifications for this server, channel or DM (no icon, like the
+/// Notifications submenu row beside it).
+pub(super) fn sounds_item(ui: &mut egui::Ui, cx: &mut UiCx<'_>, place: Id) {
+    let text = cx.theme.colors.text.to_color32();
+    if menu_item(ui, "Custom sounds", MenuIcon::Glyph(""), text) {
+        super::user_settings::open_sounds(cx.view, place);
     }
 }
 
@@ -509,6 +520,9 @@ pub fn channel_menu_items(ui: &mut egui::Ui, cx: &mut UiCx<'_>, channel_id: Id) 
     }
     mute_items(ui, cx, guild_id, Some(channel_id), noun);
     notification_menu(ui, cx, guild_id, Some(channel_id), false);
+    if !category {
+        sounds_item(ui, cx, channel_id);
+    }
     let edit = cx.state.account_check(&AccountCommand::UpdateChannel { channel_id, patch: Default::default() }).is_ok();
     let delete = cx.state.account_check(&AccountCommand::DeleteChannel { channel_id }).is_ok();
     if edit || delete {

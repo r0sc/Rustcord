@@ -1,14 +1,16 @@
-//! Rustcord's own sounds (docs/DESIGN.md 7.1): synthesized in code (`synth`), never files. Each
+//! Rustcord's own sounds (docs/DESIGN.md 7.1): synthesized in code (`synth`), or the user's own
+//! file for a message, mention or incoming call (`file`, Settings > Notifications). Each
 //! one-shot gets a short thread with its own speaker stream (`media::audio::AudioOut`, the
 //! voice output device), the rings one loop thread each; with nothing playing no thread and
 //! no stream exist, so idle CPU stays 0 %. Voice, mute and stream sounds come from comparing
 //! one `Snap` of the state per pass with the last (`Cues`), not from hooks at the toggles.
 //! Nothing here touches the network.
 
+mod file;
 mod synth;
 
 use crate::backend::ConnState;
-use crate::config::Settings;
+use crate::config::{Settings, SoundSettings};
 use crate::model::{Id, UserStatus};
 use crate::state::AppState;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -53,6 +55,9 @@ impl Sound {
         Sound::StreamStart,
         Sound::StreamEnd,
     ];
+
+    /// The sounds that can be replaced by the user's own file.
+    pub const CUSTOM: [Sound; 3] = [Sound::Message, Sound::Mention, Sound::IncomingRing];
 
     /// settings.toml key; never rename.
     pub fn key(self) -> &'static str {
@@ -155,7 +160,9 @@ const RING_MAX: Duration = Duration::from_secs(60);
 
 static PLAYING: AtomicUsize = AtomicUsize::new(0);
 static LAST: Mutex<[Option<Instant>; 15]> = Mutex::new([None; 15]);
-static RING: Mutex<Option<(Sound, Arc<AtomicBool>)>> = Mutex::new(None);
+/// The looping ring: which sound, with which file, and its stop flag.
+static RING: Mutex<Option<Ring>> = Mutex::new(None);
+type Ring = (Sound, Option<String>, Arc<AtomicBool>);
 
 /// Screenshot runs never play anything.
 fn silent() -> bool {
@@ -163,17 +170,58 @@ fn silent() -> bool {
     *S.get_or_init(|| std::env::var_os("RUSTCORD_SCREENSHOT").is_some())
 }
 
-/// Plays `sound` once if the gates let it through.
+/// The user's own file for `sound`: the first of `places` (a channel, its parent, its server, or
+/// a DM) that has one, else the one for everywhere. Only `Sound::CUSTOM` sounds have files.
+pub fn file_for<'a>(s: &'a SoundSettings, sound: Sound, places: &[Id]) -> Option<&'a str> {
+    if !Sound::CUSTOM.contains(&sound) {
+        return None;
+    }
+    let key = sound.key();
+    places.iter().find_map(|p| s.places.get(p)?.get(key)).or_else(|| s.files.get(key)).map(String::as_str)
+}
+
+/// Where a message in `channel` belongs, most specific first: the channel, its parent (threads)
+/// and its server.
+pub fn places(state: &AppState, channel: Id) -> Vec<Id> {
+    let ch = state.channels.get(&channel);
+    [Some(channel), ch.and_then(|c| c.parent_id), ch.and_then(|c| c.guild_id)].into_iter().flatten().collect()
+}
+
+/// Plays `sound` once if the gates let it through (no custom file: the voice cues).
 pub fn play(sound: Sound, s: &Settings, deafened: bool, dnd: bool) {
+    play_in(sound, s, deafened, dnd, &[]);
+}
+
+/// `play` for a sound that belongs to a place: its custom file, if the user set one.
+pub fn play_in(sound: Sound, s: &Settings, deafened: bool, dnd: bool, places: &[Id]) {
     if let Some(v) = volume(s, sound, deafened, dnd) {
-        start(sound, v, s.voice_output.clone());
+        start(sound, v, s.voice_output.clone(), file_for(&s.sounds, sound, places).map(Into::into));
     }
 }
 
 /// The user clicked a play button: ignores the switches, DND and Streamer mode. A ring plays
-/// one cycle.
+/// one cycle. Plays the file set for everywhere, if any.
 pub fn preview(sound: Sound, s: &Settings) {
-    start(sound, gain(s.sounds.volume), s.voice_output.clone());
+    preview_file(sound, file_for(&s.sounds, sound, &[]), s);
+}
+
+/// `preview` with a given file (a place's row of the Custom sounds section); None: Rustcord's sound.
+pub fn preview_file(sound: Sound, path: Option<&str>, s: &Settings) {
+    start(sound, gain(s.sounds.volume), s.voice_output.clone(), path.map(Into::into));
+}
+
+/// Checks a picked file at once, with the words for the toast.
+pub fn check(path: &std::path::Path) -> Result<(), &'static str> {
+    match file::load(path) {
+        Ok(_) => Ok(()),
+        Err(file::Fail::TooBig) => Err("This file is over 5 MB. Pick a shorter sound."),
+        Err(file::Fail::Unreadable) => Err("Rustcord can't play this file. Pick a WAV or Ogg Opus file."),
+    }
+}
+
+/// The file's samples, or Rustcord's sound when there is none or it can't be read now.
+fn pcm_of(sound: Sound, file: Option<&std::path::Path>) -> file::Pcm {
+    file.and_then(|p| file::load(p).ok()).unwrap_or_else(|| file::Pcm { rate: synth::RATE, channels: 1, samples: synth::render(sound) })
 }
 
 struct Playing;
@@ -186,7 +234,7 @@ impl Drop for Playing {
 
 // shortcut: opens the speaker per sound (~20-60 ms, more with a named output device); keep one
 // paused stream during calls if push-to-talk sounds feel late.
-fn start(sound: Sound, v: f32, output: Option<String>) {
+fn start(sound: Sound, v: f32, output: Option<String>, file: Option<std::path::PathBuf>) {
     if silent() || PLAYING.load(Ordering::Relaxed) >= MAX_PLAYING {
         return;
     }
@@ -202,11 +250,11 @@ fn start(sound: Sound, v: f32, output: Option<String>) {
     let guard = Playing;
     let spawned = std::thread::Builder::new().name("rustcord-sound".into()).spawn(move || {
         let _guard = guard;
-        let pcm = synth::render(sound);
+        let pcm = pcm_of(sound, file.as_deref());
         // Sounds are optional: no speaker, no sound, no toast.
-        let Ok(mut out) = crate::media::audio::AudioOut::open(output.as_deref(), synth::RATE) else { return };
+        let Ok(mut out) = crate::media::audio::AudioOut::open(output.as_deref(), pcm.rate) else { return };
         out.set_volume(v);
-        out.push(&pcm, 1);
+        out.push(&pcm.samples, pcm.channels);
         while out.queued_frames() > 0 {
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -216,27 +264,29 @@ fn start(sound: Sound, v: f32, output: Option<String>) {
     drop(spawned);
 }
 
-/// Keeps the ring loop in step with `want` (once per pass): starts, switches or stops it.
-pub fn set_ring(want: Option<Sound>, s: &Settings, deafened: bool, dnd: bool) {
+/// Keeps the ring loop in step with `want` (once per pass): starts, switches or stops it. `place`
+/// is the call's channel, whose own file (a DM) rings instead of the one for everywhere.
+pub fn set_ring(want: Option<Sound>, place: Option<Id>, s: &Settings, deafened: bool, dnd: bool) {
     let gated = want.filter(|_| !silent()).and_then(|r| volume(s, r, deafened, dnd).map(|v| (r, v)));
+    let file = gated.and_then(|(r, _)| file_for(&s.sounds, r, place.as_slice())).map(str::to_owned);
     let mut cur = RING.lock().unwrap_or_else(|e| e.into_inner());
-    if cur.as_ref().map(|c| c.0) == gated.map(|g| g.0) {
+    if cur.as_ref().map(|c| (c.0, &c.1)) == gated.map(|g| (g.0, &file)) {
         return;
     }
-    if let Some((_, stop)) = cur.take() {
+    if let Some((_, _, stop)) = cur.take() {
         stop.store(true, Ordering::Relaxed);
     }
     let Some((sound, v)) = gated else { return };
     let stop = Arc::new(AtomicBool::new(false));
-    let (flag, output) = (stop.clone(), s.voice_output.clone());
+    let (flag, output, path) = (stop.clone(), s.voice_output.clone(), file.clone());
     let spawned = std::thread::Builder::new().name("rustcord-ring".into()).spawn(move || {
-        let pcm = synth::render(sound);
-        let Ok(mut out) = crate::media::audio::AudioOut::open(output.as_deref(), synth::RATE) else { return };
+        let pcm = pcm_of(sound, path.as_deref().map(std::path::Path::new));
+        let Ok(mut out) = crate::media::audio::AudioOut::open(output.as_deref(), pcm.rate) else { return };
         out.set_volume(v);
         let began = Instant::now();
         while !flag.load(Ordering::Relaxed) && began.elapsed() < RING_MAX {
             if out.queued_frames() < (out.rate() / 10) as usize {
-                out.push(&pcm, 1);
+                out.push(&pcm.samples, pcm.channels);
             }
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -247,7 +297,7 @@ pub fn set_ring(want: Option<Sound>, s: &Settings, deafened: bool, dnd: bool) {
         }
     });
     if spawned.is_ok() {
-        *cur = Some((sound, stop));
+        *cur = Some((sound, file, stop));
     }
 }
 
@@ -389,6 +439,24 @@ mod tests {
         let keys: std::collections::HashSet<_> = Sound::ALL.iter().map(|x| x.key()).collect();
         assert_eq!(keys.len(), 15);
         assert!(Sound::ALL.iter().enumerate().all(|(i, x)| *x as usize == i));
+    }
+
+    #[test]
+    fn file_for_prefers_channel_then_parent_then_server_then_everywhere() {
+        let mut s = SoundSettings::default();
+        let (thread, parent, guild) = (Id(3), Id(2), Id(1));
+        s.files.insert("message".into(), "all.wav".into());
+        s.files.insert("join".into(), "join.wav".into());
+        s.places.insert(guild, [("message".to_owned(), "server.wav".to_owned())].into());
+        let chain = [thread, parent, guild];
+        assert_eq!(file_for(&s, Sound::Message, &chain), Some("server.wav"));
+        s.places.insert(parent, [("message".to_owned(), "parent.wav".to_owned())].into());
+        assert_eq!(file_for(&s, Sound::Message, &chain), Some("parent.wav"));
+        s.places.insert(thread, [("message".to_owned(), "thread.wav".to_owned())].into());
+        assert_eq!(file_for(&s, Sound::Message, &chain), Some("thread.wav"));
+        assert_eq!(file_for(&s, Sound::Message, &[Id(9)]), Some("all.wav"), "everywhere");
+        assert_eq!(file_for(&s, Sound::Mention, &chain), None, "nothing set: Rustcord's sound");
+        assert_eq!(file_for(&s, Sound::Join, &chain), None, "voice cues never get a file");
     }
 
     fn snap() -> Snap {

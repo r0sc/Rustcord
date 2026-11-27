@@ -195,7 +195,9 @@ retakes the screenshots.</sub>
 - Desktop notifications for mentions and DMs, also while minimized. They use Windows
   notifications, freedesktop notifications on Linux and Notification Center on macOS.
 - App sounds for messages, mentions, calls, voice join and leave, mute, deafen, push to talk and
-  streams. Each sound can be turned off, and one volume setting covers all of them.
+  streams. Each sound can be turned off, and one volume setting covers all of them. Messages,
+  mentions and incoming calls can use your own WAV or Ogg Opus file, everywhere or for one
+  server, channel or DM.
 - Music controls above the user panel on Windows and Linux: what the computer plays, with pause and next. Only you see it, and it can be turned off in Settings → Appearance.
 - Keyword alerts: your words get a notification and the mention highlight, even in muted
   channels.

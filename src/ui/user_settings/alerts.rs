@@ -200,11 +200,14 @@ pub(super) fn hidden_words(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
 }
 
 /// A place's row title: a server's name, or "#channel in Server".
-fn place_label(state: &AppState, id: Id) -> String {
+pub(super) fn place_label(state: &AppState, id: Id) -> String {
     if let Some(g) = state.guild(id) {
         return g.name.clone();
     }
     let Some(ch) = state.channels.get(&id) else { return "Server or channel not found".into() };
+    if ch.is_dm_like() {
+        return state.channel_name(id);
+    }
     let guild = ch.guild_id.and_then(|g| state.guild(g)).map_or("a server", |g| g.name.as_str());
     format!("{}{} in {guild}", messages::channel_prefix(ch.kind), state.channel_name(id))
 }
