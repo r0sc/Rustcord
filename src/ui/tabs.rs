@@ -11,7 +11,7 @@ use super::messages::{MenuIcon, Pal, menu_item, menu_setup, vector_button};
 use super::{UiCx, ViewState, motion, one_line, sidebar};
 use crate::model::Id;
 use crate::state::AppState;
-use egui::{Align, Frame, Layout, Margin, Rect, Sense, Stroke, UiBuilder, Vec2, pos2, vec2};
+use egui::{Align, Frame, Layout, Margin, Rect, Sense, Stroke, Vec2, pos2, vec2};
 
 pub const MAX_TABS: usize = 8;
 /// Windows narrower than this show the split pane in place of the chat (as the thread panel).
@@ -227,12 +227,15 @@ pub(super) fn bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     }
     let pal = Pal::new(cx.theme);
     egui::Panel::top("rc_tabs").exact_size(BAR_H * grow).resizable(false).show_separator_line(false).frame(Frame::new().fill(pal.bg)).show(ui, |ui| {
-        // Laid out at full height against the bottom edge, so the tabs ride the growing bar down.
+        // Laid out at full height inside the panel, then drawn shifted up by the unfinished part so
+        // the tabs ride the growing bar down (no child rect may reach above the panel).
         let clip = ui.max_rect();
-        let rect = Rect::from_min_max(pos2(clip.left(), clip.bottom() - BAR_H), clip.right_bottom());
-        ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
-            ui.set_clip_rect(clip.intersect(ui.clip_rect()));
-            tabs(ui, cx, &pal, rect);
+        let rect = Rect::from_min_size(clip.min, vec2(clip.width(), BAR_H));
+        let shift = vec2(0.0, -BAR_H * (1.0 - grow));
+        let clip = clip.intersect(ui.clip_rect());
+        ui.with_visual_transform(egui::emath::TSTransform::from_translation(shift), |ui| {
+            ui.set_clip_rect(clip.translate(-shift)); // the transform moves the clip along: it ends up on the panel
+            tabs(ui, cx, &pal, rect)
         });
     });
 }
