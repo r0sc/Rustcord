@@ -233,8 +233,9 @@ pub fn shifted<R>(ui: &mut Ui, dy: f32, clip_top: Option<f32>, add: impl FnOnce(
         let list = g.entry(layer);
         for i in start..list.next_idx().0 {
             list.mutate_shape(egui::layers::ShapeIdx(i), |c| {
+                let keep = c.clip_rect; // transform() moves the clip with the shape
                 c.transform(t);
-                c.clip_rect = c.clip_rect.intersect(clip);
+                c.clip_rect = keep.intersect(clip);
             });
         }
     });
@@ -546,6 +547,19 @@ mod tests {
         assert_eq!(rect.top(), top - 10.0, "painted 10 px higher");
         assert_eq!(clip.top(), top + 4.0, "clipped to below the row above");
         assert!(used >= 20.0, "layout took the row's own room");
+    }
+
+    #[test]
+    fn shifted_keeps_rows_moved_past_the_clip() {
+        let ctx = Context::default();
+        let mut top = 0.0;
+        let mut out = ctx.run_ui(egui::RawInput { time: Some(0.0), ..Default::default() }, |ui| {
+            top = ui.cursor().top();
+            shifted(ui, -500.0, Some(top - 1000.0), |ui| tile(ui, Color32::RED));
+        });
+        out.textures_delta.clear();
+        let (_, clip) = painted(&out, Color32::RED);
+        assert!(clip.height() > 0.0, "the clip stays inside the ui's, not moved off with the shape");
     }
 
     #[test]
