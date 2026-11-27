@@ -114,7 +114,10 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     super::motion::own(ctx, layer);
     let secs = super::motion::open_for(ctx, layer, super::motion::SPRING_T);
     // The corner nearest the row is the speech corner (§5, §9.6); the last pass's rect says whether the window pushed the card off its anchor.
-    let cr = speech(t.pivot, r, egui::AreaState::load(ctx, layer.id).map(|s| s.rect()), at);
+    // Measured against the anchor the last rect was laid out at, so a glide does not read as a push.
+    let prev_at = ctx.data(|d| d.get_temp::<egui::Pos2>(glide.with("at")));
+    ctx.data_mut(|d| d.insert_temp(glide.with("at"), at));
+    let cr = speech(t.pivot, r, egui::AreaState::load(ctx, layer.id).map(|s| s.rect()), prev_at.unwrap_or(at));
     let aura = look.aura.then(|| super::aura::of(ctx, cx, &user, guild_id)).flatten();
     let resp = egui::Area::new(egui::Id::unique("rc_profile_card"))
         .order(Order::Foreground)
@@ -178,7 +181,8 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
                     crate::theme::Mode::HighContrast => 0.0,
                 };
                 if k > 0.0 {
-                    ui.ctx().layer_painter(ui.layer_id()).set(glow_slot, super::light::soft_glow(rect.translate(vec2(0.0, 10.0)).shrink(6.0), f32::from(r) - 6.0, a.gamma_multiply(k), 56.0));
+                    ui.ctx().layer_painter(ui.layer_id()).set(glow_slot, egui::Shape::Vec(vec![super::light::soft_glow(rect.translate(vec2(0.0, 10.0)).shrink(6.0), f32::from(r) - 6.0, a.gamma_multiply(k), 56.0)]));
+                    // (wrapped: messages::add_contact would take the bare [blur, blur] pair for a Frame's [shadow, body])
                 }
                 ui.painter().add(super::light::edge_light(rect, cr, a, pal.tk.rule));
             }
