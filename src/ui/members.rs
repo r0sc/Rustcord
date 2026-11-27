@@ -206,7 +206,7 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
     let tag = cosmetics::guild_tag(user, member);
     // Edit name's tag: a neutral chip right after the name, its width taken before the name is cut.
     let mine = crate::names::tag(user.id).filter(|_| !is_me);
-    let mine_g = mine.map(|t| ui.painter().layout_no_wrap(t, FontId::new(super::messages::Pal::new(cx.theme).badge(), crate::theme::bold_family()), cx.theme.colors.text.to_color32()));
+    let mine_g = mine.map(|t| ui.painter().layout_no_wrap(t, FontId::new(super::messages::Pal::new(cx.theme).badge(), crate::theme::bold_family()), chip_color));
     let mine_w = mine_g.as_ref().map_or(0.0, |g| g.size().x + 12.0);
     let chip_w = mine_w + tag.map_or(0.0, |pg| cosmetics::tag_chip_width(ui, pg, size) + 4.0);
     // Discord's role icon: after the name and tag, not on offline rows.
@@ -227,8 +227,10 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
     if let Some(g) = mine_g {
         let chip = Rect::from_center_size(pos2(name_rect.right() + 4.0 + (g.size().x + 8.0) / 2.0, name_rect.center().y), vec2(g.size().x + 8.0, g.size().y + 2.0));
         let radius = cx.theme.layout.corner_radius.round() as u8 / 2;
-        ui.painter().rect_filled(chip, radius, cx.theme.tokens().selected);
-        ui.painter().galley(chip.center() - g.size() / 2.0, g, cx.theme.colors.text.to_color32());
+        // Offline rows stay muted, chip included.
+        let fill = cx.theme.tokens().selected;
+        ui.painter().rect_filled(chip, radius, if offline { fill.gamma_multiply(0.6) } else { fill });
+        ui.painter().galley(chip.center() - g.size() / 2.0, g, chip_color);
     }
     if let Some(pg) = tag {
         let at = pos2(name_rect.right() + 4.0 + mine_w, name_rect.center().y);
