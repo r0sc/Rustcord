@@ -178,6 +178,8 @@ pub struct Settings {
     pub hidden_words: Vec<crate::alerts::Keyword>,
     /// Notifications > Quiet hours and the pause from the tray / account menu (crate::alerts).
     pub quiet_hours: crate::alerts::QuietHours,
+    /// Inbox > Saved (crate::saved): ids only, the text loads when shown.
+    pub saved: Vec<crate::saved::Saved>,
 }
 
 /// Notifications > Sounds (`src/sounds.rs`): Rustcord's own sounds.
@@ -384,6 +386,7 @@ impl Default for Settings {
             keyword_alerts: Default::default(),
             hidden_words: Vec::new(),
             quiet_hours: Default::default(),
+            saved: Vec::new(),
         }
     }
 }
@@ -517,6 +520,15 @@ mod tests {
         let q = crate::alerts::QuietHours { enabled: true, days: 0b0011111, start: 23 * 60 + 30, end: 6 * 60, paused_until: Some(1_800_000_000) };
         let back: Settings = toml::from_str(&toml::to_string_pretty(&Settings { quiet_hours: q.clone(), ..Default::default() }).unwrap()).unwrap();
         assert_eq!(back.quiet_hours, q);
+        // Saved messages: none in an old file; a round trip keeps them, with and without a reminder.
+        assert!(old.saved.is_empty());
+        let saved = vec![
+            crate::saved::Saved { owner: crate::model::Id(1), channel_id: crate::model::Id(2), message_id: crate::model::Id(3), remind_at: Some(1_800_000_000) },
+            crate::saved::Saved { owner: crate::model::Id(1), channel_id: crate::model::Id(2), message_id: crate::model::Id(4), remind_at: None },
+        ];
+        let text = toml::to_string_pretty(&Settings { saved: saved.clone(), ..Default::default() }).unwrap();
+        assert!(text.contains("[[saved]]") && text.contains("message_id = \"3\""), "{text}");
+        assert_eq!(toml::from_str::<Settings>(&text).unwrap().saved, saved);
         // Keyword alerts: an old file has none and watches every server; a round trip keeps them.
         assert!(old.keyword_alerts.keywords.is_empty() && old.keyword_alerts.everywhere);
         let k = crate::alerts::KeywordAlerts {

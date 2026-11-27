@@ -3231,6 +3231,16 @@ fn message_menu(ui: &egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo) {
                 mark_unread(cx, lc.ch, mid);
                 marked = true;
             }
+            if !system {
+                let saved = lc.me.is_some_and(|me| crate::saved::position(&cx.settings.saved, me, mid).is_some());
+                if menu_item(ui, if saved { "Remove from saved" } else { "Save message" }, MenuIcon::Icon(Icon::Star), pal.text) {
+                    super::inbox::toggle_saved(cx, lc.ch, mid);
+                }
+                ui.menu_button("Remind me", |ui| {
+                    menu_setup(ui);
+                    super::inbox::remind_items(ui, cx, lc.ch, mid);
+                });
+            }
             if menu_item(ui, "Copy message link", MenuIcon::Icon(Icon::Link), pal.text) {
                 ctx.copy_text(message_link(lc.guild_id, lc.ch, mid));
             }

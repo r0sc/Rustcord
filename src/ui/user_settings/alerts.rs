@@ -213,7 +213,7 @@ pub(super) fn place_label(state: &AppState, id: Id) -> String {
 }
 
 /// A time of day in 30-minute steps.
-fn time_combo(ui: &mut egui::Ui, salt: &str, label: &str, value: &mut u16) -> bool {
+pub(in crate::ui) fn time_combo(ui: &mut egui::Ui, salt: &str, label: &str, value: &mut u16) -> bool {
     let before = *value;
     let r = ComboBox::from_id_salt(salt).width(96.0).selected_text(hhmm(*value)).icon(combo_icon).show_ui(ui, |ui| {
         for m in (0..48).map(|i| i * 30) {

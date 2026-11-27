@@ -22,6 +22,7 @@ mod overrides;
 mod plugins;
 mod quests;
 mod rpc;
+mod saved;
 #[allow(dead_code)] // wired up by the next commits
 mod sounds;
 mod state;

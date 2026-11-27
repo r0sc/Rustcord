@@ -11,8 +11,11 @@ use super::messages::{Pal, icon_button, jump_to, message_card, sheen, small_butt
 use super::sidebar::{self, badge, dm_avatar_at, empty_state};
 use super::icons::{self, Icon};
 use super::{UiCx, bold, one_line};
-use crate::backend::{Command, MentionFilter, SocialCommand};
+use crate::backend::{ChatCommand, Command, ConnState, MentionFilter, SocialCommand};
 use crate::model::{Id, channel_type};
+use crate::plugins::link_embeds::{self, Look};
+use crate::saved;
+use chrono::{DateTime, Local, TimeZone};
 use crate::state::social::MentionsView;
 use std::collections::HashMap;
 use egui::{Align, FontId, Frame, Label, Layout, Margin, Rect, RichText, ScrollArea, Sense, Stroke, UiBuilder, Vec2, pos2, vec2};
@@ -23,6 +26,8 @@ pub enum Tab {
     Mentions,
     Unreads,
     Keywords,
+    /// Messages I saved on this device (`crate::saved`; ids only, the text loads when shown).
+    Saved,
     /// NotificationLog plugin: this session's notifications, also the silenced ones.
     Recent,
 }
@@ -41,6 +46,10 @@ pub struct InboxUi {
     pub(super) notified: Option<(Id, Id)>,
     /// A keyword notification was clicked: jump there once the title bar is drawn (`button`).
     jump: Option<(Id, Id)>,
+    /// Saved: the (channel, message) being fetched; one request at a time.
+    saved_wait: Option<(Id, Id)>,
+    /// The Remind modal's (day, minute); None until it is drawn (then the default).
+    pub(super) remind: Option<(u8, u16)>,
 }
 
 /// Mentions per page (the API allows 1-100).
@@ -100,7 +109,7 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
             ui.spacing_mut().item_spacing.x = 4.0;
             ui.add(Label::new(RichText::new("Inbox").font(bold(pal.size + 2.0)).color(pal.text)).selectable(false));
             ui.add_space(8.0);
-            for (tab, label) in [(Tab::Mentions, "Mentions"), (Tab::Unreads, "Unreads"), (Tab::Keywords, "Keywords"), (Tab::Recent, "Recent")] {
+            for (tab, label) in [(Tab::Mentions, "Mentions"), (Tab::Unreads, "Unreads"), (Tab::Keywords, "Keywords"), (Tab::Saved, "Saved"), (Tab::Recent, "Recent")] {
                 if (tab != Tab::Recent || log) && tab_pill(ui, pal, label, cx.view.inbox_ui.tab == tab).clicked() {
                     cx.view.inbox_ui.tab = tab;
                 }
@@ -135,6 +144,7 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
                 ui.set_width(ui.available_width());
                 match (cx.view.inbox_ui.tab, unread) {
                     (Tab::Keywords, _) => keywords(ui, cx, pal),
+                    (Tab::Saved, _) => saved(ui, cx, pal),
                     (Tab::Recent, _) => recent(ui, cx, pal),
                     (_, Some(ids)) => unreads(ui, cx, pal, &ids),
                     _ => mentions(ui, cx, pal),
@@ -191,7 +201,7 @@ fn mentions(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
         }
         // Where it was said, once per run of cards from one channel: "#channel in Server".
         if head {
-            place_line(ui, cx, pal, guild_id, msg.channel_id);
+            place_line(ui, cx, pal, guild_id, msg.channel_id, None);
         }
         let card = message_card(ui, cx, pal, guild_id, msg, &[]);
         cx.view.inbox_ui.heights.insert(msg.id, card.rect.height());
@@ -246,7 +256,7 @@ fn mentions(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
 }
 
 /// The 16 px line above a run of cards: "#channel in Server" (a thread's icon in front).
-fn place_line(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, guild_id: Option<Id>, channel: Id) {
+fn place_line(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, guild_id: Option<Id>, channel: Id, right: Option<&str>) {
     let (icon, place) = match guild_id.and_then(|g| cx.state.guild(g)) {
         Some(g) => {
             let (icon, name) = place_name(cx, channel);
@@ -260,7 +270,16 @@ fn place_line(ui: &mut egui::Ui, cx: &UiCx<'_>, pal: &Pal, guild_id: Option<Id>,
         icons::paint(ui.painter(), icon, Rect::from_min_size(pos2(x, head.center().y - 7.0), Vec2::splat(14.0)), pal.muted, pal.surface);
         x += 18.0;
     }
-    let g = one_line(ui, place.as_str(), bold(pal.meta()), pal.muted, head.right() - x);
+    // Saved: the reminder's clock and time, right-aligned.
+    let mut end = head.right();
+    if let Some(t) = right {
+        let g = ui.painter().layout_no_wrap(t.to_owned(), FontId::proportional(pal.meta()), pal.muted);
+        end -= g.size().x + 4.0;
+        ui.painter().galley(pos2(end + 4.0, head.center().y - g.size().y / 2.0), g, pal.muted);
+        icons::paint(ui.painter(), Icon::Clock, Rect::from_center_size(pos2(end - 7.0, head.center().y), Vec2::splat(14.0)), pal.muted, pal.surface);
+        end -= 22.0;
+    }
+    let g = one_line(ui, place.as_str(), bold(pal.meta()), pal.muted, end - x);
     ui.painter().galley(pos2(x, head.center().y - g.size().y / 2.0), g, pal.muted);
 }
 
@@ -328,7 +347,7 @@ fn keywords(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
             continue;
         }
         if head {
-            place_line(ui, cx, pal, guild_id, msg.channel_id);
+            place_line(ui, cx, pal, guild_id, msg.channel_id, None);
         }
         let card = message_card(ui, cx, pal, guild_id, msg, std::slice::from_ref(&hit.keyword));
         cx.view.inbox_ui.heights.insert(msg.id, card.rect.height());
@@ -355,6 +374,287 @@ fn keywords(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
         cx.view.inbox_open = false;
         jump_to(ui.ctx(), cx, ch, mid);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Saved (crate::saved) and reminders
+// ---------------------------------------------------------------------------
+
+/// Saves the message, or removes it when it is saved (local; settings.toml keeps ids only).
+pub(super) fn toggle_saved(cx: &mut UiCx<'_>, ch: Id, mid: Id) {
+    let Some(me) = cx.state.me.as_ref().map(|u| u.id) else { return };
+    match saved::toggle(&mut cx.settings.saved, me, ch, mid) {
+        Ok(true) => cx.view.toast("Saved. Find it in Inbox > Saved.", false),
+        Ok(false) => {}
+        Err(e) => cx.view.toast(e, true),
+    }
+    persist(cx);
+}
+
+fn persist(cx: &mut UiCx<'_>) {
+    if let Err(e) = cx.settings.save() {
+        cx.view.toast(format!("Could not save settings: {e}"), true);
+    }
+}
+
+fn set_reminder(cx: &mut UiCx<'_>, ch: Id, mid: Id, at: Option<DateTime<Local>>) {
+    let Some(me) = cx.state.me.as_ref().map(|u| u.id) else { return };
+    match saved::remind(&mut cx.settings.saved, me, ch, mid, at.map(|t| t.timestamp())) {
+        Ok(()) => {
+            if let Some(t) = at {
+                cx.view.toast(format!("Reminder set for {}.", crate::alerts::time_label(t, Local::now())), false);
+            }
+        }
+        Err(e) => cx.view.toast(e, true),
+    }
+    persist(cx);
+}
+
+/// The items of "Remind me" (the message menu's submenu and a Saved row's Remind menu).
+pub(super) fn remind_items(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, mid: Id) {
+    use super::messages::{MenuIcon, menu_item};
+    let text = Pal::new(cx.theme).text;
+    let now = Local::now();
+    let me = cx.state.me.as_ref().map(|u| u.id);
+    let set = me.and_then(|me| saved::position(&cx.settings.saved, me, mid)).is_some_and(|i| cx.settings.saved[i].remind_at.is_some());
+    if menu_item(ui, "In 1 hour", MenuIcon::Glyph(""), text) {
+        set_reminder(cx, ch, mid, Some(now + chrono::TimeDelta::hours(1)));
+    }
+    if let Some(t) = saved::evening(now)
+        && menu_item(ui, "This evening", MenuIcon::Glyph(""), text)
+    {
+        set_reminder(cx, ch, mid, Some(t));
+    }
+    if menu_item(ui, "Tomorrow", MenuIcon::Glyph(""), text) {
+        set_reminder(cx, ch, mid, Some(crate::alerts::tomorrow_morning(now)));
+    }
+    ui.separator();
+    if menu_item(ui, "Custom…", MenuIcon::Glyph(""), text) {
+        cx.view.inbox_ui.remind = None;
+        cx.view.modal = Some(super::Modal::Remind { channel_id: ch, message_id: mid });
+    }
+    if set {
+        ui.separator();
+        if menu_item(ui, "Remove reminder", MenuIcon::Glyph(""), text) {
+            set_reminder(cx, ch, mid, None);
+        }
+    }
+}
+
+/// "Today", "Tomorrow", then the weekday of the day `n` days on.
+fn day_label(now: DateTime<Local>, n: u8) -> String {
+    match n {
+        0 => "Today".into(),
+        1 => "Tomorrow".into(),
+        n => (now.date_naive() + chrono::Days::new(n.into())).format("%A").to_string(),
+    }
+}
+
+/// The Custom reminder dialog: a day and a time in 30-minute steps, later than now.
+pub(super) fn remind_modal(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, mid: Id) {
+    let pal = Pal::new(cx.theme);
+    let theme = cx.theme.clone();
+    let now = Local::now();
+    let (mut day, mut minute) = cx.view.inbox_ui.remind.unwrap_or_else(|| saved::default_custom(now));
+    let at = saved::custom_at(now, day, minute);
+    let resp = super::dialog(ctx, &theme, "rc_remind", 440.0, "Remind me", |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let r = egui::ComboBox::from_id_salt("rc_remind_day").width(200.0).selected_text(day_label(now, day)).icon(super::user_settings::combo_icon).show_ui(ui, |ui| {
+                for d in 0..7 {
+                    ui.selectable_value(&mut day, d, day_label(now, d));
+                }
+            });
+            r.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Day"));
+            super::user_settings::time_combo(ui, "rc_remind_time", "Time", &mut minute);
+        });
+        if at.is_none() {
+            ui.add(Label::new(RichText::new("Pick a time later than now.").size(12.0).color(pal.danger)));
+        }
+        super::dialog_buttons(ui, &theme, "Set reminder", false, at.is_some())
+    });
+    cx.view.inbox_ui.remind = Some((day, minute));
+    let enter = at.is_some() && !egui::Popup::is_any_open(ctx) && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+    match resp.inner {
+        Some(true) => set_and_close(cx, ch, mid, at),
+        _ if enter => set_and_close(cx, ch, mid, at),
+        Some(false) => close_remind(cx),
+        None if resp.should_close() => close_remind(cx),
+        None => {}
+    }
+}
+
+fn set_and_close(cx: &mut UiCx<'_>, ch: Id, mid: Id, at: Option<DateTime<Local>>) {
+    set_reminder(cx, ch, mid, at);
+    close_remind(cx);
+}
+
+fn close_remind(cx: &mut UiCx<'_>) {
+    cx.view.modal = None;
+    cx.view.inbox_ui.remind = None;
+}
+
+/// The Saved tab: newest first, each row's message loads while the row is on screen, one request
+/// at a time and only while connected (`link_embeds`' cache; never Discord's bookmark endpoints).
+fn saved(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
+    let Some(me) = cx.state.me.as_ref().map(|u| u.id) else { return };
+    let rows: Vec<saved::Saved> = cx.settings.saved.iter().filter(|s| s.owner == me).cloned().collect();
+    if rows.is_empty() {
+        empty_state(ui, cx, 48.0, "Right-click a message and select Save message to keep it here.");
+        return;
+    }
+    if let Some((ch, mid)) = cx.view.inbox_ui.saved_wait
+        && (!matches!(link_embeds::look(cx.state, ch, mid), Look::Loading) || cx.state.conn != ConnState::Connected)
+    {
+        cx.view.inbox_ui.saved_wait = None;
+    }
+    ui.spacing_mut().item_spacing.y = 8.0;
+    let (mut jump, mut removed) = (None, None);
+    let ctx = ui.ctx().clone();
+    let now = Local::now();
+    for s in &rows {
+        let (ch, mid) = (s.channel_id, s.message_id);
+        let known = cx.state.channels.contains_key(&ch) && cx.state.can_view(ch);
+        let h = cx.view.inbox_ui.heights.get(&mid).copied().unwrap_or(72.0) + 16.0 + ui.spacing().item_spacing.y;
+        let est = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), h));
+        if !ui.is_rect_visible(est) {
+            ui.allocate_space(est.size());
+            continue;
+        }
+        let mut look = link_embeds::look(cx.state, ch, mid);
+        if matches!(look, Look::Unknown) {
+            if !known {
+                look = Look::Gone;
+            } else {
+                if cx.view.inbox_ui.saved_wait.is_none() && cx.state.conn == ConnState::Connected {
+                    // The one request, for the first row on screen that waits.
+                    fetch(cx, ch, mid);
+                }
+                look = Look::Loading;
+            }
+        }
+        let guild_id = cx.state.channels.get(&ch).and_then(|c| c.guild_id);
+        if known || matches!(look, Look::Message(_)) {
+            let when = s.remind_at.and_then(|t| Local.timestamp_opt(t, 0).single()).map(|t| crate::alerts::time_label(t, now));
+            place_line(ui, cx, pal, guild_id, ch, when.as_deref());
+        }
+        let (rect, clicked, retry) = match &look {
+            Look::Message(m) => {
+                let card = message_card(ui, cx, pal, guild_id, m, &[]);
+                (card.rect, card.clicked(), false)
+            }
+            other => {
+                let text = match other {
+                    Look::Loading => "Loading message…",
+                    Look::Failed => "Couldn't load this message.",
+                    _ => "This message is no longer available.",
+                };
+                let mut retry = false;
+                let rect = Frame::new()
+                    .fill(pal.bg)
+                    .corner_radius(pal.card_radius())
+                    .inner_margin(Margin::symmetric(12, 10))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.add(Label::new(RichText::new(text).color(pal.muted)).selectable(false));
+                            if matches!(other, Look::Failed) {
+                                retry = small_button(ui, pal, "Retry", pal.text).clicked();
+                            }
+                        });
+                    })
+                    .response
+                    .rect;
+                (rect, false, retry)
+            }
+        };
+        cx.view.inbox_ui.heights.insert(mid, rect.height());
+        if retry {
+            // One request, on this click.
+            fetch(cx, ch, mid);
+        }
+        if clicked {
+            jump = Some((ch, mid));
+        }
+        let menu_id = egui::Id::unique(("rc_saved_remind", mid));
+        if ui.rect_contains_pointer(rect) || egui::Popup::is_id_open(&ctx, menu_id) {
+            let bar = Rect::from_min_max(rect.left_top() + vec2(0.0, 8.0), rect.right_top() + vec2(-8.0, 32.0));
+            let mut bar = ui.new_child(UiBuilder::new().max_rect(bar).layout(Layout::right_to_left(Align::Min)));
+            bar.spacing_mut().item_spacing.x = 4.0;
+            if icon_button(&mut bar, pal, "×", "Remove", 24.0, false, pal.danger).clicked() {
+                removed = Some(mid);
+            }
+            if matches!(look, Look::Message(_)) {
+                let btn = small_button(&mut bar, pal, "Remind", pal.text);
+                egui::Popup::menu(&btn).id(menu_id).show(|ui| {
+                    super::messages::menu_setup(ui);
+                    remind_items(ui, cx, ch, mid);
+                });
+                if small_button(&mut bar, pal, "Jump", pal.text).clicked() {
+                    jump = Some((ch, mid));
+                }
+            }
+        }
+    }
+    if let Some(mid) = removed {
+        cx.settings.saved.retain(|s| !(s.owner == me && s.message_id == mid));
+        persist(cx);
+    }
+    if let Some((ch, mid)) = jump {
+        cx.view.inbox_open = false;
+        jump_to(ui.ctx(), cx, ch, mid);
+    }
+}
+
+/// One GET for one message (`FetchAround`, limit 1, through the REST limiter).
+fn fetch(cx: &mut UiCx<'_>, ch: Id, mid: Id) {
+    link_embeds::ask(mid);
+    cx.cmd.send(Command::Chat(ChatCommand::FetchAround { channel_id: ch, message_id: mid, limit: 1 }));
+    cx.view.inbox_ui.saved_wait = Some((ch, mid));
+}
+
+/// The text of a due reminder: "Author: first line" when the message is at hand, else where it was.
+fn reminder_text(state: &crate::state::AppState, s: &saved::Saved) -> String {
+    if let Look::Message(m) = link_embeds::look(state, s.channel_id, s.message_id) {
+        let guild_id = state.channels.get(&s.channel_id).and_then(|c| c.guild_id).or(m.guild_id);
+        let text = crate::state::notification_body(&m);
+        // A heading's `# ` is markup, not text.
+        let line = text.lines().next().unwrap_or_default().trim_start_matches('#').trim();
+        return format!("{}: {line}", state.member_display_name(guild_id, &m.author, m.member.as_ref()));
+    }
+    match state.channels.get(&s.channel_id) {
+        Some(c) => match c.guild_id.and_then(|g| state.guild(g)) {
+            Some(g) => format!("#{} in {}", state.channel_name(s.channel_id), g.name),
+            None => state.channel_name(s.channel_id),
+        },
+        None => "A saved message".into(),
+    }
+}
+
+/// Reminders that came due: each toasts ("Reminder: ...") and is returned as (text for the desktop
+/// notification, message to jump to). Run every `logic` pass, so an overdue one fires at the next
+/// start. Schedules the next check while one is pending, nothing otherwise.
+pub(super) fn reminders(ctx: &egui::Context, state: &crate::state::AppState, view: &mut super::ViewState, settings: &mut crate::config::Settings) -> Vec<(String, (Id, Id))> {
+    let Some(me) = state.me.as_ref().map(|u| u.id) else { return Vec::new() };
+    let now = Local::now().timestamp();
+    let due = saved::take_due(&mut settings.saved, me, now);
+    if !due.is_empty()
+        && let Err(e) = settings.save()
+    {
+        view.toast(format!("Could not save settings: {e}"), true);
+    }
+    if let Some(next) = saved::next_due(&settings.saved, me) {
+        let secs = (next - now).clamp(1, 60) as u64;
+        ctx.request_repaint_after_for(std::time::Duration::from_secs(secs), egui::ViewportId::ROOT);
+    }
+    due.into_iter()
+        .map(|s| {
+            let text = reminder_text(state, &s);
+            let line = if settings.hides_sender() { "a saved message".to_owned() } else { text.clone() };
+            view.toast(format!("Reminder: {line}"), false);
+            (text, (s.channel_id, s.message_id))
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -570,5 +870,27 @@ fn mark_all(cx: &mut UiCx<'_>, ids: &[Id]) {
     let acks = cx.state.mark_all_read(ids);
     if cx.settings.send_read_acks && !acks.is_empty() {
         cx.cmd.send(Command::Social(SocialCommand::MarkAllRead { acks }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Channel, Guild, Message, User};
+    use crate::state::AppState;
+
+    #[test]
+    fn reminder_text_names_the_author_or_the_place() {
+        let mut state = AppState::default();
+        state.guilds.push(Guild { id: Id(1), name: "Rust Workshop".into(), ..Default::default() });
+        state.channels.insert(Id(2), Channel { id: Id(2), guild_id: Some(Id(1)), name: Some("general".into()), ..Default::default() });
+        let s = saved::Saved { owner: Id(9), channel_id: Id(2), message_id: Id(3), remind_at: None };
+        assert_eq!(reminder_text(&state, &s), "#general in Rust Workshop");
+        let author = User { id: Id(4), username: "bob".into(), ..Default::default() };
+        let msg = Message { id: Id(3), channel_id: Id(2), content: "hello\nworld".into(), author, ..Default::default() };
+        state.messages.entry(Id(2)).or_default().msgs.push(msg);
+        assert_eq!(reminder_text(&state, &s), "bob: hello");
+        let gone = saved::Saved { channel_id: Id(77), ..s };
+        assert_eq!(reminder_text(&state, &gone), "A saved message");
     }
 }

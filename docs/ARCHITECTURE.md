@@ -249,7 +249,7 @@ login hint and README).
 - `RUSTCORD_WINDOW_SIZE=<w>x<h>`: resize the window on the first frame.
 - `RUSTCORD_OPEN=settings|profile`: open the settings page / my account popout (profile card
   with the status picker, opening above the user panel) at startup. `RUSTCORD_OPEN=channel:<id>`
-  opens that channel (a DM id shows the DM list; a group DM its member list), `members` fills a
+  opens that channel (`inbox:saved` the Inbox on its Saved tab, `modal:remind` the Remind dialog for the open channel's newest message; a DM id shows the DM list; a group DM its member list), `members` fills a
   demo member list for the open guild (all cached users, so server settings show role counts: two
   in a group of the first hoisted role,
   mixed presence, also stored as presences, with a custom status, a game with rich presence and

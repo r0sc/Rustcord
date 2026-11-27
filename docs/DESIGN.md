@@ -1149,6 +1149,15 @@ a hairline:
   ring; the tooltip names the action ("Restart Rustcord to install 0.1.1"). While a call runs,
   "Update ready" is disabled (icon and label `text_muted`, tooltip "Installs after your call
   ends"). Green, not purple: it is a state, not the view's primary action.
+- **Inbox tabs:** Mentions, Unreads, Keywords, Saved, Recent. Saved (messages kept on this device,
+  `src/saved.rs`) shows newest first the same cards as Mentions, each under its own 16 px place
+  line; a reminder shows right-aligned there as `Clock` 14 and the time, both `text_muted`. Hover
+  bar: `x` Remove, "Remind" (menu: In 1 hour, This evening, Tomorrow, Custom...), "Jump". A row
+  that is not loaded says "Loading message..."; it loads only while on screen, one at a time.
+  Gone: "This message is no longer available." Empty: "Right-click a message and select Save
+  message to keep it here." "Remind me" > "Custom..." is a 440 dialog: Day combo (200) + Time
+  combo (96, 30-minute steps), danger line "Pick a time later than now.", Primary "Set reminder".
+  No new motion (menus, dialog and toasts as in section 7).
 
 ---
 

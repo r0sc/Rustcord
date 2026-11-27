@@ -43,6 +43,7 @@ pub mod theme_editor;
 mod voice;
 
 pub(super) use app::{frame, in_tray, logic};
+pub(super) use alerts::time_combo;
 pub(super) use keybinds::{Bind, parse, shortcut};
 pub(super) use status::account_popout;
 pub use status::custom_status_modal;

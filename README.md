@@ -93,6 +93,8 @@ retakes the screenshots.</sub>
   and for YouTube or Twitch.
 - Unread indicators, mention badges, a "new messages" bar, jump to present and a message
   context menu.
+- Save messages to Inbox > Saved and get a reminder (in 1 hour, this evening, tomorrow or any
+  time) while Rustcord runs. Only on this device; the text loads when shown.
 - Quick switcher (Ctrl+K) for servers, channels, DMs and friends, with the `@ # ! *` prefixes.
 - Focus mode (Ctrl+Shift+F) folds the server and channel lists away and centres the chat.
 - Discord's navigation keys: Alt+↑/↓, Alt+Shift+↑/↓, Ctrl+Alt+↑/↓, Esc and Shift+Esc to mark
@@ -542,6 +544,11 @@ auto_update = true            # install updates automatically (the check runs ei
 # [[hidden_words]]           # Content & social > Hidden words (messages fold into one line)
 # text = "spoilerword"
 # whole_word = true
+# [[saved]]                   # Inbox > Saved: ids only, the text loads when shown
+# owner = "123"               # your user id
+# channel_id = "456"
+# message_id = "789"
+# remind_at = 1800000000      # optional reminder (Unix seconds)
 # [quiet_hours]               # Notifications > Quiet hours
 # enabled = false
 # days = 127                  # bit 0 Monday .. bit 6 Sunday

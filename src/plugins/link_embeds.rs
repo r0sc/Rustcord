@@ -21,6 +21,8 @@ enum Entry {
     Loading,
     Done(Box<Message>),
     Failed,
+    /// Discord answered without that message (deleted).
+    Gone,
 }
 
 static CACHE: Mutex<Vec<(Id, Entry)>> = Mutex::new(Vec::new());
@@ -83,15 +85,17 @@ fn snowflake(s: &str) -> Option<Id> {
     s.parse().ok().map(Id)
 }
 
-/// What a preview shows: the message from the loaded history or this plugin's cache.
-enum Look {
+/// What a preview shows: the message from the loaded history or this plugin's cache (also the
+/// Inbox's Saved tab, which asks through `ask`).
+pub(crate) enum Look {
     Message(Box<Message>),
     Loading,
     Failed,
+    Gone,
     Unknown,
 }
 
-fn look(state: &AppState, ch: Id, mid: Id) -> Look {
+pub(crate) fn look(state: &AppState, ch: Id, mid: Id) -> Look {
     let find = |msgs: &[Message]| msgs.binary_search_by_key(&mid, |m| m.id).ok().map(|i| msgs[i].clone());
     let jumped = state.chat.around.as_ref().filter(|v| v.channel_id == ch).and_then(|v| v.result.as_ref()?.as_ref().ok());
     if let Some(m) = state.messages.get(&ch).and_then(|c| find(&c.msgs)).or_else(|| jumped.and_then(|p| find(p))) {
@@ -102,6 +106,7 @@ fn look(state: &AppState, ch: Id, mid: Id) -> Look {
         Some(Entry::Done(m)) => Look::Message(m.clone()),
         Some(Entry::Loading) => Look::Loading,
         Some(Entry::Failed) => Look::Failed,
+        Some(Entry::Gone) => Look::Gone,
         None => Look::Unknown,
     }
 }
@@ -164,6 +169,9 @@ fn preview(ui: &mut egui::Ui, cx: &mut UiCx<'_>, host: Id, ch: Id, mid: Id) -> b
                     Look::Failed => {
                         ui.label(RichText::new("This message could not be loaded.").color(muted));
                     }
+                    Look::Gone => {
+                        ui.label(RichText::new("This message is no longer available.").color(muted));
+                    }
                     Look::Unknown => {
                         ui.horizontal(|ui| {
                             // As tall as the button (a row starts at interact_size.y), so the caption centres on it.
@@ -202,7 +210,7 @@ fn summary(m: &Message) -> String {
     if short.len() < content.len() { format!("{short}…") } else { short }
 }
 
-fn ask(mid: Id) {
+pub(crate) fn ask(mid: Id) {
     put(mid, Entry::Loading);
     ASKED.lock().unwrap_or_else(|e| e.into_inner()).push(mid);
 }
@@ -223,7 +231,9 @@ pub fn on_chat(state: &AppState, ev: ChatEvent) -> Option<ChatEvent> {
     match result.as_ref().ok().and_then(|page| page.iter().find(|m| m.id == *message_id)) {
         Some(m) => put(*message_id, Entry::Done(Box::new(m.clone()))),
         // One of the two answers failing doesn't hide what the other one loaded.
-        None if !CACHE.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(m, e)| m == message_id && matches!(e, Entry::Done(_))) => put(*message_id, Entry::Failed),
+        None if !CACHE.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(m, e)| m == message_id && matches!(e, Entry::Done(_))) => {
+            put(*message_id, if result.is_ok() { Entry::Gone } else { Entry::Failed });
+        }
         None => {}
     }
     let waiting = state.chat.around.as_ref().is_some_and(|v| (v.channel_id, v.message_id) == (*channel_id, *message_id) && v.result.is_none());
@@ -271,6 +281,13 @@ mod tests {
         assert!(on_chat(&AppState::default(), around(4243, Err("x".into()))).is_none());
         assert!(matches!(look(&AppState::default(), Id(1), Id(4243)), Look::Message(_)));
         assert!(on_chat(&AppState::default(), around(4243, Ok(page()))).is_some(), "answered: no longer the plugin's");
+        // An answer without the message is Gone, an error Failed.
+        ask(Id(4250));
+        assert!(on_chat(&AppState::default(), around(4250, Ok(Vec::new()))).is_none());
+        assert!(matches!(look(&AppState::default(), Id(1), Id(4250)), Look::Gone));
+        ask(Id(4251));
+        assert!(on_chat(&AppState::default(), around(4251, Err("x".into()))).is_none());
+        assert!(matches!(look(&AppState::default(), Id(1), Id(4251)), Look::Failed));
         // A jump to it still waiting gets the answer; a loaded jump window is never replaced.
         let mut s = AppState::default();
         s.chat.around = Some(crate::state::chat::AroundView { channel_id: Id(1), message_id: mid, result: None });

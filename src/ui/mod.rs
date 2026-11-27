@@ -261,6 +261,8 @@ pub enum Modal {
     Media,
     /// forward.rs: forward a message to one channel or DM.
     Forward { channel_id: Id, message_id: Id },
+    /// inbox.rs: the Custom reminder for a message ("Remind me").
+    Remind { channel_id: Id, message_id: Id },
     /// polls.rs: create a poll in `channel_id` (its draft lives in `ViewState::polls_ui`).
     CreatePoll { channel_id: Id },
     /// switcher.rs: the quick switcher (Ctrl+K).
@@ -858,6 +860,7 @@ impl RustcordApp {
                     s if let Some(q) = s.strip_prefix("switcher").map(|q| q.trim_start_matches(':')) => switcher::open(&mut self.view, q),
                     "friends" => friends::demo(&mut self.state),
                     "inbox" => self.view.inbox_open = true,
+                    "inbox:saved" => (self.view.inbox_open, self.view.inbox_ui.tab) = (true, inbox::Tab::Saved),
                     "threads" => egui::Popup::open_id(ctx, threads::popup_id()),
                     s if let Some(t) = s.strip_prefix("thread:").and_then(|id| id.parse().ok()).map(Id) => {
                         if let Some(parent) = self.state.channels.get(&t).and_then(|c| c.parent_id) {
@@ -1001,6 +1004,17 @@ impl eframe::App for RustcordApp {
             // Like messages: not in Do Not Disturb, only with desktop notifications on, and the
             // overlay shows it in a game.
             let dnd_off = self.state.chat.my_status != Some(crate::model::UserStatus::Dnd);
+            // Saved messages whose reminder is due: the same gates as "Quest complete".
+            for (body, jump) in inbox::reminders(ctx, &self.state, &mut self.view, &mut self.settings) {
+                if let Some((title, text)) = self.settings.notification("Reminder", &body)
+                    && dnd_off
+                    && !self.settings.quiet_hours.quiet_now()
+                    && !self.overlay.notify(&self.state, &self.settings, title, text, None) {
+                    crate::notify::show(title, text);
+                    self.view.quests_ui.notified_last = false;
+                    self.view.inbox_ui.notified = Some(jump);
+                }
+            }
             for body in quests::completed(&mut self.state, &self.view) {
                 if dnd_off
                     && self.settings.notification("", "").is_some()
@@ -1535,6 +1549,7 @@ pub fn show_modals(ctx: &egui::Context, cx: &mut UiCx<'_>) {
         Some(Modal::JoinApplication { guild_id }) => server_menu::join_application_modal(ctx, cx, guild_id),
         Some(Modal::Media) => viewer::lightbox(ctx, cx),
         Some(Modal::Forward { channel_id, message_id }) => forward::modal(ctx, cx, channel_id, message_id),
+        Some(Modal::Remind { channel_id, message_id }) => inbox::remind_modal(ctx, cx, channel_id, message_id),
         Some(Modal::CreatePoll { channel_id }) => polls::create_modal(ctx, cx, channel_id),
         Some(Modal::QuickSwitcher) => switcher::modal(ctx, cx),
         // A server just joined from its tag card wants its rules accepted first.
@@ -1866,6 +1881,7 @@ fn demo_modal(state: &AppState, name: &str) -> Option<Modal> {
         "kick" | "ban" => Modal::Moderate { guild_id: g?, user_id: user()?, ban: name == "ban" },
         "custom-status" => Modal::CustomStatus,
         // The newest message of the open channel.
+        "remind" => Modal::Remind { channel_id: ch?, message_id: state.messages.get(&ch?)?.msgs.last()?.id },
         "forward" => Modal::Forward { channel_id: ch?, message_id: state.messages.get(&ch?)?.msgs.last()?.id },
         "privacy" => Modal::PrivacySettings { guild_id: g? },
         // Sample questions instead of a fetch (`server_menu::demo_verification`).

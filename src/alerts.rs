@@ -259,7 +259,7 @@ impl QuietHours {
     }
 }
 
-fn at(day: NaiveDate, minute: u16) -> Option<DateTime<Local>> {
+pub(crate) fn at(day: NaiveDate, minute: u16) -> Option<DateTime<Local>> {
     Local.from_local_datetime(&day.and_hms_opt((minute / 60).into(), (minute % 60).into(), 0)?).earliest()
 }
 
