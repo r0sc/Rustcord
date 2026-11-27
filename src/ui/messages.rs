@@ -876,6 +876,11 @@ struct Memo {
     menu: Option<MsgMenu>,
     /// Hidden-word messages the user clicked open, until the channel is left.
     unhidden: HashSet<Id>,
+    /// The newest shown message of the last pass, ctx time of the last arrival, and the arrival
+    /// that rises in (`rises`, DESIGN §7).
+    newest: Option<Id>,
+    arrived: Option<f64>,
+    rise: Option<(Id, f64)>,
     #[cfg(test)]
     offset: f32,
 }
@@ -1009,6 +1014,7 @@ fn chat(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, panel: bool) {
     let newest = cx.state.messages.get(&ch).and_then(|c| c.msgs.last()).map(|m| m.id);
     if !panel {
         demo_setup(ui.ctx(), cx, ch, newest);
+        demo_arrive(ui.ctx(), cx, ch, newest);
         // Narrow windows have no room for the results panel next to the chat: it takes its place.
         if search::is_open(cx.state) && search::narrow(ui.ctx()) {
             search::results(ui, cx);
@@ -1265,10 +1271,33 @@ fn new_messages_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut M
 /// `online` (the composer without its "Offline" chip; README screenshots) and `mention` (QuickMention's
 /// click on the newest message not by me), `badges` (public flags on the demo authors), `hidden-open` (hidden-word messages but the first start shown), `translate` / `translate-wait` / `translate-error` (the newest message not by me
 /// translated, waiting or failed; no request) and
-/// `roleicons` / `roleicons-emoji` (the first hoisted role gets an image icon or an emoji, `ROLE_ICONS` on).
+/// `roleicons` / `roleicons-emoji` (the first hoisted role gets an image icon or an emoji, `ROLE_ICONS` on) and
+/// `arrive` (1.5 s after start one message from another cached user arrives, as the gateway delivers it).
 pub(super) fn demo(flag: &str) -> bool {
     static FLAGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     FLAGS.get_or_init(|| std::env::var("RUSTCORD_MSG_DEMO").unwrap_or_default()).split(',').any(|f| f.trim() == flag)
+}
+
+/// `RUSTCORD_MSG_DEMO=arrive`: once, 1.5 s after start, "on my way" from the first cached user that
+/// is not me reaches the open channel as `MessageCreate` (local state only, nothing is sent).
+fn demo_arrive(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>) {
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    use std::sync::atomic::Ordering::Relaxed;
+    let (Some(newest), true, false) = (newest, demo("arrive"), DONE.load(Relaxed)) else { return };
+    let left = 1.5 - ctx.input(|i| i.time);
+    if left > 0.0 {
+        ctx.request_repaint_after(Duration::from_secs_f64(left));
+        return;
+    }
+    let me = cx.state.me.as_ref().map(|u| u.id);
+    let mut others: Vec<&crate::model::User> = cx.state.users.values().filter(|u| Some(u.id) != me).collect();
+    others.sort_by_key(|u| u.id);
+    let Some(author) = others.first().map(|u| (*u).clone()) else { return };
+    DONE.store(true, Relaxed);
+    let id = Id(newest.0 + (1500 << 22));
+    let timestamp = chrono::DateTime::from_timestamp_millis(id.timestamp_ms() as i64).map(|t| t.to_rfc3339()).unwrap_or_default();
+    let msg = Message { id, channel_id: ch, guild_id: cx.state.channels.get(&ch).and_then(|c| c.guild_id), author, content: "on my way".into(), timestamp, ..Default::default() };
+    cx.state.apply_gateway(crate::model::GatewayEvent::MessageCreate(Box::new(msg)), Some(ch));
 }
 
 fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>) {
@@ -1542,6 +1571,7 @@ fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
     let now = ctx.input(|i| i.time);
 
     top_row(ui, cx, lc);
+    note_arrivals(cx, lc, memo, now);
 
     let n = shown(cx.state, lc.ch).len();
     let more_before = lc.detached || cx.state.messages.get(&lc.ch).is_some_and(|c| c.has_more_before);
@@ -1597,8 +1627,19 @@ fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
         }
         let msg = shown(cx.state, lc.ch)[i].clone();
         let flashing = flash.filter(|(f, _)| *f == id).map_or(0.0, |(_, until)| ((until - now) / 0.5).clamp(0.0, 1.0) as f32);
+        // An arrival in a calm chat rises 6 px and fades in; visual only (layout and ids as at rest).
+        let rise = memo.rise.filter(|r| r.0 == id).map(|(_, at)| super::motion::since(&ctx, at, super::motion::BASE)).filter(|t| *t < 1.0);
+        if rise.is_none() && memo.rise.is_some_and(|r| r.0 == id) {
+            memo.rise = None;
+        }
         let hovered = ui
-            .push_id(id.0, |ui| message_block(ui, cx, lc, memo, &msg, group_start, seps, toolbar_hit, flashing))
+            .push_id(id.0, |ui| match rise {
+                Some(t) => super::motion::shifted(ui, 6.0 * (1.0 - t), None, |ui| {
+                    ui.multiply_opacity(t);
+                    message_block(ui, cx, lc, memo, &msg, group_start, seps, toolbar_hit, flashing)
+                }),
+                None => message_block(ui, cx, lc, memo, &msg, group_start, seps, toolbar_hit, flashing),
+            })
             .inner;
         let h = ui.cursor().top() - origin - top;
         memo.heights.insert(id, RowHeight { fp, h, key, at: now });
@@ -1651,6 +1692,32 @@ fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
     if !want_bottom && !lc.detached && view_top < LOAD_MORE_PX {
         load_older(cx, lc);
     }
+}
+
+/// A message that just arrived rises in (DESIGN §7) only into a calm, followed chat: it is the
+/// only new one, the last arrival was over a second ago, the list sat at the bottom, the window has focus.
+fn rises(new: usize, since_last: Option<f64>, at_bottom: bool, focused: bool) -> bool {
+    new == 1 && since_last.is_none_or(|s| s > 1.0) && at_bottom && focused
+}
+
+/// Finds the messages that arrived since the last pass (newer than `memo.newest`) and starts the
+/// rise of a lone one that is not mine. A channel's first pass, a jump window and history paged in
+/// above only record where the list ends.
+fn note_arrivals(cx: &UiCx<'_>, lc: &Lcx, memo: &mut Memo, now: f64) {
+    if lc.detached {
+        return;
+    }
+    let msgs = shown(cx.state, lc.ch);
+    if let Some(seen) = memo.newest {
+        let new: Vec<&Message> = msgs.iter().rev().take_while(|m| m.id > seen).collect();
+        if let Some(last) = new.first() {
+            if rises(new.len(), memo.arrived.map(|a| now - a), memo.at_bottom, cx.view.window_focused) && Some(last.author.id) != lc.me {
+                memo.rise = Some((last.id, now));
+            }
+            memo.arrived = Some(now);
+        }
+    }
+    memo.newest = msgs.last().map(|m| m.id);
 }
 
 /// Applies scroll requests and keeps the reading position stable. Returns the viewport top
@@ -3937,6 +4004,44 @@ mod tests {
         let mut hc = egui::Frame::new().fill(Color32::GRAY).paint(rect);
         add_contact(&mut hc);
         assert!(matches!(hc, Shape::Rect(_)), "no shadow, nothing added");
+    }
+
+    #[test]
+    fn rises_only_into_a_calm_followed_chat() {
+        assert!(rises(1, None, true, true));
+        assert!(rises(1, Some(1.5), true, true));
+        assert!(!rises(2, None, true, true), "a burst");
+        assert!(!rises(1, Some(0.5), true, true), "not calm");
+        assert!(!rises(1, None, false, true), "scrolled up");
+        assert!(!rises(1, None, true, false), "window without focus");
+        assert!(!rises(0, None, true, true));
+    }
+
+    #[test]
+    fn a_new_message_rises_only_when_the_chat_is_calm() {
+        let arrive = |h: &mut Harness, author: u64| {
+            let ch = h.state.selected_channel.unwrap();
+            let last = h.state.messages[&ch].msgs.last().unwrap().clone();
+            let m = Message { id: Id(last.id.0 + (60_000 << 22)), author: User { id: Id(author), ..Default::default() }, ..last };
+            h.state.messages.get_mut(&ch).unwrap().msgs.push(m.clone());
+            h.frame();
+            m.id
+        };
+        let mut h = Harness::new();
+        h.view.window_focused = true;
+        h.frame();
+        h.frame();
+        assert!(h.memo().rise.is_none() && h.memo().newest.is_some());
+        let first = arrive(&mut h, 9_001);
+        assert_eq!(h.memo().rise.map(|r| r.0), Some(first), "calm, at the bottom, focused: it rises");
+        arrive(&mut h, 9_001);
+        assert_eq!(h.memo().rise.map(|r| r.0), Some(first), "a second one right after: not calm, nothing new rises");
+        let mut h = Harness::new();
+        h.view.window_focused = false;
+        h.frame();
+        h.frame();
+        arrive(&mut h, 9_001);
+        assert!(h.memo().rise.is_none(), "unfocused window");
     }
 
     #[test]

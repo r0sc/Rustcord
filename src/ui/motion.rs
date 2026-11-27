@@ -197,6 +197,18 @@ pub fn value(ctx: &Context, id: Id, target: f32, s: f32) -> f32 {
     cur
 }
 
+/// Eased 0 -> 1 over `s` s since `at` (ctx time); 1 with reduced motion and once done; asks for
+/// frames until then.
+pub fn since(ctx: &Context, at: f64, s: f32) -> f32 {
+    let dur = secs(ctx, s);
+    let lin = if dur > 0.0 { (ctx.input(|i| i.time) - at) as f32 / dur } else { 1.0 };
+    if lin >= 1.0 {
+        return 1.0;
+    }
+    ctx.request_repaint();
+    ease(lin.max(0.0))
+}
+
 /// Drops `value`'s tween under `id`: its next call starts at its target, no glide from a stale
 /// spot (a card opened afresh, an island width that only the call timer's tick changed).
 pub fn forget(ctx: &Context, id: Id) {
@@ -557,6 +569,19 @@ mod tests {
         assert_eq!(shift, 0.0);
         assert_eq!(painted(&out, Color32::YELLOW).0.top(), top + 3.0 * row, "open: nothing moved");
         assert_eq!(painted(&out, Color32::GREEN).0.top(), top + row);
+    }
+
+    #[test]
+    fn since_runs_once_and_rests() {
+        let ctx = Context::default();
+        let (start, busy) = run(&ctx, 1.0, 0.0, |c| since(c, 1.0, FAST));
+        assert!(start == 0.0 && busy);
+        let (mid, busy) = run(&ctx, 1.05, 0.0, |c| since(c, 1.0, FAST));
+        assert!(mid > 0.0 && mid < 1.0 && busy);
+        let (end, busy) = run(&ctx, 1.3, 0.1, |c| since(c, 1.0, FAST));
+        assert!(end == 1.0 && !busy);
+        ctx.all_styles_mut(|s| s.animation_time = 0.0);
+        assert_eq!(run(&ctx, 2.0, 0.0, |c| since(c, 2.0, FAST)).0, 1.0, "reduced motion: at once");
     }
 
     #[test]
