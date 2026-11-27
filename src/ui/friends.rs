@@ -688,7 +688,8 @@ fn name_submenu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, user: Id) {
         ui.set_width(240.0);
         if cx.view.friends_ui.name_edit.as_ref().is_none_or(|d| d.user != user) {
             let local = cx.settings.custom_names.iter().find(|n| n.id == user).cloned().unwrap_or_default();
-            let name = if friend { cx.state.friend_nickname(user).map(str::to_owned) } else { local.name };
+            // A local name shows in every list, so it is what the field holds; a friend's Discord nickname otherwise.
+            let name = if friend { local.name.clone().or_else(|| cx.state.friend_nickname(user).map(str::to_owned)) } else { local.name.clone() };
             cx.view.friends_ui.name_edit = Some(NameDraft { user, name: name.unwrap_or_default(), tag: local.tag.unwrap_or_default(), color: local.color });
         }
         let hint = cx.state.users.get(&user).map(|u| u.display_name().to_owned()).unwrap_or_default();
@@ -746,7 +747,9 @@ fn name_submenu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, user: Id) {
 /// Discord's friend nickname (one request, only when it differs from what Discord has).
 fn apply_name(cx: &mut UiCx<'_>, d: NameDraft, friend: bool) {
     let nickname = Some(d.name.trim().to_owned()).filter(|n| !n.is_empty());
-    let entry = crate::names::CustomName { id: d.user, name: if friend { None } else { nickname.clone() }, tag: Some(d.tag), color: d.color };
+    // The field still holds the local name: it stays local and Discord's nickname is not touched.
+    let keep_local = friend && nickname.is_some() && nickname == crate::names::name(d.user);
+    let entry = crate::names::CustomName { id: d.user, name: if !friend || keep_local { nickname.clone() } else { None }, tag: Some(d.tag), color: d.color };
     if let Err(e) = crate::names::set(&mut cx.settings.custom_names, entry) {
         cx.view.toast(e, true);
     }
@@ -754,7 +757,7 @@ fn apply_name(cx: &mut UiCx<'_>, d: NameDraft, friend: bool) {
     if let Err(e) = cx.settings.save() {
         cx.view.toast(format!("Could not save settings: {e}"), true);
     }
-    if friend && nickname.as_deref() != cx.state.friend_nickname(d.user) {
+    if friend && !keep_local && nickname.as_deref() != cx.state.friend_nickname(d.user) {
         cx.cmd.send(Command::Social(SocialCommand::SetFriendNickname { user_id: d.user, nickname }));
     }
 }
