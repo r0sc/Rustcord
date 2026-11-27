@@ -1391,6 +1391,8 @@ fn channel_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
         cx.view.call_ui.chat |= connected;
     } else if resp.clicked() {
         open_channel(cx, id);
+    } else if resp.middle_clicked() && !voice {
+        super::tabs::open(ui.ctx(), cx, id);
     }
 }
 
@@ -1418,6 +1420,7 @@ fn channel_menu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, guild_id: Option<I
             cx.view.call_ui.chat |= connected;
         }
     }
+    super::tabs::menu_items(ui, cx, id);
     server_menu::channel_menu_items(ui, cx, id);
     ui.separator();
     if menu_item(ui, "Copy link", MenuIcon::Icon(Icon::Link), text) {
@@ -1822,6 +1825,8 @@ fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     } else if resp.clicked() {
         cx.state.select_channel(id);
         cx.view.settings_open = false;
+    } else if resp.middle_clicked() {
+        super::tabs::open(ui.ctx(), cx, id);
     }
 }
 
@@ -1845,6 +1850,7 @@ fn dm_menu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, anchor: egui::Pos2) {
         mark_read(cx, [id]);
     }
     ui.separator();
+    super::tabs::menu_items(ui, cx, id);
     if let Some(u) = user
         && menu_item(ui, "Profile", MenuIcon::Glyph("👤"), text)
     {

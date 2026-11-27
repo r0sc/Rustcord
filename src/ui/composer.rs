@@ -177,8 +177,8 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id, chat_top: f32, panel: 
         typing_line(ui, cx, &pal, ch, 0);
         return;
     }
-    // A reply ends with its channel leaving the screen (chat or thread panel).
-    if cx.view.reply_to.is_some_and(|(c, _, _)| cx.state.selected_channel != Some(c) && cx.view.thread_panel != Some(c)) {
+    // A reply ends with its channel leaving the screen (chat, thread panel or split pane).
+    if cx.view.reply_to.is_some_and(|(c, _, _)| cx.state.selected_channel != Some(c) && cx.view.thread_panel != Some(c) && cx.state.split_channel != Some(c)) {
         cx.view.reply_to = None;
     }
     let reply_here = cx.view.reply_to.filter(|r| r.0 == ch);

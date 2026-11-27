@@ -197,6 +197,13 @@ pub fn value(ctx: &Context, id: Id, target: f32, s: f32) -> f32 {
     cur
 }
 
+/// Puts `value`'s tween under `id` at `v` at once; the next `value` call eases from there to its
+/// target (a dragged tab follows the pointer, then settles into its slot).
+pub fn set_value(ctx: &Context, id: Id, v: f32) {
+    let now = ctx.input(|i| i.time);
+    ctx.data_mut(|d| d.insert_temp(id, Tween { from: v, to: v, at: now }));
+}
+
 #[derive(Clone, Default)]
 struct Own(Vec<LayerId>);
 fn own_id() -> Id {
@@ -375,6 +382,21 @@ mod tests {
         // A new target mid-way starts from where the value is, not from the old target.
         let (back, _) = run(&ctx, 1.0, 0.03, |c| value(c, v, 0.0, FAST));
         assert!(back > 0.0 && back < 40.0);
+    }
+
+    #[test]
+    fn set_value_moves_at_once_and_value_eases_on_from_there() {
+        let ctx = Context::default();
+        let v = Id::unique("set_value");
+        run(&ctx, 0.0, 0.0, |c| value(c, v, 0.0, FAST));
+        run(&ctx, 0.1, 0.0, |c| {
+            set_value(c, v, 30.0);
+            0.0
+        });
+        let (mid, busy) = run(&ctx, 0.2, 0.05, |c| value(c, v, 50.0, FAST));
+        assert!((30.0..50.0).contains(&mid) && busy);
+        let (end, busy) = run(&ctx, 0.4, 0.3, |c| value(c, v, 50.0, FAST));
+        assert!(end == 50.0 && !busy);
     }
 
     #[test]

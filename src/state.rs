@@ -118,6 +118,9 @@ pub struct AppState {
     /// `None` = DM home.
     pub selected_guild: Option<Id>,
     pub selected_channel: Option<Id>,
+    /// The channel shown beside the open one (split view, ui/tabs.rs). `select_channel` keeps its
+    /// history; session only, not in the snapshot.
+    pub split_channel: Option<Id>,
     /// Last selected channel per guild (restored when switching guilds).
     pub last_channel_per_guild: HashMap<Id, Id>,
     pub conn: ConnState,
@@ -194,6 +197,7 @@ impl Default for AppState {
             member_lists: HashMap::new(),
             selected_guild: None,
             selected_channel: None,
+            split_channel: None,
             last_channel_per_guild: HashMap::new(),
             conn: ConnState::Offline,
             has_data: false,
@@ -695,8 +699,12 @@ impl AppState {
         if self.chat.ack_paused.is_some_and(|c| c != channel) {
             self.chat.ack_paused = None;
         }
-        // History paged in is kept only while its channel is open.
-        if let Some(prev) = self.selected_channel.filter(|p| *p != channel) {
+        // Never the same chat twice: opening the split's channel in the main pane closes the split.
+        if self.split_channel == Some(channel) {
+            self.split_channel = None;
+        }
+        // History paged in is kept only while its channel is open (or in the split pane).
+        if let Some(prev) = self.selected_channel.filter(|p| *p != channel && Some(*p) != self.split_channel) {
             self.trim_history(prev);
         }
         let changed = self.selected_channel != Some(channel);
@@ -711,9 +719,9 @@ impl AppState {
         self.recent_channels.truncate(SNAPSHOT_CHANNELS);
         // Bounds memory to the recent channels; a revisit refetches (user-triggered). Threads of
         // the opened channel keep theirs one step longer: a forum's cards show their first messages.
-        let (recent, channels) = (&self.recent_channels, &self.channels);
-        self.messages.retain(|id, _| recent.contains(id) || channels.get(id).is_some_and(|c| c.is_thread() && c.parent_id == Some(channel)));
-        self.fresh_channels.retain(|id| recent.contains(id));
+        let (recent, channels, split) = (&self.recent_channels, &self.channels, self.split_channel);
+        self.messages.retain(|id, _| recent.contains(id) || split == Some(*id) || channels.get(id).is_some_and(|c| c.is_thread() && c.parent_id == Some(channel)));
+        self.fresh_channels.retain(|id| recent.contains(id) || split == Some(*id));
         self.dirty = true;
     }
 
@@ -2046,6 +2054,28 @@ mod tests {
         // TEXT falls out of the recent list: dropped, and refetched on a revisit.
         s.select_channel(others[SNAPSHOT_CHANNELS - 1]);
         assert!(!s.messages.contains_key(&TEXT) && !s.fresh_channels.contains(&TEXT));
+    }
+
+    #[test]
+    fn the_split_channel_keeps_its_history() {
+        let mut s = state(); // TEXT is open
+        let split = Id(399);
+        add_channel(&mut s, chan(split, 0, Some(CAT), 99));
+        loaded(&mut s, split, [1000]);
+        s.fresh_channels.insert(split);
+        s.split_channel = Some(split);
+        let others: Vec<Id> = (202..208).map(Id).collect();
+        for (i, id) in others.iter().enumerate() {
+            add_channel(&mut s, chan(*id, 0, Some(CAT), i as i32 + 1));
+            s.select_channel(*id);
+        }
+        assert!(s.messages.contains_key(&split) && s.fresh_channels.contains(&split), "six switches in the main pane leave it alone");
+        // Never the same chat twice.
+        s.select_channel(split);
+        assert_eq!(s.split_channel, None);
+        s.split_channel = Some(TEXT);
+        s.reset();
+        assert_eq!(s.split_channel, None);
     }
 
     #[test]

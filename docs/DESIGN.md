@@ -27,7 +27,8 @@ signature, the speech corner.
 
 Rules:
 1. **Discord's layout, our material.** No control in the main window moves or resizes, except
-   where the user asks for it: focus mode folds the rail and the channel list away (§10.9).
+   where the user asks for it: focus mode folds the rail and the channel list away (§10.9); the tab
+   bar (while two or more tabs are open) and the split view take room in the page (§10.10).
 2. **Purple budget.** One big purple fill per view: the primary button. Everything else purple
    is small (a 4 px pill, a 2 px ring or bar, an 18 px icon, a 40x24 switch, a caret) or soft (a
    tint). Hover is never purple, except the home tile, which is the logo. List selection
@@ -339,6 +340,12 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Backdrop picture | appears under the already fading scrim (ready by frame 2) | dropped at once | | 16 |
 | Call island appear / leave | BASE: fade + scale 0.92 → 1 about its centre; the label fades out | BASE x OUT fade; the label fades in | `anim(.., BASE, BASE * OUT)` | 5, 18 |
 | Focus mode panes (rail, channel list, user panel) | returning: LARGE ease-out | leaving: BASE ease-in; content slides left with its narrowing column | `anim(.., LARGE, BASE)` | 5, 8, 17, 18 |
+| Tab bar appears (second tab) | FAST: height 0 → 40 ease-out, tabs ride its bottom edge | at once | `anim(.., FAST, 0.0)` | 5, 8, 18 |
+| New tab | FAST: fade + grow 0.96 → 1 about its centre (`scaled`) | closes at once; the tabs to its right glide left over FAST in-out | `anim`, `value` on a slot index | 5, 11, 18 |
+| Tab already open | pop 1 → 1.12 → 1 over BASE | | `pop` | 9 |
+| Tab drag | follows the pointer 1:1; the passed tab glides aside over FAST in-out; settles from where it was let go | | `value` + `set_value` | 5, 17 |
+| Split pane opens | BASE: fade + 16 px slide from the right, layout final at once | at once | `anim(.., BASE, 0.0)` | 5, 8, 18 |
+| Switching tabs, focus change between panes | instant | instant | | 20 |
 | Menus, tooltips, popovers, pickers | FAST, grow 0.96 from the trigger | instant | `end_pass` (existing) | 11, 18, 20 |
 | Modals | BASE, grow from the click | BASE x OUT ghost | `modal` (existing) | 11, 18 |
 | Toasts | BASE, 8 px rise + fade | BASE x OUT | existing | 5, 18 |
@@ -1244,6 +1251,36 @@ them back. Not persisted: every start shows the lists.
 - Toast, once per session: "Focus mode is on. Press Ctrl+Shift+F to bring the lists back."
 - The title bar, Inbox, call island, quick switcher and navigation keys work as before.
 
+### 10.10 Tabs and split view
+
+Session only; every tab and split comes from a click. Middle-click a channel or DM row (or its
+menu item "Open in new tab", hidden for the open channel) opens a background tab right of the
+active one; with none yet the open channel becomes the first tab. At most 8 (toast "You can open
+up to 8 tabs. Close one first."). An open tab pops once.
+
+- **Tab bar:** only with two or more tabs, above the chat header, spanning the page and the member
+  list or search results (not the split pane). 40 tall, `background`, padding 8, tabs 32 tall, 4
+  apart, width `clamp((bar - 16 - 4(n-1)) / n, 48, 200)`. A tab: control radius, a 16 px channel
+  icon (`text_muted`) or DM avatar at x+8, the name at x+32 in ui 14/500 (`text_muted` at rest,
+  `text` active or hovered, 600 when unread), a mention badge (`danger_fill`) at the right, and
+  on hover and on the active tab `Close` 16 in a 20 px hit square (`hover` circle on hover). Active:
+  `selected` fill (never purple); hover: `hover`. Tooltip "#general in Rust Workshop" / "@Alice".
+  Narrow tabs show the icon only.
+- **Actions:** click selects, middle-click or the close button or Delete closes (the active tab
+  closes to its right neighbour, else the left one), drag reorders, right-click: "Open in split
+  view" (non-thread text channels, not the open one), "Close tab", "Close other tabs". Opening a
+  channel from anywhere replaces the active tab's channel (a channel that already is a tab
+  activates that tab); tabs of channels that disappear drop out.
+- **Split view:** "Open in split view" on a channel or DM row or a tab. The channel shows right of
+  the open one, width `floor((window - rail - list) / 2)`; the member list hides meanwhile and
+  the thread panel excludes it (opening one closes the other). Windows under 1000 px: the split
+  pane takes the page. Left edge a 1 px `rule`; header 48 + 1 px `rule` like the thread panel's
+  (margin 16 / 12, channel icon 20 or DM avatar 24, name heading 16/600, `Close` button 32 "Close
+  split view"), then the full chat of that channel with its own scroll and draft.
+- **Focus:** the pane last pressed in, or where the keyboard focus moved, holds it; the other
+  header's title and icon turn `text_muted`. Only the focused pane counts as read (acks, no
+  notification for its new messages) and only its composer sends typing.
+
 ---
 
 ## 11. Activities
@@ -1745,7 +1782,7 @@ in `docs/ARCHITECTURE.md`.
 
 ### 15.1 What must not change
 
-- Main-window layout and sizes (user-asked exception: focus mode, §10.9): title bar 32; rail 72, tiles 40, 8 apart, `ICON_R` 12; channel
+- Main-window layout and sizes (user-asked exceptions: focus mode, §10.9; tabs and split view, §10.10): title bar 32; rail 72, tiles 40, 8 apart, `ICON_R` 12; channel
   list 303 (192-360) and its 12 px card corner; chat header 48 (+1); rows 32, DM and member rows
   42, categories 24; member list 264; user panel 56 + 8 margin; composer min 44; message avatar 40
   at x 16, text at x 72, 16 between groups, line height 21; compact mode; menu rows 32; buttons

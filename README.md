@@ -96,6 +96,7 @@ retakes the screenshots.</sub>
 - Save messages to Inbox > Saved and get a reminder (in 1 hour, this evening, tomorrow or any
   time) while Rustcord runs. Only on this device; the text loads when shown.
 - Quick switcher (Ctrl+K) for servers, channels, DMs and friends, with the `@ # ! *` prefixes.
+- Tabs: middle-click a channel or DM to open it in a tab (drag to reorder), and Open in split view shows two chats side by side. Only the chat you are in counts as read.
 - Focus mode (Ctrl+Shift+F) folds the server and channel lists away and centres the chat.
 - Discord's navigation keys: Alt+↑/↓, Alt+Shift+↑/↓, Ctrl+Alt+↑/↓, Esc and Shift+Esc to mark
   read, and Ctrl+/. All keys can be changed under Settings → Keybinds.

@@ -941,8 +941,8 @@ pub fn show(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     chat_scaled(ui, cx, ch, false);
 }
 
-/// The thread panel's message list and composer (threads.rs) for `thread`, beside the open
-/// channel's: own list memory, scroll and composer focus; jumps, search and demo hooks stay with
+/// The thread panel's or the split view's message list and composer (threads.rs, tabs.rs) for
+/// `thread`, beside the open channel's: own list memory, scroll and composer focus; jumps, search and demo hooks stay with
 /// the open channel's list.
 pub(super) fn thread_chat(ui: &mut egui::Ui, cx: &mut UiCx<'_>, thread: Id) {
     chat_scaled(ui, cx, thread, true);
@@ -1403,7 +1403,9 @@ pub fn chat_header(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
                 // Pins always; threads and the member toggle when shown.
                 let tools_w = search_w + 48.0 + if toggle { 40.0 } else { 0.0 } + if threads { 40.0 } else { 0.0 } + super::dm_call::header_w(cx.state, ch);
                 // Heading 16/600, a 1x20 rule, the topic in the ui role (docs/DESIGN.md §10.3).
-                let title = RichText::new(name).font(FontId::new(pal.heading(), crate::theme::semibold_family())).color(pal.text);
+                // The split pane holds the focus: this header dims (and the split's lights up).
+                let tint = if cx.state.split_channel.is_some() && cx.view.tabs_ui.split_focus { pal.muted } else { pal.text };
+                let title = RichText::new(name).font(FontId::new(pal.heading(), crate::theme::semibold_family())).color(tint);
                 ui.scope(|ui| {
                     ui.set_max_width((ui.available_width() - tools_w).max(40.0));
                     ui.add(Label::new(title).selectable(false).truncate());
@@ -3408,9 +3410,9 @@ fn emoji_menu_item(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, e: &Emoji, n
     resp.clicked()
 }
 
-/// Whether the chat or the thread panel shows `ch`.
+/// Whether the chat, the thread panel or the split pane shows `ch`.
 fn on_screen(cx: &UiCx<'_>, ch: Id) -> bool {
-    cx.state.selected_channel == Some(ch) || cx.view.thread_panel == Some(ch)
+    cx.state.selected_channel == Some(ch) || cx.view.thread_panel == Some(ch) || cx.state.split_channel == Some(ch)
 }
 
 fn delete_modal(ctx: &egui::Context, cx: &mut UiCx<'_>, lc: &Lcx) {
@@ -4091,7 +4093,7 @@ mod tests {
                     overrides: &mut self.overrides,
                 };
                 // Laid out first, as the shell does.
-                if let Some(t) = cx.view.thread_panel {
+                if let Some(t) = cx.view.thread_panel.or(cx.state.split_channel) {
                     egui::Panel::right("thread_panel").exact_size(400.0).show(ui, |ui| thread_chat(ui, &mut cx, t));
                 }
                 egui::CentralPanel::default().show(ui, |ui| show(ui, &mut cx));
@@ -4199,6 +4201,22 @@ mod tests {
         h.view.thread_panel = None;
         h.frame();
         assert_eq!(h.view.reaction_picker, None, "dropped with the panel");
+    }
+
+    #[test]
+    fn split_pane_beside_the_chat_keeps_its_own_memo() {
+        let mut h = Harness::new();
+        let ch = h.state.selected_channel.unwrap();
+        let split = Id(9_100);
+        let chan = h.state.channels[&ch].clone();
+        h.state.channels.insert(split, crate::model::Channel { id: split, ..chan });
+        let msgs: Vec<Message> = h.state.messages[&ch].msgs.iter().map(|m| Message { channel_id: split, ..m.clone() }).collect();
+        h.state.messages.insert(split, crate::state::ChannelMessages { msgs, loaded: true, ..Default::default() });
+        h.state.split_channel = Some(split);
+        h.frame();
+        let pane: Memo = h.ctx.data(|d| d.get_temp(memo_id().with("thread_panel"))).unwrap_or_default();
+        assert_eq!((pane.channel, h.memo().channel), (Some(split), Some(ch)), "one list memory each");
+        assert!(on_screen(&UiCx { state: &mut h.state, view: &mut h.view, images: &mut h.images, theme: &mut h.theme, settings: &mut h.settings, cmd: &h.cmd, overrides: &mut h.overrides }, split));
     }
 
     #[test]

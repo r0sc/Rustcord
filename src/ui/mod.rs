@@ -42,6 +42,7 @@ pub mod server_menu;
 pub mod server_settings;
 pub mod sidebar;
 pub mod switcher;
+pub mod tabs;
 pub mod threads;
 pub mod update;
 pub mod user_settings;
@@ -209,6 +210,7 @@ pub struct ViewState {
     // (add fields there, not here). All of it is dropped on logout with the rest of the view.
     pub friends_ui: friends::FriendsUi,
     pub inbox_ui: inbox::InboxUi,
+    pub tabs_ui: tabs::TabsUi,
     pub threads_ui: threads::ThreadsUi,
     pub forum_ui: forum::ForumUi,
     pub forward_ui: forward::ForwardUi,
@@ -333,6 +335,7 @@ impl Default for ViewState {
             focus_hint_shown: false,
             friends_ui: Default::default(),
             inbox_ui: Default::default(),
+            tabs_ui: Default::default(),
             threads_ui: Default::default(),
             forum_ui: Default::default(),
             forward_ui: Default::default(),
@@ -495,7 +498,7 @@ impl RustcordApp {
 
     fn drain_events(&mut self, ctx: &egui::Context) {
         let focused_channel = if self.view.window_focused && !self.view.chat_hidden() {
-            self.state.selected_channel
+            tabs::focused_channel(self.state.selected_channel, self.state.split_channel, self.view.tabs_ui.split_focus)
         } else {
             None
         };
@@ -661,6 +664,7 @@ impl RustcordApp {
                 self.view.confirm_delete = None;
                 self.view.profile_card = None;
             }
+            // shortcut: the op 37 subscription stays the open channel's, so a split pane in a very large server shows new messages only after a refetch; add a second subscription only if asked.
             // Always subscribed, even with the member list hidden: op 37 also sets typing:true,
             // without which large guilds send no live messages/typing. Tracked separately from
             // `last_selected` so it is (re)sent once we are online or after a new session.
@@ -677,8 +681,10 @@ impl RustcordApp {
         {
             self.view.thread_panel = None;
         }
-        // History and read acks for what is on screen: the open channel and the thread panel.
-        for ch in [self.state.selected_channel, self.view.thread_panel].into_iter().flatten() {
+        // History for what is on screen: the open channel, the thread panel and the split pane. Read
+        // acks only for the focused chat (and the thread panel).
+        let focus = tabs::focused_channel(self.state.selected_channel, self.state.split_channel, self.view.tabs_ui.split_focus);
+        for ch in [self.state.selected_channel, self.view.thread_panel, self.state.split_channel].into_iter().flatten() {
             // Forum / media channels have no message history (forum.rs lists their posts).
             let chat = self.state.channels.get(&ch).is_some_and(crate::model::Channel::is_text_chat);
             if online && chat && !self.state.fresh_channels.contains(&ch) && self.state.can_view(ch) {
@@ -691,6 +697,7 @@ impl RustcordApp {
             }
             // No is_unread gate: muted channels are acked on view too; mark_read dedups.
             if self.view.window_focused && !self.view.chat_hidden()
+                && (Some(ch) == focus || Some(ch) == self.view.thread_panel)
                 && let Some(mid) = self.state.mark_read(ch)
                 && self.settings.send_read_acks
             {
@@ -859,6 +866,11 @@ impl RustcordApp {
                     }
                     s if let Some(q) = s.strip_prefix("switcher").map(|q| q.trim_start_matches(':')) => switcher::open(&mut self.view, q),
                     "friends" => friends::demo(&mut self.state),
+                    s if let Some(id) = s.strip_prefix("tab:").and_then(|id| id.parse().ok()).map(Id) => tabs::demo_tab(&mut self.view, &self.state, id),
+                    s if let Some(id) = s.strip_prefix("split:").and_then(|id| id.parse().ok()).map(Id) => {
+                        self.state.split_channel = Some(id).filter(|c| self.state.selected_channel != Some(*c));
+                        self.view.tabs_ui.split_focus = true;
+                    }
                     "inbox" => self.view.inbox_open = true,
                     "inbox:saved" => (self.view.inbox_open, self.view.inbox_ui.tab) = (true, inbox::Tab::Saved),
                     "threads" => egui::Popup::open_id(ctx, threads::popup_id()),
@@ -1120,7 +1132,7 @@ impl eframe::App for RustcordApp {
     }
 
     /// Test hook: RUSTCORD_POINTER=<x>x<y> keeps the pointer at that point (logical px), so
-    /// screenshots show hover states and tooltips; RUSTCORD_CLICK=left|right also clicks there
+    /// screenshots show hover states and tooltips; RUSTCORD_CLICK=left|right|middle also clicks there
     /// once (frames 10-11), e.g. to open a context menu. With RUSTCORD_SCREENSHOT the window
     /// counts as focused (text focus, completion popups, read acks), whatever is in front.
     /// RUSTCORD_NAV_DEMO=focus:<n> drops the focus and presses Tab n times (Shift+Tab for a
@@ -1186,6 +1198,7 @@ impl eframe::App for RustcordApp {
             let button = match std::env::var("RUSTCORD_CLICK").as_deref() {
                 Ok("left") => egui::PointerButton::Primary,
                 Ok("right") => egui::PointerButton::Secondary,
+                Ok("middle") => egui::PointerButton::Middle,
                 _ => return,
             };
             let pressed = self.frame_no == 10;
@@ -1403,6 +1416,12 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
     } else {
         let thread = cx.view.thread_panel;
         let searching = search::is_open(cx.state);
+        // The thread panel and the split view exclude each other; the tabs follow the open channel.
+        if thread.is_some() {
+            cx.state.split_channel = None;
+        }
+        tabs::sync_state(cx.view, cx.state);
+        let split = cx.state.split_channel.filter(|_| thread.is_none() && !searching);
         // The thread panel has its own header: full height, beside the chat's.
         if let Some(t) = thread.filter(|_| right > 0.0 && !searching) {
             let r = egui::Panel::right("thread_panel")
@@ -1415,12 +1434,27 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
                 .rect;
             ui.painter().vline(r.left() + 0.5, r.y_range(), edge);
         }
-        // Spans the page and the member list / search results, like the web client's title section.
+        // The split pane: the room right of the lists is halved (the member list is hidden meanwhile).
+        let mut split_rect = None;
+        if let Some(s) = split.filter(|_| right > 0.0) {
+            let r = egui::Panel::right("split_panel")
+                .exact_size(tabs::split_w(width, (GUILD_BAR_W + channels_w) * lists))
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(page)
+                .show(ui, |ui| tabs::split_panel(ui, cx, s))
+                .response
+                .rect;
+            ui.painter().vline(r.left() + 0.5, r.y_range(), edge);
+            split_rect = Some(r);
+        }
+        // The tab bar and the header span the page and the member list / search results, like the web client's title section.
+        frame_stats::time("+tabs", || tabs::bar(ui, cx));
         frame_stats::time("+header", || messages::chat_header(ui, cx));
         // Open search results take the member list's place, so does the thread panel.
         if searching {
             search::side_panel(ui, cx);
-        } else if thread.is_none() && right > 0.0 {
+        } else if thread.is_none() && split.is_none() && right > 0.0 {
             let _t = frame_stats::scope("+members");
             let r = egui::Panel::right("member_list")
                 .exact_size(MEMBER_LIST_W)
@@ -1433,12 +1467,18 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
             ui.painter().vline(r.left() + 0.5, r.y_range(), edge);
         }
         let _t = frame_stats::scope("+chat");
-        egui::CentralPanel::default().frame(page).show(ui, |ui| match (thread, forum::open_forum(cx.state)) {
-            // Too narrow for a split: the thread panel takes the page.
-            (Some(t), _) if right == 0.0 => threads::panel(ui, cx, t),
-            (_, Some(f)) => forum::show(ui, cx, f),
+        egui::CentralPanel::default().frame(page).show(ui, |ui| match (thread, split, forum::open_forum(cx.state)) {
+            // Too narrow for a split: the thread panel or the split pane takes the page (and the focus).
+            (Some(t), _, _) if right == 0.0 => threads::panel(ui, cx, t),
+            (None, Some(s), _) if right == 0.0 => {
+                cx.view.tabs_ui.split_focus = true;
+                tabs::split_panel(ui, cx, s)
+            }
+            (_, _, Some(f)) => forum::show(ui, cx, f),
             _ => focus_column(ui, lists, |ui| messages::show(ui, cx)),
         });
+        let main = egui::Rect::from_min_max(egui::pos2(list.right(), origin.top()), egui::pos2(split_rect.map_or(origin.right(), |r| r.left()), origin.bottom()));
+        tabs::track_focus(ui.ctx(), cx.view, split_rect, main);
     }
     drop(_t);
     // The card's top hairline continues over the message area and the member list.
@@ -1518,6 +1558,9 @@ fn right_column_w(view: &ViewState, settings: &Settings, state: &AppState, width
         call::chat_w(view, width)
     } else if view.thread_panel.is_some() {
         if width >= MEMBER_LIST_MIN_WINDOW_W { THREAD_PANEL_W } else { 0.0 }
+    } else if state.split_channel.is_some() {
+        // Half the room right of the lists (narrow windows give the page to the split pane).
+        if width >= tabs::SPLIT_MIN_WINDOW_W { tabs::split_w(width, GUILD_BAR_W + CHANNEL_LIST_W) } else { 0.0 }
     } else if member_list_shown(settings, state, width) {
         MEMBER_LIST_W
     } else {
@@ -2042,6 +2085,14 @@ mod tests {
         view.settings_open = true;
         view.backdrop_asked = true;
         assert_eq!(right_column_w(&view, &settings, &state, 1180.0), 0.0);
+        // A split pane takes half the room right of the lists; narrow windows give it the page.
+        let (mut view, mut state) = (ViewState::default(), state);
+        state.selected_channel = Some(Id(4));
+        state.split_channel = Some(Id(6));
+        assert_eq!(right_column_w(&view, &settings, &state, 1280.0), tabs::split_w(1280.0, GUILD_BAR_W + CHANNEL_LIST_W));
+        assert_eq!(right_column_w(&view, &settings, &state, 900.0), 0.0);
+        view.thread_panel = Some(Id(5));
+        assert_eq!(right_column_w(&view, &settings, &state, 1280.0), THREAD_PANEL_W, "the thread panel wins");
     }
 
     #[test]

@@ -249,7 +249,7 @@ login hint and README).
 - `RUSTCORD_WINDOW_SIZE=<w>x<h>`: resize the window on the first frame.
 - `RUSTCORD_OPEN=settings|profile`: open the settings page / my account popout (profile card
   with the status picker, opening above the user panel) at startup. `RUSTCORD_OPEN=channel:<id>`
-  opens that channel (`inbox:saved` the Inbox on its Saved tab, `modal:remind` the Remind dialog for the open channel's newest message; a DM id shows the DM list; a group DM its member list), `members` fills a
+  opens that channel (`inbox:saved` the Inbox on its Saved tab, `tab:<id>` adds a background tab and `split:<id>` opens that channel in the split pane (after `channel:<id>`), `modal:remind` the Remind dialog for the open channel's newest message; a DM id shows the DM list; a group DM its member list), `members` fills a
   demo member list for the open guild (all cached users, so server settings show role counts: two
   in a group of the first hoisted role,
   mixed presence, also stored as presences, with a custom status, a game with rich presence and
@@ -272,7 +272,7 @@ started there (I'm connected, the DM open, its other members rung: dimmed, pulsi
   without writing plugins.toml; `RUSTCORD_OPEN=settings:plugins` opens their page,
   `RUSTCORD_PLUGIN_SEARCH=<text>` fills in its search.
 - `RUSTCORD_POINTER=<x>x<y>`: keep the pointer at that point (logical px) for hover states and
-  tooltips in screenshots; with `RUSTCORD_CLICK=left|right` it also clicks there once (frames
+  tooltips in screenshots; with `RUSTCORD_CLICK=left|right|middle` it also clicks there once (frames
   10-11), e.g. to open a context menu. `RUSTCORD_POINTER_AT=<frame>:<x>x<y>` moves it there from
   that frame on (a hover that starts after a card opened, as from the member list). While either
   is set, the real mouse is ignored.
