@@ -107,7 +107,7 @@ fn custom(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     let height = ui.text_style_height(&egui::TextStyle::Button) + 2.0 * ui.spacing().button_padding.y;
     let theme = &*cx.theme;
     setting_row(ui, theme, "Where", Some("Right-click a server, channel or DM and pick Custom sounds to add it."), vec2(220.0, height), |ui| {
-        ComboBox::from_id_salt("rc_sound_place").width(220.0).selected_text(shown).icon(combo_icon).show_ui(ui, |ui| {
+        ComboBox::from_id_salt("rc_sound_place").width(220.0).truncate().selected_text(shown).icon(combo_icon).show_ui(ui, |ui| {
             if ui.selectable_label(place.is_none(), "Everywhere").clicked() {
                 place = None;
             }
@@ -116,7 +116,7 @@ fn custom(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
                     place = Some(*id);
                 }
             }
-        });
+        }).response.on_hover_text(shown);
     });
     cx.view.user_settings_ui.sound_place = place;
     // Servers and channels don't ring.
