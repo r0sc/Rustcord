@@ -923,7 +923,9 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
     });
     ui.scope(|ui| {
         ui.multiply_opacity(((t - 0.4) / 0.6).clamp(0.0, 1.0));
-        let p = ui.painter().with_clip_rect(pill.intersect(ui.painter().clip_rect()));
+        // While the pill grows, its round ends and edge stroke must not show the content's edges.
+        let inset = if t < 1.0 { 4.0 } else { 0.0 };
+        let p = ui.painter().with_clip_rect(pill.shrink2(vec2(inset, 0.0)).intersect(ui.painter().clip_rect()));
 
         // The text part is one button: select the call's channel.
         let go = ui.interact(place, ui.make_persistent_id("call_island_place"), Sense::click());
