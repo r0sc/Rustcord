@@ -140,7 +140,7 @@ pub(super) const DESKTOP: DesktopCopy = if cfg!(target_os = "macos") {
 };
 
 /// The page's own rows, for the settings search.
-pub(super) const DESKTOP_LABELS: [&str; 5] = [DESKTOP.startup, "Start minimized", DESKTOP.close, AUTO_UPDATE, CHECK_UPDATES];
+pub(super) const DESKTOP_LABELS: [&str; 9] = [DESKTOP.startup, "Start minimized", DESKTOP.close, "Lock Rustcord with a PIN", "Unlock with Windows Hello", "Lock after", "Lock when hidden in the tray", AUTO_UPDATE, CHECK_UPDATES];
 const AUTO_UPDATE: &str = "Install updates automatically";
 const CHECK_UPDATES: &str = "Check for updates";
 
@@ -169,6 +169,7 @@ pub(super) fn windows(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
     let meta = if no_tray { "No system tray found, so closing the window quits Rustcord." } else { DESKTOP.close_meta };
     let theme = &*cx.theme;
     changed |= ui.add_enabled_ui(!no_tray, |ui| switch_row(ui, theme, DESKTOP.close, Some(meta), &mut cx.settings.minimize_to_tray)).inner;
+    changed |= super::app_lock::show(ui, cx);
     changed | updates(ui, cx)
 }
 
@@ -240,7 +241,7 @@ pub(in crate::ui) fn frame(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     }
     caret_timeout(ctx);
     // Signed in only; recording a shortcut on the Keybinds page takes every key.
-    if cx.view.screen == super::super::Screen::Main && !keybinds::recording(ctx) {
+    if cx.view.screen == super::super::Screen::Main && !keybinds::recording(ctx) && !crate::lock::locked() {
         save |= global_keys(ctx, cx);
     }
     exclude_from_capture(ctx, cx.settings.streamer.enabled && cx.settings.streamer.hide_from_capture);
@@ -276,10 +277,23 @@ fn caret_timeout(ctx: &egui::Context) {
 /// was clicked (the window is shown then too).
 pub(in crate::ui) fn logic(ctx: &egui::Context, view: &mut ViewState, cmd: &CommandSender, settings: &mut Settings) -> bool {
     let mut clicked = false;
+    // App lock: the idle time counts key presses, clicks, wheel turns and text (a pointer at rest
+    // sends moves too, so those don't).
+    let input = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { .. } | egui::Event::PointerButton { .. } | egui::Event::MouseWheel { .. } | egui::Event::Text(_))));
+    crate::lock::idle(ctx, &settings.app_lock, input);
     let quitting = egui::Id::unique("rc_quitting");
     let started = egui::Id::unique("rc_started");
     if !ctx.data(|d| d.get_temp::<bool>(started).unwrap_or(false)) {
         ctx.data_mut(|d| d.insert_temp(started, true));
+        // Test hook `RUSTCORD_NAV_DEMO=lock[:wrong|:hello|:forgot]`: locked now, PIN "1234" in memory.
+        let demo = super::super::sidebar::nav_demo_value("lock").or_else(|| super::super::sidebar::nav_demo("lock").then_some(""));
+        if let Some(v) = demo {
+            crate::lock::demo(&mut settings.app_lock, v == "hello");
+        }
+        // `lock-rows`: a lock that is on in settings.toml, but unlocked (the settings rows).
+        if super::super::sidebar::nav_demo("lock-rows") {
+            crate::lock::unlock();
+        }
         // Started at sign-in (`--minimized` in the Run value): straight to the tray.
         if crate::notify::has_tray() && std::env::args().any(|a| a == "--minimized") {
             to_tray(ctx);
@@ -320,6 +334,9 @@ pub(in crate::ui) fn logic(ctx: &egui::Context, view: &mut ViewState, cmd: &Comm
     if !quit && settings.minimize_to_tray && crate::notify::has_tray() && ctx.input(|i| i.viewport().close_requested()) {
         ctx.send_viewport_cmd(ViewportCommand::CancelClose);
         to_tray(ctx);
+        if settings.app_lock.on_tray {
+            crate::lock::lock(&settings.app_lock);
+        }
         if !settings.tray_hint_shown {
             settings.tray_hint_shown = true;
             if let Err(e) = settings.save() {

@@ -13,6 +13,7 @@ mod config;
 mod crash;
 mod emoji;
 mod gateway;
+mod lock;
 mod media;
 mod model;
 mod notify;
@@ -48,6 +49,8 @@ fn main() -> eframe::Result {
             eprintln!("rustcord: {e}");
             std::process::exit(1);
         }
+        // The purge should not leave the app lock's hash behind either.
+        let _ = lock::clear_pin();
         return Ok(());
     }
 
@@ -72,6 +75,8 @@ fn main() -> eframe::Result {
         // A captcha webview's profile that a quit or crash left behind (src/captcha.rs).
         captcha::clean_profiles();
         let mut settings = config::Settings::load();
+        // Locked from the first frame when the app lock is on (the hash is read here, off the UI thread).
+        lock::arm(&settings.app_lock);
         // Autostart on once for an installed copy (never for dev builds or test runs).
         autostart::default_once(&mut settings);
         let snapshot = cache::load_snapshot();

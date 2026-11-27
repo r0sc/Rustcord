@@ -23,6 +23,7 @@
 
 mod account;
 mod alerts;
+mod app_lock;
 mod app;
 mod connections;
 mod cosmetics;
@@ -160,7 +161,7 @@ impl Page {
             Page::Keybinds => ("Keybinds", "keybinds", "shortcuts hotkeys keyboard"),
             Page::Language => ("Language", "language", "locale"),
             // One id on every OS; title and rows say Windows, Linux or macOS.
-            Page::Windows => (app::DESKTOP.title, "windows", "startup login autostart minimize tray menu bar close update updates version upgrade"),
+            Page::Windows => (app::DESKTOP.title, "windows", "startup login autostart minimize tray menu bar close update updates version upgrade lock pin password windows hello privacy screen idle"),
             Page::StreamerMode => ("Streamer mode", "streamer", "streaming obs hide"),
             Page::Advanced => ("Advanced", "advanced", "developer mode copy id hardware acceleration"),
             Page::ActivityPrivacy => ("Activity privacy", "activity", "activity status game join rustcord presence rich"),
@@ -323,6 +324,9 @@ pub struct UserSettingsUi {
     /// closes. `sound_scroll`: bring the section into view once (the context menus' item).
     sound_place: Option<crate::model::Id>,
     sound_scroll: bool,
+    /// Windows settings > App lock: the "Set a PIN" dialog; dropped with the layer, which wipes
+    /// the buffers.
+    app_lock: app_lock::Form,
     /// Log Out was clicked: the "Are you sure?" dialog is open.
     ask_logout: bool,
 }
@@ -511,6 +515,7 @@ fn search_demo_id() -> egui::Id {
 fn opened(cx: &mut UiCx<'_>) {
     let u = &mut cx.view.user_settings_ui;
     u.account = Default::default();
+    u.app_lock = Default::default();
     u.voice.opened();
     u.search.clear();
     u.before_search = None;
@@ -787,7 +792,7 @@ fn guild_notifications(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     }
 }
 
-fn logout(cx: &mut UiCx<'_>) {
+pub(in crate::ui) fn logout(cx: &mut UiCx<'_>) {
     cx.cmd.send(Command::Logout);
     cx.state.reset();
     cx.images.clear();

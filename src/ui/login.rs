@@ -717,7 +717,7 @@ fn submit_token(ctx: &egui::Context, cx: &mut UiCx<'_>) {
 
 /// Full-width 40 pt field on the inset color. `action` adds a small text button inside its right
 /// edge; returns the field's response and whether that button was clicked.
-fn field(ui: &mut egui::Ui, theme: &Theme, edit: egui::TextEdit<'_>, action: Option<&str>, action_enabled: bool) -> (egui::Response, bool) {
+pub(super) fn field(ui: &mut egui::Ui, theme: &Theme, edit: egui::TextEdit<'_>, action: Option<&str>, action_enabled: bool) -> (egui::Response, bool) {
     let action_id = egui::IdSalt::new("login_field_action");
     let action_font = FontId::proportional(theme.font.size - 1.0);
     let muted = theme.colors.text_muted.to_color32();
@@ -834,7 +834,7 @@ fn error_line(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
 }
 
 /// Full-width primary button (§9, 40 tall); shows a spinner while a login request is in flight.
-fn primary_button(ui: &mut egui::Ui, cx: &UiCx<'_>, label: &str, enabled: bool) -> egui::Response {
+pub(super) fn primary_button(ui: &mut egui::Ui, cx: &UiCx<'_>, label: &str, enabled: bool) -> egui::Response {
     let c = &cx.theme.colors;
     let busy = cx.view.login_busy;
     // A faded accent button reads as a faded purple; disabled gets the neutral fill instead.
@@ -934,6 +934,8 @@ pub fn open_test_tab(view: &mut super::ViewState, tab: &str) {
 
 /// Leaving the login screen: stop a QR login and wipe every login buffer.
 pub fn on_logged_in(ctx: &egui::Context, view: &mut super::ViewState, cmd: &CommandSender) {
+    // A fresh sign-in counts as unlocked.
+    crate::lock::unlock();
     forget_all_history(ctx);
     ctx.data_mut(|d| d.remove::<egui::TextureHandle>(icon_id()));
     // A scanned code is what logged us in: cancelling it now could cut its remember step short.

@@ -199,6 +199,7 @@ retakes the screenshots.</sub>
   mentions and incoming calls can use your own WAV or Ogg Opus file, everywhere or for one
   server, channel or DM.
 - Music controls above the user panel on Windows and Linux: what the computer plays, with pause and next. Only you see it, and it can be turned off in Settings → Appearance.
+- App lock: an optional PIN (and Windows Hello on Windows) at start, after a time without use and when opened from the tray. Notifications show no message text while it is locked. It only hides the window; the cache on disk is not encrypted. A forgotten PIN means signing out.
 - Keyword alerts: your words get a notification and the mention highlight, even in muted
   channels.
 - Quiet hours, with a pause from the tray or the account menu. Keyword alerts and quiet hours

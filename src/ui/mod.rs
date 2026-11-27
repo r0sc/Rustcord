@@ -22,7 +22,8 @@ pub mod guild_card;
 pub mod icons;
 pub mod images;
 pub mod inbox;
-pub mod login;
+pub mod lock_screen;
+mod login;
 pub mod markdown;
 pub mod members;
 pub mod messages;
@@ -377,7 +378,7 @@ impl ViewState {
 
     /// A full-screen settings layer hides the chat (no read acks, no member list).
     pub fn chat_hidden(&self) -> bool {
-        self.settings_open || self.server_settings.is_some()
+        self.settings_open || self.server_settings.is_some() || crate::lock::locked()
     }
 }
 
@@ -547,7 +548,7 @@ impl RustcordApp {
                         // Off, or Streamer Mode: none, or without sender and text.
                         if let Some((title, body)) = self.settings.notification(&n.title, &n.body) {
                             // A game is in front: the overlay shows it instead of the desktop notification.
-                            let author = n.author_id.filter(|_| !self.settings.streamer.hides_personal());
+                            let author = n.author_id.filter(|_| !self.settings.hides_sender());
                             if !self.overlay.notify(&self.state, &self.settings, title, body, author) {
                                 crate::notify::show(title, body);
                                 self.view.quests_ui.notified_last = false;
@@ -1059,6 +1060,11 @@ impl eframe::App for RustcordApp {
                 title_bar(ui, &mut cx, &up);
                 login::show(ui, &mut cx);
             }
+            // App lock: the lock screen instead of the window (nothing of the chat is drawn).
+            Screen::Main if crate::lock::locked() => {
+                title_bar(ui, &mut cx, &up);
+                lock_screen::screen(ui, &mut cx);
+            }
             Screen::Main => {
                 // Gradient themes: the window gradient under the translucent panels.
                 self.theme_applier.paint_background(&ctx);
@@ -1221,7 +1227,7 @@ fn title_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status) {
         .frame(egui::Frame::new().fill(cx.theme.panel_fills().frame.to_color32()))
         .show(ui, |ui| {
             chrome::title_bar(ui, &c, |ui| {
-                if up.screen || cx.view.screen == Screen::Login {
+                if up.screen || cx.view.screen == Screen::Login || crate::lock::locked() {
                     chrome::app_label(ui, cx.theme);
                 } else {
                     sidebar::title_bar(ui, cx);

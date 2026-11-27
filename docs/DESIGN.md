@@ -1443,6 +1443,32 @@ it. If it is built later, use Secondary buttons 40 tall with a 20 px icon, in a 
   without a tray host: the close row is disabled with "No system tray found, so closing the
   window quits Rustcord." Camera, screen share and video calls are disabled controls there,
   each with a tooltip like "Camera isn't available on Linux yet."
+- **Settings > Windows / Linux / macOS > App lock** (between Window and Updates; crate `lock`): a
+  screen lock, not encryption. Switch row "Lock Rustcord with a PIN" ("Asks for your PIN when
+  Rustcord starts. It only hides the window: messages and images cached on this computer are not
+  encrypted."); on opens the "Set a PIN" dialog (440; "PIN" and "Repeat PIN" 40 px password
+  fields, digits only, 4 to 16; errors in `danger` meta: "Use 4 to 16 digits.", "The two PINs are
+  different."; "Set PIN" primary) and stays off until a PIN is saved; off removes it ("App lock
+  is off"). While on: "Unlock with Windows Hello" (Windows only; disabled with "Windows Hello
+  isn't set up on this PC."), "Lock after" (Never, 1 minute, 5 minutes, 15 minutes, 30 minutes,
+  1 hour), "Lock when hidden in the tray" (macOS: "menu bar"). Test hooks: `RUSTCORD_NAV_DEMO=lock`,
+  `lock:wrong`, `lock:hello`, `lock:forgot`, `lock-setup`, `lock-rows` (unlocked, for the rows).
+- **Lock screen** (ui/lock_screen.rs): like the update screen, it replaces the main window under
+  the 32 px title bar (Rustcord's name there): flat `guild_bar` page, a centred 320 px column, no
+  card. Logo 56; 24; "Rustcord is locked" in the title role; 8; "Enter your PIN." `text_muted`;
+  24; the PIN field (320 x 40, `code_background`, 1 px `edge`, 2 px focus ring, focused when the
+  screen appears, Enter unlocks); 8; the error in `danger` meta ("Wrong PIN. Try again.", "Too
+  many tries. Wait 30 seconds, then try again.", "Rustcord can't find your PIN. Sign out to
+  remove the lock." with a secondary "Try again", "Windows Hello didn't unlock Rustcord."); 16;
+  "Unlock" (primary, 320 x 40); 8; "Use Windows Hello" (secondary, Windows with Hello on); 16;
+  "Forgot your PIN?" in the link colour, which opens "Sign out and remove the lock?" (danger
+  "Sign out": the PIN is removed, the lock turned off, the account signed out and the cache
+  cleared; nobody is ever locked out). Locking and unlocking are instant (a fade would show the
+  private screen longer); a wrong PIN shakes the column like the login card (3 swings of 6 px,
+  LARGE, none with Reduced motion). No frames while idle: one wake at the end of the 30 s
+  pause. While locked: notifications show "Rustcord" / "New message", no read acks, keybinds
+  off, sounds still play. It locks at start, after the idle time (keys, clicks, wheel and text
+  only) and when hidden to the tray.
 - **Installer:** title "Rustcord setup"; heading "Install Rustcord"; option rows use the same
   sentence case; buttons "Install" (primary) and "Cancel". Done: "Rustcord is installed" with
   "Open Rustcord".

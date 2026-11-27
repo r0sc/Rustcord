@@ -360,6 +360,11 @@ mod setup {
                 Ok(()) | Err(keyring::Error::NoEntry) => {}
                 Err(e) => return Err(format!("Could not remove the saved login: {e}")),
             }
+            // The app lock's PIN hash (src/lock.rs: account "app-lock-pin").
+            match keyring::Entry::new(o.id.id, "app-lock-pin").and_then(|e| e.delete_credential()) {
+                Ok(()) | Err(keyring::Error::NoEntry) => {}
+                Err(e) => return Err(format!("Could not remove the app lock: {e}")),
+            }
         }
         Ok(())
     }

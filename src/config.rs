@@ -169,6 +169,9 @@ pub struct Settings {
     pub overlay: OverlaySettings,
     /// Notifications > Sounds (`src/sounds.rs`).
     pub sounds: SoundSettings,
+    /// Windows / Linux / macOS settings > App lock (crate::lock). The PIN's hash lives in the OS
+    /// keyring, never here.
+    pub app_lock: AppLock,
     /// Notifications > Keyword alerts (crate::alerts).
     pub keyword_alerts: crate::alerts::KeywordAlerts,
     /// Content & social > Hidden words (crate::alerts): matching messages fold into one line.
@@ -193,6 +196,26 @@ pub struct SoundSettings {
     pub files: std::collections::BTreeMap<String, String>,
     /// Custom sounds for one server, channel or DM (its id): key -> path. Beats `files`.
     pub places: std::collections::BTreeMap<crate::model::Id, std::collections::BTreeMap<String, String>>,
+}
+
+/// Windows / Linux / macOS settings > App lock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppLock {
+    /// A PIN is set: Rustcord asks for it at start.
+    pub enabled: bool,
+    /// Windows Hello also unlocks.
+    pub hello: bool,
+    /// "Lock after" in minutes; 0 = never.
+    pub idle_minutes: u16,
+    /// Lock when the window hides in the tray / menu bar.
+    pub on_tray: bool,
+}
+
+impl Default for AppLock {
+    fn default() -> Self {
+        Self { enabled: false, hello: false, idle_minutes: 15, on_tray: true }
+    }
 }
 
 /// Bound of `SoundSettings::places`.
@@ -357,6 +380,7 @@ impl Default for Settings {
             auto_update: true,
             overlay: OverlaySettings::default(),
             sounds: SoundSettings::default(),
+            app_lock: AppLock::default(),
             keyword_alerts: Default::default(),
             hidden_words: Vec::new(),
             quiet_hours: Default::default(),
@@ -392,11 +416,21 @@ impl Settings {
     /// (or Streamer Mode disables them); without sender and text while Streamer Mode hides
     /// personal information.
     pub fn notification<'a>(&self, title: &'a str, body: &'a str) -> Option<(&'a str, &'a str)> {
+        self.notification_when(crate::lock::locked(), title, body)
+    }
+
+    /// `notification`, also without sender and text while the app is locked (`locked`).
+    fn notification_when<'a>(&self, locked: bool, title: &'a str, body: &'a str) -> Option<(&'a str, &'a str)> {
         let s = &self.streamer;
         if !self.desktop_notifications || (s.enabled && s.disable_notifications) {
             return None;
         }
-        Some(if s.hides_personal() { (APP_NAME, "New message") } else { (title, body) })
+        Some(if s.hides_personal() || locked { (APP_NAME, "New message") } else { (title, body) })
+    }
+
+    /// No sender (avatar, name) on a notification: Streamer Mode's privacy form, or the app lock.
+    pub fn hides_sender(&self) -> bool {
+        self.streamer.hides_personal() || crate::lock::locked()
     }
 }
 
@@ -565,6 +599,24 @@ volume = 30
         assert!(old.game_connection);
         let off: Settings = toml::from_str("game_connection = false").unwrap();
         assert!(!off.game_connection);
+    }
+
+    #[test]
+    fn a_locked_app_shows_notifications_without_text() {
+        let mut s = Settings::default();
+        assert_eq!(s.notification_when(true, "Ann", "hi"), Some((APP_NAME, "New message")));
+        assert_eq!(s.notification_when(false, "Ann", "hi"), Some(("Ann", "hi")));
+        s.desktop_notifications = false;
+        assert_eq!(s.notification_when(true, "Ann", "hi"), None, "off stays off");
+        // The lock is off in a fresh and in an old file.
+        let old: Settings = toml::from_str("theme = \"Ember Dark\"
+").unwrap();
+        assert_eq!(old.app_lock, AppLock { enabled: false, hello: false, idle_minutes: 15, on_tray: true });
+        let on: Settings = toml::from_str("[app_lock]
+enabled = true
+idle_minutes = 5
+").unwrap();
+        assert!(on.app_lock.enabled && on.app_lock.on_tray && on.app_lock.idle_minutes == 5);
     }
 
     #[test]
