@@ -302,14 +302,16 @@ fn posts(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, forum: Id, available: 
     }
 }
 
-/// Empty state (docs/DESIGN.md §9), its block centred near 30 % of the height: a 48 px muted
-/// icon, a heading, one meta sentence and, with `retry`, a secondary Retry. True when clicked.
+/// Empty state (docs/DESIGN.md §9), its block centred near 30 % of the height: the chat start's
+/// tile and rings with the icon, a heading, one meta sentence and, with `retry`, a secondary Retry.
+/// True when clicked.
 fn empty_state(ui: &mut egui::Ui, pal: &Pal, icon: Icon, heading: &str, text: &str, retry: bool) -> bool {
     ui.add_space((ui.available_height() * 0.3 - 76.0).max(24.0));
     ui.vertical_centered(|ui| {
         ui.spacing_mut().item_spacing.y = 4.0;
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(48.0), Sense::hover());
-        icons::paint(ui.painter(), icon, rect, pal.muted, pal.bg);
+        let rings = ui.painter().add(egui::Shape::Noop);
+        let tile = super::messages::hero_tile(ui, pal, (icon, None));
+        ui.painter().set(rings, super::messages::hero_rings(tile.center(), pal.tk.rule));
         ui.add_space(12.0);
         ui.label(RichText::new(heading).font(FontId::new(pal.heading(), crate::theme::semibold_family())).color(pal.text));
         ui.add(Label::new(RichText::new(text).size(pal.meta()).color(pal.muted)).wrap());

@@ -243,13 +243,16 @@ fn banner(ui: &mut egui::Ui, pal: &Pal, text: &str) {
     });
 }
 
-/// §9 empty state at 30 % of the page: icon 48, heading, one meta line, at most one button.
+/// §9 empty state at 30 % of the page: tile 64 with rings, heading, one meta line, at most one button.
 /// True when the button was clicked.
 fn empty_state(ui: &mut egui::Ui, pal: &Pal, title: &str, meta: &str, action: Option<&str>) -> bool {
     ui.add_space((ui.available_height() * 0.3 - 80.0).max(24.0));
     ui.vertical_centered(|ui| {
         ui.spacing_mut().item_spacing.y = 8.0;
-        super::messages::vector_icon(ui, Icon::Quest, 48.0, pal.muted, pal.bg);
+        let rings = ui.painter().add(egui::Shape::Noop);
+        let tile = super::messages::hero_tile(ui, pal, (Icon::Quest, None));
+        ui.painter().set(rings, super::messages::hero_rings(tile.center(), pal.tk.rule));
+        ui.add_space(8.0);
         ui.label(RichText::new(title).font(semibold(pal.heading())).color(pal.text));
         ui.label(RichText::new(meta).size(pal.meta()).color(pal.muted));
         action.is_some_and(|a| {

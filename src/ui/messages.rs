@@ -1569,7 +1569,19 @@ fn message_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo)
         .content_margin(Margin::ZERO);
     // A switched channel arrives (DESIGN §7); the thread and split panels never move.
     let moved = if lc.panel { (1.0, 0.0) } else { super::arrival(ui.ctx(), cx.state, cx.view).chat };
-    let out = super::motion::arriving(ui, moved, |ui| area.show_viewport(ui, |ui, viewport| list_contents(ui, cx, lc, memo, viewport)));
+    let (out, flat) = super::motion::arriving(ui, moved, |ui| {
+        let flat = super::members::flat_fades(ui, cx);
+        (area.show_viewport(ui, |ui, viewport| list_contents(ui, cx, lc, memo, viewport)), flat)
+    });
+    if flat {
+        // Under the header the list fades into a veil, above the composer into the pane (DESIGN §10.3).
+        let veil = match lc.pal.tk.mode {
+            crate::theme::Mode::Dark => Color32::from_black_alpha(77),
+            crate::theme::Mode::Light => lc.pal.text.gamma_multiply(0.07),
+            crate::theme::Mode::HighContrast => lc.pal.bg,
+        };
+        super::scroll_fades(ui, &out, out.inner_rect, (out.inner_rect.left(), out.inner_rect.right()), (veil, lc.pal.bg));
+    }
     if let Some(bar) = memo.new_bar.filter(|_| !memo.bar_closed) {
         new_messages_bar(ui, cx, lc, memo, out.inner_rect, bar);
     }
@@ -1589,6 +1601,8 @@ fn demo_boundary(state: &AppState, ch: Id) -> Option<Id> {
     demo("new").then(|| msgs.len().checked_sub(4).map(|i| msgs[i].id)).flatten()
 }
 
+static DEMO_SCROLLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, viewport: Rect) {
     let ctx = ui.ctx().clone();
     ui.set_width(ui.available_width());
@@ -1599,6 +1613,11 @@ fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
     let want_bottom = lc.to_bottom(cx.view, memo);
     let now = ctx.input(|i| i.time);
 
+    // `RUSTCORD_MSG_DEMO=scrolled` (240 px) / `scrolled-top`: once, at pass 20, the list scrolls up.
+    if (demo("scrolled") || demo("scrolled-top")) && !lc.panel && ctx.cumulative_pass_nr() >= 20 && !DEMO_SCROLLED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        ui.scroll_with_delta(vec2(0.0, if demo("scrolled-top") { 20_000.0 } else { 240.0 }));
+        ctx.request_repaint();
+    }
     top_row(ui, cx, lc);
     note_arrivals(cx, lc, memo, now);
 
@@ -1904,10 +1923,18 @@ fn start_block(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, note: Option<&str
     };
     Frame::new().inner_margin(Margin { left: 16, right: 16, top: 24, bottom: 8 }).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 4.0;
+        // The rings go under the tile or avatar (a slot set once its place is known).
+        let rings = ui.painter().add(Shape::Noop);
         if dm {
             let (slot, _) = ui.allocate_exact_size(Vec2::splat(80.0), Sense::hover());
+            ui.painter().set(rings, hero_rings(slot.center(), pal.tk.rule));
             super::sidebar::dm_avatar_at(ui, cx, lc.ch, slot);
             ui.add_space(8.0);
+        } else {
+            let icon = cx.state.channels.get(&lc.ch).map_or_else(|| icons::channel(lc.kind, false, false, false), |c| icons::of(c, cx.state));
+            let tile = hero_tile(ui, &pal, icon);
+            ui.painter().set(rings, hero_rings(tile.center(), pal.tk.rule));
+            ui.add_space(12.0);
         }
         let label = if dm { lc.name.clone() } else { format!("{}{}", channel_prefix(lc.kind), lc.name) };
         ui.add(Label::new(RichText::new(label).family(bold_family()).size(pal.display()).color(pal.text)).selectable(false));
@@ -1917,6 +1944,24 @@ fn start_block(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, note: Option<&str
             ui.add(Label::new(RichText::new(note).size(pal.meta()).color(pal.muted)).selectable(false));
         }
     });
+}
+
+/// The tile of a chat start, the forum's and Quests' empty pages (DESIGN §10.3): 64 px `surface`,
+/// radius `float_radius`, 1 px `rule` inside, the sheen, the icon 32 in `text_muted`. Returns its rect.
+pub(super) fn hero_tile(ui: &mut egui::Ui, pal: &Pal, icon: (Icon, Option<icons::Badge>)) -> Rect {
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(64.0), Sense::hover());
+    let (p, r) = (ui.painter(), pal.float_radius());
+    p.rect_filled(rect, r, pal.surface);
+    p.rect_stroke(rect, r, Stroke::new(1.0, pal.tk.rule), egui::StrokeKind::Inside);
+    sheen(p, rect, f32::from(r), &pal.tk);
+    icons::paint_channel(p, icon, Rect::from_center_size(rect.center(), Vec2::splat(32.0)), pal.muted, pal.surface);
+    rect
+}
+
+/// Three 1 px rings 104 / 152 / 200 px across around `c` in `rule` at 100 / 55 / 25 % (DESIGN §10.3);
+/// the painter's clip (the pane) cuts them. Static paint.
+pub(super) fn hero_rings(c: egui::Pos2, rule: Color32) -> Shape {
+    Shape::Vec([(52.0, 1.0), (76.0, 0.55), (100.0, 0.25)].map(|(r, k)| Shape::circle_stroke(c, r, Stroke::new(1.0, rule.gamma_multiply(k)))).to_vec())
 }
 
 /// Day label centred on a hairline and/or the unread marker (a `danger` line with the "New" tag
