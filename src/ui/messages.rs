@@ -1924,16 +1924,20 @@ fn start_block(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, note: Option<&str
     Frame::new().inner_margin(Margin { left: 16, right: 16, top: 24, bottom: 8 }).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 4.0;
         // The rings go under the tile or avatar (a slot set once its place is known).
-        let rings = ui.painter().add(Shape::Noop);
+        // Clipped to above the heading, so they read as a halo over the tile (as on Quests).
+        let top = ui.cursor().top();
+        let (slot_h, gap) = if dm { (80.0, 8.0) } else { (64.0, 12.0) };
+        let halo = ui.painter().with_clip_rect(ui.clip_rect().intersect(Rect::everything_above(top + slot_h + gap)));
+        let rings = halo.add(Shape::Noop);
         if dm {
             let (slot, _) = ui.allocate_exact_size(Vec2::splat(80.0), Sense::hover());
-            ui.painter().set(rings, hero_rings(slot.center(), pal.tk.rule));
+            halo.set(rings, hero_rings(slot.center(), pal.tk.rule));
             super::sidebar::dm_avatar_at(ui, cx, lc.ch, slot);
             ui.add_space(8.0);
         } else {
             let icon = cx.state.channels.get(&lc.ch).map_or_else(|| icons::channel(lc.kind, false, false, false), |c| icons::of(c, cx.state));
             let tile = hero_tile(ui, &pal, icon);
-            ui.painter().set(rings, hero_rings(tile.center(), pal.tk.rule));
+            halo.set(rings, hero_rings(tile.center(), pal.tk.rule));
             ui.add_space(12.0);
         }
         let label = if dm { lc.name.clone() } else { format!("{}{}", channel_prefix(lc.kind), lc.name) };
