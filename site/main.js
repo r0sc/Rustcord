@@ -77,6 +77,7 @@ if (find) {
     let n = 0;
     for (const r of rows) { const hit = !q || r.textContent.toLowerCase().includes(q); r.hidden = !hit; n += hit; }
     for (const b of boxes) b.hidden = !b.querySelector('.pl-row:not([hidden])');
+    pl.classList.toggle('no-hit', !!q && !n); // no empty frame under the message
     if (q) more.open = true; else if (was !== null) { more.open = was; was = null; }
     status.textContent = !q ? '' : n ? `${n} of ${rows.length} plugins` : `No plugin matches “${raw}”.`;
   });
