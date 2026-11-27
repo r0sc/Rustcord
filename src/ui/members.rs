@@ -242,7 +242,7 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
     let status = user_status_text(cx.state, user.id).filter(|_| !offline);
     let tip = art_tip.or_else(|| status.as_ref().and_then(|st| status_tooltip(ui, st)));
     let under = ui.painter().add(Shape::Noop);
-    let (name_rect, text_end) = name_and_status(ui, cx, g.clone(), color, status.as_ref(), pos2(text_left, row.center().y), max_w);
+    let (name_rect, text_end) = name_and_status(ui, cx, g.clone(), color, ring, status.as_ref(), pos2(text_left, row.center().y), max_w);
     ui.painter().set(under, cosmetics::name_underlay(name_rect.min, &g, style, ui.visuals().dark_mode));
     // Chips over a nameplate get the row's own colour under them (opaque on the art).
     let surface = fx.nameplate.as_ref().map(|_| ring);

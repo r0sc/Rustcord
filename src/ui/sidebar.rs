@@ -1882,9 +1882,11 @@ pub(super) fn dm_avatar_at(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, rect: R
 }
 
 /// Paints `name` (in `color`) at x `left_center.x`, centred on its y; with a status line (the
-/// meta role, muted) under it, the pair is centred instead. `max_w` bounds the status line.
+/// meta role, muted, lifted to 4.5:1 on `bg`, the opaque colour under it) under it, the pair is
+/// centred instead. `max_w` bounds the status line.
 /// Returns the name's rect (guild tag chips go after it) and the right end of the text.
-pub(super) fn name_and_status(ui: &egui::Ui, cx: &mut UiCx<'_>, name: Arc<egui::Galley>, color: Color32, status: Option<&StatusText>, left_center: egui::Pos2, max_w: f32) -> (Rect, f32) {
+#[allow(clippy::too_many_arguments)]
+pub(super) fn name_and_status(ui: &egui::Ui, cx: &mut UiCx<'_>, name: Arc<egui::Galley>, color: Color32, bg: Color32, status: Option<&StatusText>, left_center: egui::Pos2, max_w: f32) -> (Rect, f32) {
     let (x, cy) = (left_center.x, left_center.y);
     let Some(st) = status else {
         let at = Rect::from_min_size(pos2(x, cy - name.size().y / 2.0), name.size());
@@ -1893,7 +1895,7 @@ pub(super) fn name_and_status(ui: &egui::Ui, cx: &mut UiCx<'_>, name: Arc<egui::
     };
     let font = FontId::proportional(cx.theme.font.size - 3.0);
     let sub_h = ui.ctx().fonts_mut(|f| f.row_height(&font));
-    let (name_h, muted) = (name.size().y, cx.theme.colors.text_muted.to_color32());
+    let (name_h, muted) = (name.size().y, crate::theme::readable_on(cx.theme.colors.text_muted.to_color32(), bg));
     let top = cy - (name_h + sub_h) / 2.0;
     let at = Rect::from_min_size(pos2(x, top), name.size());
     ui.painter().galley(at.min, name, color);
@@ -1934,14 +1936,15 @@ fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
 
     let c = &cx.theme.colors;
     let size = cx.theme.font.size;
+    // The opaque colour under the row's text: the fill with the person's wash blended in.
+    let mut ring = if fill == Color32::TRANSPARENT { c.sidebar.to_color32() } else { fill };
+    if let Some(a) = aura {
+        let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if selected { 1.0 } else { 0.75 };
+        let radius = cx.theme.layout.corner_radius as u8;
+        ui.painter().set(wash_slot, super::aura::row_wash(ui.ctx(), row.shrink2(vec2(ROW_INSET, 0.0)), radius, a, alpha));
+        ring = ring.blend(a.gamma_multiply(alpha * 0.85));
+    }
     if let Some(u) = other {
-        let mut ring = if fill == Color32::TRANSPARENT { c.sidebar.to_color32() } else { fill };
-        if let Some(a) = aura {
-            let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if selected { 1.0 } else { 0.75 };
-            let radius = cx.theme.layout.corner_radius as u8;
-            ui.painter().set(wash_slot, super::aura::row_wash(ui.ctx(), row.shrink2(vec2(ROW_INSET, 0.0)), radius, a, alpha));
-            ring = ring.blend(a.gamma_multiply(alpha * 0.85));
-        }
         user_dot(ui.painter(), avatar, cx.state, u, c, ring);
     }
     let color = row_text_color(c, muted, selected || unread || hot);
@@ -1976,7 +1979,7 @@ fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     // Group: its size; 1:1: the other user's custom status or activity.
     let sub = if group { Some((None, format!("{members} members"))) } else { other.and_then(|u| user_status_text(cx.state, u)) };
     let under = ui.painter().add(Shape::Noop);
-    let (name_rect, text_end) = name_and_status(ui, cx, title.clone(), color, sub.as_ref(), pos2(text_left, row.center().y), right - text_left);
+    let (name_rect, text_end) = name_and_status(ui, cx, title.clone(), color, ring, sub.as_ref(), pos2(text_left, row.center().y), right - text_left);
     ui.painter().set(under, super::cosmetics::name_underlay(name_rect.min, &title, style, ui.visuals().dark_mode));
     if let Some(np) = &fx.nameplate {
         let (radius, plate_rect, end) = (cx.theme.layout.corner_radius.round() as u8, row.shrink2(vec2(ROW_INSET, 0.0)), text_end.max(name_rect.right() + chip_w));

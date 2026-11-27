@@ -300,7 +300,7 @@ fn friend_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, id: Id) {
         BLOCKED => Some((None, "Blocked".to_owned())),
         _ => None,
     };
-    name_and_status(ui, cx, name_g, pal.text, status.as_ref(), pos2(text_left, row.center().y), max_w);
+    name_and_status(ui, cx, name_g, pal.text, ring, status.as_ref(), pos2(text_left, row.center().y), max_w);
     // The username next to the name on hover.
     if hot && let Some(u) = cx.state.users.get(&id).filter(|u| u.username != name) {
         let left = text_left + name_w + 6.0;
@@ -381,7 +381,7 @@ fn active_card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, id: Id) {
         user_dot(ui.painter(), avatar, cx.state, id, &cx.theme.colors, pal.bg);
         let (x, w) = (avatar.right() + 12.0, head.right() - avatar.right() - 12.0);
         let n = one_line(ui, name.as_str(), bold(pal.size), pal.text, w);
-        name_and_status(ui, cx, n, pal.text, user_status_text(cx.state, id).as_ref(), pos2(x, head.center().y), w);
+        name_and_status(ui, cx, n, pal.text, pal.bg, user_status_text(cx.state, id).as_ref(), pos2(x, head.center().y), w);
         super::profile::activity_section(ui, cx, pal, id, &activity, 48.0, pal.bg);
     });
     // Registered after the avatar widget so the whole card stays clickable.

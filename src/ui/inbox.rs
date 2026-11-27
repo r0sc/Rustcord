@@ -862,7 +862,7 @@ fn unread_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, id: Id) {
     let guild = cx.state.channels.get(&id).and_then(|c| c.guild_id).and_then(|g| cx.state.guild(g)).map(|g| g.name.clone());
     let title = one_line(ui, name.as_str(), bold(pal.size), pal.text, right - left);
     let sub = guild.map(|g| (None, g));
-    let (at, _) = sidebar::name_and_status(ui, cx, title, pal.text, sub.as_ref(), pos2(left, row.center().y), right - left);
+    let (at, _) = sidebar::name_and_status(ui, cx, title, pal.text, pal.surface, sub.as_ref(), pos2(left, row.center().y), right - left);
     if let Some(i) = thread {
         icons::paint(ui.painter(), i, Rect::from_center_size(pos2(at.left() - 12.0, at.center().y), Vec2::splat(16.0)), pal.text, pal.surface);
     }
