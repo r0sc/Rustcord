@@ -195,11 +195,12 @@ fn column(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, message: Option<&str>
     }
     let ready = crate::lock::pin_ok(&buf);
     drop(buf);
+    // Read before the refocus below: regaining focus would hide the lost-focus Enter.
+    let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
     // The field has focus when the screen appears (and again after a wrong PIN).
     if !paused && !no_pin && ui.memory(|m| m.focused().is_none()) {
         resp.request_focus();
     }
-    let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
     if let Some(m) = message {
         ui.add_space(8.0);
         ui.add(egui::Label::new(RichText::new(m).size(pal.meta()).color(pal.danger)).wrap());
