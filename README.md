@@ -196,6 +196,7 @@ retakes the screenshots.</sub>
   notifications, freedesktop notifications on Linux and Notification Center on macOS.
 - App sounds for messages, mentions, calls, voice join and leave, mute, deafen, push to talk and
   streams. Each sound can be turned off, and one volume setting covers all of them.
+- Music controls above the user panel on Windows and Linux: what the computer plays, with pause and next. Only you see it, and it can be turned off in Settings → Appearance.
 - Keyword alerts: your words get a notification and the mention highlight, even in muted
   channels.
 - Quiet hours, with a pause from the tray or the account menu. Keyword alerts and quiet hours

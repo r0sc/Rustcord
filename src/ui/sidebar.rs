@@ -36,6 +36,8 @@ const HEADER_H: f32 = 49.0;
 /// Account row of the floating user panel, and the voice section above it while in a call.
 const ACCOUNT_H: f32 = 56.0;
 const VOICE_PANEL_H: f32 = 56.0;
+/// The music section at the top of the user panel (and its hairline).
+const MUSIC_H: f32 = 40.0;
 /// A user panel text column narrower than this shows my activity alone, without the custom
 /// status and its divider, so the activity name gets the line. The default window's column is
 /// 151 px and keeps both (docs/DESIGN.md §10.5).
@@ -296,7 +298,9 @@ fn demo_boost(state: &mut AppState) {
 /// servers and friends, a note), `tab:<online|all|pending|blocked|add>` (Friends tab), `icons`
 /// (every vector icon over the window, `icons::sheet`), `no-tray` (Linux: the settings page as
 /// without a tray host, `user_settings/app.rs`), `press:<shortcut>` (that key combination,
-/// e.g. `Alt+Down`, pressed once at frame 14 where the focus is; `user_settings::parse` names).
+/// e.g. `Alt+Down`, pressed once at frame 14 where the focus is; `user_settings::parse` names),
+/// `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
+/// not read; a click on Play / Pause flips it).
 pub(super) fn nav_demo(flag: &str) -> bool {
     nav_flags().split(',').any(|f| f.trim() == flag)
 }
@@ -1882,8 +1886,8 @@ fn panel_r(theme: &Theme) -> u8 {
 /// Height of the floating user panel: the account row (two text lines grow with the font
 /// size), plus the voice section and a hairline while in a call, and the quest video section
 /// and its hairline while a quest video plays.
-fn user_panel_h(cx: &UiCx<'_>) -> f32 {
-    user_panel_height(cx.state, cx.view, cx.theme)
+fn user_panel_h(ctx: &egui::Context, cx: &UiCx<'_>) -> f32 {
+    user_panel_height(cx.state, cx.view, cx.theme) + (MUSIC_H + 1.0) * music(ctx, cx).0
 }
 
 /// The "Quest video" section with its hairline, or nothing.
@@ -1891,7 +1895,41 @@ fn quest_h(view: &ViewState) -> f32 {
     if super::quests::watching(view) { super::quests::PANEL_H + 1.0 } else { 0.0 }
 }
 
+/// The music section: how far it is open (0 -> 1, eased) and what it shows (with the picture's
+/// generation). The last track stays for the exit fade. Off, unsupported or nothing playing: closed.
+fn music(ctx: &egui::Context, cx: &UiCx<'_>) -> (f32, Option<(crate::now_playing::Track, u64)>) {
+    use crate::now_playing as np;
+    let now = Instant::now();
+    let live = if nav_demo("music") || nav_demo_value("music").is_some() {
+        static SINCE: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+        let playing = ctx.data_mut(|d| *d.get_temp_mut_or(egui::Id::unique("rc_music_demo_playing"), nav_demo_value("music") != Some("paused")));
+        let track = np::Track { title: "Rewriting it in Rust".into(), artist: "Ferris and the Crabs".into(), art: None, can_next: true, playing };
+        Some((track, *SINCE.get_or_init(|| now), 0))
+    } else if np::SUPPORTED && cx.settings.music_controls {
+        np::current(ctx)
+    } else {
+        None
+    };
+    let shown = live.filter(|(t, since, _)| np::visible(t, *since, now));
+    let last = egui::Id::unique("rc_music_last");
+    let t = super::motion::anim(ctx, egui::Id::unique("rc_music_row"), shown.is_some(), super::motion::BASE, super::motion::BASE * super::motion::OUT);
+    let track = match shown {
+        Some((track, since, generation)) => {
+            // Paused: one wake when the minute is over.
+            if let Some(d) = np::wake_in(&track, since, now) {
+                ctx.request_repaint_after(d);
+            }
+            ctx.data_mut(|d| d.insert_temp(last, (track.clone(), generation)));
+            Some((track, generation))
+        }
+        None if t > 0.0 => ctx.data(|d| d.get_temp(last)),
+        None => None,
+    };
+    (t, track)
+}
+
 /// `user_panel_h` without a `UiCx` (startup hooks).
+// shortcut: the startup profile hook ignores the music row; pass ctx if RUSTCORD_OPEN=profile is ever combined with music.
 pub(super) fn user_panel_height(state: &AppState, view: &ViewState, theme: &Theme) -> f32 {
     let buttons = if state.voice.connected { VOICE_BUTTONS_H } else { 0.0 };
     let voice = if state.voice.channel_id.is_some() { VOICE_PANEL_H + buttons + 1.0 } else { 0.0 };
@@ -1905,7 +1943,7 @@ fn account_h(theme: &Theme) -> f32 {
 /// Empty bottom panel that keeps a column's content above the floating user panel.
 fn user_panel_space(ui: &mut egui::Ui, cx: &UiCx<'_>, salt: &str) {
     egui::Panel::bottom(salt)
-        .exact_size(user_panel_h(cx) + 2.0 * PANEL_MARGIN)
+        .exact_size(user_panel_h(ui.ctx(), cx) + 2.0 * PANEL_MARGIN)
         .resizable(false)
         .show_separator_line(false)
         .frame(egui::Frame::new())
@@ -1916,7 +1954,9 @@ fn user_panel_space(ui: &mut egui::Ui, cx: &UiCx<'_>, salt: &str) {
 /// the channel list (`width` = both): the voice connection while in a call, then my account.
 pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32) {
     let c = cx.theme.colors.clone();
-    let h = user_panel_h(cx);
+    let (open, track) = music(ctx, cx);
+    let music_h = (MUSIC_H + 1.0) * open;
+    let h = user_panel_height(cx.state, cx.view, cx.theme) + music_h;
     let screen = ctx.content_rect();
     let pos = pos2(screen.left() + PANEL_MARGIN, screen.bottom() - PANEL_MARGIN - h);
     egui::Area::new(egui::Id::unique("user_panel")).order(egui::Order::Middle).fixed_pos(pos).fade_in(false).show(ctx, |ui| {
@@ -1927,22 +1967,107 @@ pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32) {
             let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode);
             ui.painter().add(super::aura::row_wash(ctx, rect, panel_r(cx.theme), a, alpha));
         }
+        // The music section: laid out at its final size against its bottom edge, clipped to the
+        // part that is open, so the panel's rising top edge reveals it.
+        let top = rect.top() + music_h;
+        if let Some((track, generation)) = track.filter(|_| open > 0.0) {
+            ui.scope(|ui| {
+                ui.set_clip_rect(ui.clip_rect().intersect(rect.with_max_y(top)));
+                ui.multiply_opacity(open);
+                music_row(ui, cx, Rect::from_min_size(pos2(rect.left(), top - MUSIC_H - 1.0), vec2(rect.width(), MUSIC_H)), &track, generation);
+                ui.painter().hline(rect.x_range(), top - 0.5, line(&c));
+            });
+        }
         let quest_h = quest_h(cx.view);
-        let voice_h = h - account_h(cx.theme) - quest_h;
+        let voice_h = h - music_h - account_h(cx.theme) - quest_h;
         if quest_h > 0.0 {
-            super::quests::panel(ui, cx, rect.with_max_y(rect.top() + quest_h - 1.0));
-            ui.painter().hline(rect.x_range(), rect.top() + quest_h - 0.5, line(&c));
+            super::quests::panel(ui, cx, Rect::from_min_max(pos2(rect.left(), top), pos2(rect.right(), top + quest_h - 1.0)));
+            ui.painter().hline(rect.x_range(), top + quest_h - 0.5, line(&c));
         }
         if voice_h > 0.0 {
-            let split = rect.top() + quest_h + voice_h;
-            voice_panel(ui, cx, rect.with_min_y(rect.top() + quest_h).with_max_y(split - 1.0));
+            let split = top + quest_h + voice_h;
+            voice_panel(ui, cx, Rect::from_min_max(pos2(rect.left(), top + quest_h), pos2(rect.right(), split - 1.0)));
             ui.painter().hline(rect.x_range(), split - 0.5, line(&c));
         }
-        account_row(ui, cx, rect.with_min_y(rect.top() + quest_h + voice_h), rect.left_top());
+        account_row(ui, cx, rect.with_min_y(top + quest_h + voice_h), rect.left_top());
         // Last: the outline and the lit top edge stay over the nameplate.
         ui.painter().rect_stroke(rect, panel_r(cx.theme), line(&c), egui::StrokeKind::Inside);
         super::messages::sheen(ui.painter(), rect, f32::from(panel_r(cx.theme)), &cx.theme.tokens());
     });
+}
+
+/// What the computer plays: the picture (or a `Listening` tile), title over artist, Play / Pause
+/// and Next (one OS command each). `rect` is the 40 px row; docs/DESIGN.md §10.5.
+fn music_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect, track: &crate::now_playing::Track, generation: u64) {
+    let c = cx.theme.colors.clone();
+    let (text, muted, base) = (c.text.to_color32(), c.text_muted.to_color32(), user_panel_fill(&c));
+    let ctx = ui.ctx().clone();
+    let radius = CornerRadius::from(cx.theme.layout.corner_radius);
+    // Next, then Play / Pause, 8 px in and 4 px apart.
+    let next = Rect::from_center_size(pos2(rect.right() - 8.0 - 16.0, rect.center().y), Vec2::splat(32.0));
+    let play = next.translate(vec2(-36.0, 0.0));
+    let button = |ui: &mut egui::Ui, at: Rect, id: &str, icon: Icon, tip: &str, enabled: bool| {
+        let resp = ui.interact(at, ui.make_persistent_id(id), if enabled { Sense::click() } else { Sense::hover() });
+        let hot = enabled && (resp.hovered() || resp.has_focus());
+        let drawn = if enabled { super::motion::pressed(&resp, at) } else { at };
+        let bg = if hot { base.blend(text.gamma_multiply(0.08)) } else { base };
+        if hot {
+            ui.painter().rect_filled(drawn, radius, bg);
+        }
+        let color = if !enabled { muted.gamma_multiply(0.4) } else if hot { text } else { muted };
+        icons::paint(ui.painter(), icon, drawn.shrink(6.0), color, bg);
+        resp.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, tip));
+        resp.on_hover_text(tip).on_hover_cursor(if enabled { egui::CursorIcon::PointingHand } else { egui::CursorIcon::Default }).clicked()
+    };
+    let demo = nav_demo("music") || nav_demo_value("music").is_some();
+    if button(ui, play, "music_play", if track.playing { Icon::Pause } else { Icon::Play }, if track.playing { "Pause" } else { "Play" }, true) {
+        if demo {
+            ctx.data_mut(|d| d.insert_temp(egui::Id::unique("rc_music_demo_playing"), !track.playing));
+        } else {
+            crate::now_playing::toggle();
+        }
+    }
+    if button(ui, next, "music_next", Icon::Next, if track.can_next { "Next track" } else { "This player can't skip" }, track.can_next) && !demo {
+        crate::now_playing::next();
+    }
+    // The picture, 24 px at x + 12, rounded like a chip; else a `Listening` tile.
+    let art = Rect::from_center_size(pos2(rect.left() + 12.0 + 12.0, rect.center().y), Vec2::splat(24.0));
+    let chip = Pal::new(cx.theme).radius / 2;
+    let tex = track.art.as_ref().map(|img| {
+        let id = egui::Id::unique("rc_music_art");
+        match ctx.data(|d| d.get_temp::<(u64, egui::TextureHandle)>(id)) {
+            Some((g, tex)) if g == generation => tex,
+            _ => {
+                let tex = ctx.load_texture("rc_now_playing", (**img).clone(), egui::TextureOptions::LINEAR);
+                ctx.data_mut(|d| d.insert_temp(id, (generation, tex.clone())));
+                tex
+            }
+        }
+    });
+    match tex {
+        Some(tex) => egui::Image::from_texture(&tex).corner_radius(chip).paint_at(ui, art),
+        None => {
+            ui.painter().rect_filled(art, chip, c.code_background.to_color32());
+            icons::paint(ui.painter(), Icon::Listening, Rect::from_center_size(art.center(), Vec2::splat(16.0)), muted, c.code_background.to_color32());
+        }
+    }
+    // Title (label role) over artist (meta); the title alone is centred.
+    let size = cx.theme.font.size;
+    let (left, max_w) = (rect.left() + 44.0, play.left() - 8.0 - (rect.left() + 44.0));
+    let title = one_line(ui, track.title.as_str(), super::semibold(size - 2.0), text, max_w);
+    let artist = (!track.artist.is_empty()).then(|| one_line(ui, track.artist.as_str(), FontId::proportional(size - 3.0), muted, max_w));
+    let block = title.size().y + artist.as_ref().map_or(0.0, |a| a.size().y);
+    let top = rect.center().y - block / 2.0;
+    let below = top + title.size().y;
+    ui.painter().galley(pos2(left, top), title, text);
+    if let Some(a) = artist {
+        ui.painter().galley(pos2(left, below), a, muted);
+    }
+    let area = Rect::from_min_max(pos2(left, rect.top()), pos2(left + max_w, rect.bottom()));
+    let tip = if track.artist.is_empty() { track.title.clone() } else { format!("{} by {}", track.title, track.artist) };
+    let resp = ui.interact(area, ui.make_persistent_id("music_text"), Sense::hover());
+    resp.widget_info(|| WidgetInfo::labeled(Role::Label, true, format!("Now playing: {tip}")));
+    resp.on_hover_text(tip);
 }
 
 /// "Voice connected" (or "Connecting…", "Live" while I share) over "channel / server" (opens the

@@ -16,6 +16,7 @@ mod gateway;
 mod media;
 mod model;
 mod notify;
+mod now_playing;
 mod overrides;
 mod plugins;
 mod quests;

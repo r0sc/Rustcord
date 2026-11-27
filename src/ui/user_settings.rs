@@ -149,7 +149,7 @@ impl Page {
             Page::Connections => ("Connections", "connections", "accounts spotify steam github twitch xbox"),
             Page::FriendRequests => ("Friend requests", "friend-requests", "friends"),
             Page::Billing => ("Nitro & billing", "billing", "nitro boost subscriptions gift payment"),
-            Page::Appearance => ("Appearance", "appearance", "theme dark light gradient font member list colours colors density people aura profile colour"),
+            Page::Appearance => ("Appearance", "appearance", "theme dark light gradient font member list music spotify media now playing pause next colours colors density people aura profile colour"),
             Page::Accessibility => {
                 ("Accessibility", "accessibility", "saturation role colours colors font size scaling zoom spacing reduced motion animation gif tts")
             }
@@ -176,7 +176,7 @@ impl Page {
     /// shortcut: kept by hand next to the pages' code; move the labels into shared consts if they drift.
     fn local_labels(self) -> &'static [&'static str] {
         match self {
-            Page::Appearance => &["Theme", "Gradients", "People's colours", "Message display", "Cozy", "Compact", "Use Discord font (gg sans)", "Show member list"],
+            Page::Appearance => &["Theme", "Gradients", "People's colours", "Message display", "Cozy", "Compact", "Use Discord font (gg sans)", "Show member list", "Show music controls"],
             Page::Accessibility => &[
                 "Saturation",
                 "Show role colours in names",
@@ -586,6 +586,15 @@ fn page(ui: &mut egui::Ui, cx: &mut UiCx<'_>) -> bool {
                 Some("Next to server channels and group DMs; hidden in narrow windows."),
                 &mut cx.settings.show_member_list,
             );
+            if crate::now_playing::SUPPORTED {
+                changed |= switch_row(
+                    ui,
+                    cx.theme,
+                    "Show music controls",
+                    Some("What's playing on this computer, above your user panel. Only you see it."),
+                    &mut cx.settings.music_controls,
+                );
+            }
         }
         Page::Accessibility => changed |= app::accessibility(ui, cx),
         Page::Notifications => {

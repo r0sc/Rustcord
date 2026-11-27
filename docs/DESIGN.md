@@ -36,7 +36,9 @@ Rules:
 4. **Light comes from above.** Raised layers have a 1 px lit top edge on dark themes. The logo is
    lit from the top left. No other gradients in the UI. No glows.
 5. **Calm by default, loud for exceptions.** Grey panes; colour means something happened.
-6. **Motion only answers an action** and always stops (0 % idle CPU).
+6. **Motion only answers an action** and always stops (0 % idle CPU). Exception (approved): the
+   user panel's music section eases in and out when the computer starts or stops playing, which
+   answers the user's own action in another app, not one inside Rustcord.
 
 ---
 
@@ -343,6 +345,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Translation arriving | FAST fade of the text, height instant | instant (Show original) | `anim` | 5, 16, 18 |
 | My reaction | pop 1 → 1.12 → 1 over BASE | | `pop` (existing) | 9 |
 | Login error shake, update pill | LARGE | | existing | 9 |
+| Music section of the user panel appears / leaves | BASE: height 0 → 41 and opacity 0 → 1, ease-out; the row is laid out at its final size against the section's bottom edge and clipped, so the panel's rising top edge reveals it | BASE x OUT, the same curve backwards | `anim(.., BASE, BASE * OUT)` | 5, 8, 11, 18 |
 
 Ending cleanly (0 % idle CPU):
 - Every row above ends and stops asking for frames. Nothing loops: no glow, no pulse, no
@@ -616,7 +619,7 @@ Glyphs inside strings lose the glyph and get a painted 14 px icon in front:
 ---
 
 
-### 8.6 Four new icons (src/ui/icons.rs; 24 grid, stroke 1.75, round ends; add to `Icon` and `ALL`)
+### 8.6 Five new icons (src/ui/icons.rs; 24 grid, stroke 1.75, round ends; add to `Icon` and `ALL`)
 
 Written with the pen helpers already in icons.rs (`k.closed`, `k.ring`, `k.line`, `k.disc`,
 `k.rrect_line`, `arc(x, y, r, a0, a1)` in degrees, 0 = right, 90 = down):
@@ -651,6 +654,15 @@ Puzzle => {
     pts.extend(arc(18.25, 13.75, 2.5, 225.0, 495.0));
     pts.extend([(16.5, 19.5), (4.5, 19.5)]);
     k.closed(&pts);
+}
+```
+
+`Next` (the music controls), after `Pause` in the Media group: the `Play` triangle plus a bar.
+
+```rust
+Next => {
+    k.fill(&[(5.0, 5.0), (15.5, 12.0), (5.0, 19.0)]);
+    k.rrect(16.5, 5.0, 19.5, 19.0, 1.0);
 }
 ```
 
@@ -1089,6 +1101,25 @@ fn tile_corners(t: f32) -> CornerRadius {
 - "Voice connected" in label role, `positive_text`.
 - Channel and server in meta.
 - `Hangup` in `danger`.
+
+**Now playing section**, the top-most section of the panel (Windows and Linux; Settings > Appearance
+> Layout > "Show music controls", on by default; `RUSTCORD_NAV_DEMO=music[:paused]` shows a demo track):
+
+```
+| [art] Rewriting it in Rust                    [ ❚❚ ]  [ ▶❙ ] |   40 tall + 1 px `rule` hairline
+|       Ferris and the Crabs                                    |
+```
+
+- Shown while the computer's media session plays, or for 60 s after it paused (so Play stays
+  reachable); nothing playing, no title or the setting off: hidden. Never sent anywhere.
+- Art 24x24 at x+12, chip radius (`radius / 2`); without a picture a `code_background` tile with
+  `Listening` (16) in `text_muted`. Text from x+44: the title in label role (`text`), the artist in
+  meta (`text_muted`), each one line with "…"; tooltip "{title} by {artist}".
+- Buttons from 8 px inside the right edge, 4 px apart, 32 px hit area, 20 px icon, `text_muted` at
+  rest, `text` on hover with the 8 % tint, 97 % while held: Play / Pause ("Play", "Pause") and
+  `Next` ("Next track"; disabled at 40 % with "This player can't skip"). Purple: none.
+- Appears and leaves over BASE / BASE x OUT (§7); music playing at start shows at once.
+- The row's own events wake the UI; no seek bar, no timeline, no frames while a track just plays.
 
 **Quest video section** above the voice section (while a quest video session exists), 56 tall plus
 a hairline:

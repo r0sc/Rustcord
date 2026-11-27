@@ -101,6 +101,8 @@ pub struct Settings {
     /// Mark channels read on Discord's side (like the official client) while viewing them.
     pub send_read_acks: bool,
     pub show_member_list: bool,
+    /// Appearance > Layout: the user panel shows what the computer plays (crate::now_playing). Windows and Linux.
+    pub music_controls: bool,
     /// Animate GIF avatars/emoji of other users always or only on hover.
     pub animate_others: AnimateMode,
     /// Settings > Appearance > People's colours.
@@ -314,6 +316,7 @@ impl Default for Settings {
             desktop_notifications: true,
             send_read_acks: true,
             show_member_list: true,
+            music_controls: true,
             animate_others: AnimateMode::Hover,
             people_colors: PeopleColors::default(),
             client_build_number: None,
@@ -460,7 +463,7 @@ mod tests {
         let old: Settings = toml::from_str("theme = \"Ember Dark\"\n[streamer]\nenabled = true\n").unwrap();
         assert_eq!((old.zoom, old.flash_taskbar, old.streamer.enabled, old.streamer.hide_personal_info), (1.0, true, true, true));
         assert_eq!(old.voice_input_volume, 100);
-        assert!(old.status_presets.is_empty());
+        assert!(old.status_presets.is_empty() && old.music_controls, "music controls: on for old files");
         assert_eq!(crate::theme::Theme::find(&old.theme).name, "Nightshade");
         assert!(old.streamer.hides_invites() && !old.streamer.hide_from_capture && !old.autostart_default_done);
         // Updates install automatically unless switched off; older files: on.

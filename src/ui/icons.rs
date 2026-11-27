@@ -113,6 +113,7 @@ pub(crate) enum Icon {
     // Media (ui/viewer.rs).
     Play,
     Pause,
+    Next,
     Download,
     VoiceOff,
     Expand,
@@ -153,13 +154,13 @@ pub(crate) enum Badge {
 
 impl Icon {
     /// Every icon, in declaration order (the icon sheet hook, tests).
-    pub(crate) const ALL: [Icon; 110] = {
+    pub(crate) const ALL: [Icon; 111] = {
         use Icon::*;
         [
             Text, Voice, Announcement, Stage, Forum, Media, Thread, Rules, Directory, Playing, Listening, Streaming, Watching, Competing, Mic, MicOff, Headphones,
             Deafened, Camera, CameraOff, Screen, Hangup, Phone, Gear, Person, PersonAdd, PersonRemove, Members, At, IdCard, Close, Plus, Minus, Check, Search, Edit,
             Trash, Reply, Forward, Copy, Link, External, Leave, Block, Shield, Ban, Refresh, Reset, Sort, Grip, More, Inbox, Pin, Message, Bell, BellOff, Archive, Envelope,
-            SplitView, File, Attach, Hourglass, Key, Desktop, Card, Video, Eye, EyeOff, Lock, Unlock, Boost, Clock, Star, Globe, Info, Poll, Quest, Orb, Gift, Verified, Partnered, BoostTier1, BoostTier2, BoostTier3, Play, Pause, Download, VoiceOff, Expand, Collapse, ArrowLeft, ArrowRight, ChevronUp,
+            SplitView, File, Attach, Hourglass, Key, Desktop, Card, Video, Eye, EyeOff, Lock, Unlock, Boost, Clock, Star, Globe, Info, Poll, Quest, Orb, Gift, Verified, Partnered, BoostTier1, BoostTier2, BoostTier3, Play, Pause, Next, Download, VoiceOff, Expand, Collapse, ArrowLeft, ArrowRight, ChevronUp,
             ChevronDown,
             ChevronLeft, ChevronRight, Smile, Leaf, Food, Ball, Car, Bulb, Heart, Flag,
             Palette, Accessibility, Keyboard, Puzzle, Bug, Code,
@@ -1102,6 +1103,10 @@ fn draw(k: &mut Pen, icon: Icon, locked: bool) {
         Pause => {
             k.rrect(6.0, 4.5, 10.0, 19.5, 1.0);
             k.rrect(14.0, 4.5, 18.0, 19.5, 1.0);
+        }
+        Next => {
+            k.fill(&[(5.0, 5.0), (15.5, 12.0), (5.0, 19.0)]);
+            k.rrect(16.5, 5.0, 19.5, 19.0, 1.0);
         }
         Download => {
             k.line(&[(12.0, 3.5), (12.0, 15.0)]);
