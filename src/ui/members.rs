@@ -50,10 +50,9 @@ fn guild_members(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
     }
     crate::plugins::people::member_count(ui, cx, guild_id);
     let flat = flat_fades(ui, cx);
-    let out = egui::ScrollArea::vertical()
-        .id_salt(("members", guild_id))
-        .auto_shrink(false)
-        .show_rows(ui, ROW_H, total, |ui, range| {
+    let moved = super::arrival(ui.ctx(), cx.state, cx.view).guild;
+    let out = super::motion::arriving(ui, moved, |ui| {
+        egui::ScrollArea::vertical().id_salt(("members", guild_id)).auto_shrink(false).show_rows(ui, ROW_H, total, |ui, range| {
             for i in range {
                 // Cloned so rendering can borrow `cx` mutably; only visible rows get here.
                 let Some(item) = cx.state.member_lists.get(&guild_id).and_then(|l| l.items.get(i)).cloned() else { break };
@@ -71,7 +70,8 @@ fn guild_members(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
                     },
                 }
             }
-        });
+        })
+    });
     fade_edges(ui, cx, &out, flat);
 }
 
@@ -103,19 +103,17 @@ fn group_dm_members(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         .chain(ch.recipient_ids.iter().filter(|&&id| Some(id) != my_id).filter_map(|id| cx.state.users.get(id).cloned()))
         .collect();
     let flat = flat_fades(ui, cx);
-    let out = egui::ScrollArea::vertical().id_salt("group_dm_members").auto_shrink(false).show_rows(
-        ui,
-        ROW_H,
-        users.len() + 1,
-        |ui, range| {
+    let moved = super::arrival(ui.ctx(), cx.state, cx.view).chat;
+    let out = super::motion::arriving(ui, moved, |ui| {
+        egui::ScrollArea::vertical().id_salt("group_dm_members").auto_shrink(false).show_rows(ui, ROW_H, users.len() + 1, |ui, range| {
             for i in range {
                 match i.checked_sub(1) {
                     None => group_row(ui, cx, "Members", users.len()),
                     Some(u) => member_row(ui, cx, None, &users[u], None, None),
                 }
             }
-        },
-    );
+        })
+    });
     fade_edges(ui, cx, &out, flat);
 }
 
@@ -155,7 +153,21 @@ fn group_row(ui: &mut egui::Ui, cx: &UiCx<'_>, label: &str, count: usize) {
     let n = one_line(ui, count.to_string(), FontId::proportional(size - 3.0), color, row.width());
     let g = one_line(ui, label, super::semibold(size - 2.0), color, row.width() - 2.0 * PAD - n.size().x - 8.0);
     let base = row.bottom() - 6.0;
-    ui.painter().galley(pos2(row.right() - PAD - n.size().x, base - n.size().y), n, color);
+    ui.painter().galley(pos2(row.right() - PAD - n.size().x, base - n.size().y), n.clone(), color);
+    // A hairline between label and count, fading out towards the count (docs/DESIGN.md §6.3).
+    let (x0, x1, y) = (row.left() + PAD + g.size().x + 8.0, row.right() - PAD - n.size().x - 8.0, (base - g.size().y / 2.0).round() + 0.5);
+    if x1 - x0 >= 16.0 {
+        let rule = cx.theme.tokens().rule;
+        let mut mesh = egui::Mesh::default();
+        let (a, b) = (rule, rule.gamma_multiply(0.3));
+        for (x, c) in [(x0, a), (x1, b)] {
+            mesh.colored_vertex(pos2(x, y - 0.5), c);
+            mesh.colored_vertex(pos2(x, y + 0.5), c);
+        }
+        mesh.add_triangle(0, 1, 2);
+        mesh.add_triangle(1, 2, 3);
+        ui.painter().add(Shape::mesh(mesh));
+    }
     ui.painter().galley(pos2(row.left() + PAD, base - g.size().y), g, color);
 }
 
@@ -188,14 +200,21 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
     let mut ring = c.sidebar.to_color32();
     // Hovered, or its popout is open (like Discord's): the row's fill and the person's aura.
     let open = cx.view.profile_card.is_some_and(|t| t.user_id == user.id);
-    if hot || open {
-        ring = row_fills(ui, c).1;
+    // Hover: the fill on at once and fading out (`trail`), the person's colour unfurling from the
+    // avatar (`unfurl`) and folding away; an open card stays full (DESIGN §7).
+    let ctx = ui.ctx().clone();
+    let h = super::motion::trail(&ctx, egui::Id::unique(("rc_member_trail", user.id.0)), hot);
+    let u = super::motion::anim(&ctx, egui::Id::unique(("rc_member_unfurl", user.id.0)), hot, super::motion::FAST, super::motion::FAST);
+    let (f, w) = if open { (1.0, 1.0) } else { (h, u) };
+    if f > 0.0 || w > 0.0 {
+        let fill = c.sidebar.to_color32().lerp_to_gamma(row_fills(ui, c).1, f);
+        ring = fill;
         let bg = row.shrink2(vec2(8.0, 1.0));
         let radius = cx.theme.layout.corner_radius;
-        let mut shapes = vec![Shape::rect_filled(bg, CornerRadius::from(radius), ring)];
-        if let Some(a) = super::aura::of(ui.ctx(), cx, user, guild_id) {
-            let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if open { 1.0 } else { 0.75 };
-            shapes.push(super::aura::row_wash(ui.ctx(), bg, radius as u8, a, alpha, 0.75));
+        let mut shapes = vec![Shape::rect_filled(bg, CornerRadius::from(radius), fill)];
+        if let Some(a) = super::aura::of(&ctx, cx, user, guild_id) {
+            let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if open { 1.0 } else { 0.75 } * w;
+            shapes.push(super::aura::row_wash(&ctx, bg, radius as u8, a, alpha, 0.30 + 0.45 * w));
             // Under the status dot: the wash near its strong end.
             ring = ring.blend(a.gamma_multiply(alpha * 0.85));
         }
