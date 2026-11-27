@@ -70,6 +70,9 @@ pub fn guild_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
         .show(ui, |ui| {
             // 40 px icons + 8 = the 48 px pitch.
             ui.spacing_mut().item_spacing.y = 8.0;
+            // The pill's content-space origin, and the slot for its light under the tiles.
+            let top = ui.max_rect().top();
+            let light = ui.painter().add(Shape::Noop);
             ui.add_space(4.0);
             home_button(ui, cx);
             crate::plugins::sidebar::read_all_button(ui, cx);
@@ -89,6 +92,7 @@ pub fn guild_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
                 }
             }
             fold.row(ui, None, |ui| add_server_button(ui, cx));
+            travelling_pill(ui, light, top, cx.theme);
             ui.add_space(16.0);
             finish_drag(ui, cx, target);
         });
@@ -213,8 +217,8 @@ fn folder(ui: &mut egui::Ui, cx: &mut UiCx<'_>, f: &GuildFolder, index: usize, b
     let base = fold.shift();
     // The tile folds with everything above it; its servers slide out from under it (`Fold`).
     let icon = fold.row(ui, None, |ui| {
-        let (row, icon, resp, morph, h) = icon_slot(ui, ("rc_folder", fid), (selected && !open, unread && !open));
-        let corners = tile_corners(pill_t(h));
+        let (row, icon, resp, morph, h, corner) = icon_slot(ui, ("rc_folder", fid), (selected && !open, unread && !open));
+        let corners = tile_corners(corner);
         if open {
             // The folder glyph on a plain tile; the background spans it and its servers.
             let tab = Rect::from_min_size(icon.center() + vec2(-11.0, -9.0), vec2(9.0, 5.0));
@@ -292,13 +296,15 @@ fn demo_folders(ui: &egui::Ui, state: &mut AppState) {
 }
 
 /// RUSTCORD_NAV_DEMO=ping: once, 3 s after start, a mention arrives in the first text channel of the
-/// first server that is not open (local state only).
+/// first server that is not open (local state only); `ping-again` adds a second one 1.5 s later.
 fn demo_ping(ctx: &egui::Context, state: &mut AppState) {
-    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if !nav_demo("ping") || DONE.load(std::sync::atomic::Ordering::Relaxed) {
+    static DONE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+    let want = if nav_demo("ping-again") { 2 } else if nav_demo("ping") { 1 } else { 0 };
+    let done = DONE.load(std::sync::atomic::Ordering::Relaxed);
+    if done >= want {
         return;
     }
-    let left = 3.0 - ctx.input(|i| i.time);
+    let left = 3.0 + 1.5 * f64::from(done) - ctx.input(|i| i.time);
     if left > 0.0 {
         ctx.request_repaint_after(Duration::from_secs_f64(left));
         return;
@@ -308,7 +314,7 @@ fn demo_ping(ctx: &egui::Context, state: &mut AppState) {
     texts.sort_unstable();
     if let Some(ch) = texts.first() {
         state.read_states.entry(*ch).or_insert_with(|| crate::model::ReadState { id: *ch, ..Default::default() }).mention_count += 1;
-        DONE.store(true, std::sync::atomic::Ordering::Relaxed);
+        DONE.store(done + 1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -351,17 +357,24 @@ fn nav_flags() -> &'static str {
     FLAGS.get_or_init(|| std::env::var("RUSTCORD_NAV_DEMO").unwrap_or_default())
 }
 
+/// Where the selected tile's row is this pass (y centre, pass number): the rail's one pill travels
+/// there (`travelling_pill`).
+fn rail_sel_id() -> egui::Id {
+    egui::Id::unique("rc_rail_sel")
+}
+
 /// One 40x40 icon slot centred in a full-width row. Returns (row, icon rect, click response,
-/// morph, pill height): morph eases 0 -> 1 (colours only) while the icon is hovered or
-/// `selected`; the pill height eases to 8 unread / 20 hover / 40 selected.
-fn icon_slot(ui: &mut egui::Ui, salt: impl egui::AsIdSalt, (selected, unread): (bool, bool)) -> (Rect, Rect, egui::Response, f32, f32) {
+/// morph, pill height, corner): morph eases 0 -> 1 (colours only) while the icon is hovered or
+/// `selected`; the pill height eases to 8 unread / 20 hover (the selected 40 is the rail's one
+/// pill); corner eases 0 -> 1 as the tile's speech corner tightens (`tile_corners`).
+fn icon_slot(ui: &mut egui::Ui, salt: impl egui::AsIdSalt, (selected, unread): (bool, bool)) -> (Rect, Rect, egui::Response, f32, f32, f32) {
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), ICON), Sense::hover());
     let icon = Rect::from_center_size(row.center(), Vec2::splat(ICON));
     let resp = ui.interact(icon, ui.make_persistent_id(salt), Sense::click());
     let target = if selected || resp.hovered() { 1.0 } else { 0.0 };
     let morph = super::motion::value(ui.ctx(), resp.id.with("morph"), target, super::motion::FAST);
     let pill = if selected {
-        40.0
+        0.0
     } else if resp.hovered() {
         20.0
     } else if unread {
@@ -370,7 +383,17 @@ fn icon_slot(ui: &mut egui::Ui, salt: impl egui::AsIdSalt, (selected, unread): (
         0.0
     };
     let h = super::motion::value(ui.ctx(), resp.id.with("pill"), pill, super::motion::FAST);
-    (row, super::motion::pressed(&resp, icon), resp, morph, h)
+    let corner = super::motion::slide(ui.ctx(), resp.id.with("corner"), selected, super::motion::BASE);
+    if selected {
+        // The first selected tile wins: a shut folder is drawn before the server inside it.
+        let pass = ui.ctx().cumulative_pass_nr();
+        ui.data_mut(|d| {
+            if d.get_temp::<(f32, u64)>(rail_sel_id()).is_none_or(|(_, p)| p != pass) {
+                d.insert_temp(rail_sel_id(), (row.center().y, pass));
+            }
+        });
+    }
+    (row, super::motion::pressed(&resp, icon), resp, morph, h, corner)
 }
 
 /// Whether a server-bar badge going from `before` to `now` mentions pops (DESIGN §7): more than it
@@ -396,7 +419,7 @@ fn conn_settled(ctx: &egui::Context, conn: &crate::backend::ConnState) -> f64 {
 
 /// The pop scale of the badge on the tile `id` (1 at rest): starts a pop when its mentions rose
 /// (`pops`). A tile not drawn for a second (a shut folder's servers) counts as seen again.
-fn ping(ctx: &egui::Context, id: egui::Id, mentions: u32, muted: bool, conn: &crate::backend::ConnState) -> f32 {
+fn ping(ctx: &egui::Context, id: egui::Id, mentions: u32, muted: bool, conn: &crate::backend::ConnState) -> (f32, Option<(u32, f32)>) {
     let now = ctx.input(|i| i.time);
     let key = id.with("ping");
     let (before, last_pop) = match ctx.data(|d| d.get_temp::<(u32, f64, f64)>(key)) {
@@ -409,12 +432,24 @@ fn ping(ctx: &egui::Context, id: egui::Id, mentions: u32, muted: bool, conn: &cr
     if pop {
         super::motion::pop(ctx, id.with("pop"));
     }
-    super::motion::popped(ctx, id.with("pop"))
+    // The digits roll when a shown count becomes another shown count.
+    if let Some(b) = before.filter(|_| rolls(before, mentions)) {
+        super::motion::pop(ctx, id.with("roll"));
+        ctx.data_mut(|d| d.insert_temp(id.with("roll_from"), b));
+    }
+    let roll = super::motion::shot(ctx, id.with("roll"), super::motion::FAST).and_then(|t| Some((ctx.data(|d| d.get_temp::<u32>(id.with("roll_from")))?, super::motion::ease(t))));
+    (super::motion::popped(ctx, id.with("pop")), roll)
+}
+
+/// Whether a badge going from `before` to `now` rolls its digits: both counts shown (not the first
+/// sight, not to or from zero) and different.
+fn rolls(before: Option<u32>, now: u32) -> bool {
+    before.is_some_and(|b| b != now && b > 0 && now > 0)
 }
 
 /// The left-edge pill of height `h`, the mention badge with a cut-out ring in the bar color, and
 /// the focus ring (it follows the tile's `corners`).
-fn decorate(ui: &egui::Ui, c: &ThemeColors, (row, icon, resp): (Rect, Rect, &egui::Response), (h, corners): (f32, CornerRadius), (mentions, pop): (u32, f32)) {
+fn decorate(ui: &egui::Ui, c: &ThemeColors, (row, icon, resp): (Rect, Rect, &egui::Response), (h, corners): (f32, CornerRadius), (mentions, (pop, roll)): (u32, (f32, Option<(u32, f32)>))) {
     let tk = crate::theme::applied_tokens(ui.ctx());
     if h >= 1.0 {
         let pill = Rect::from_min_size(pos2(row.left(), row.center().y - h / 2.0), vec2(4.0, h));
@@ -423,7 +458,7 @@ fn decorate(ui: &egui::Ui, c: &ThemeColors, (row, icon, resp): (Rect, Rect, &egu
     if mentions > 0 {
         let at = pos2(icon.right() + 4.0, icon.bottom() - 4.0);
         // Pops about the badge's centre (about its right edge less half the 16 px minimum width).
-        super::motion::painted_scaled(ui, at - vec2(8.0, 0.0), pop, || _ = badge(ui, c, at, mentions, Some(c.guild_bar.to_color32())));
+        super::motion::painted_scaled(ui, at - vec2(8.0, 0.0), pop, || _ = badge_with(ui, c, at, mentions, Some(c.guild_bar.to_color32()), roll));
     }
     if resp.has_focus() {
         let grow = |r: u8| r.saturating_add(2);
@@ -436,6 +471,52 @@ fn decorate(ui: &egui::Ui, c: &ThemeColors, (row, icon, resp): (Rect, Rect, &egu
 /// to the selected 40 px. One flat rect in every theme.
 fn rail_pill(p: &egui::Painter, pill: Rect, text: Color32, accent: Color32) {
     p.rect_filled(pill, CornerRadius { ne: 4, se: 4, ..Default::default() }, text.lerp_to_gamma(accent, pill_t(pill.height())));
+}
+
+/// The rail's one 40 px selection pill (docs/DESIGN.md §10.1): it travels from the old tile to the
+/// picked one over BASE (`value` in the rail's content space, so scrolling never moves it) and is
+/// painted after the tiles; its light (dark themes) goes into `light`, under them. A trip that
+/// starts or ends out of view grows in place instead (`jumps`). Known lag: while a folder above the
+/// selected server folds, the pill follows the layout and catches up within BASE after the fold.
+fn travelling_pill(ui: &mut egui::Ui, light: egui::layers::ShapeIdx, top: f32, theme: &Theme) {
+    use super::motion::{BASE, FAST, forget, set_value, value};
+    let ctx = ui.ctx().clone();
+    let pass = ctx.cumulative_pass_nr();
+    let sel = ctx.data(|d| d.get_temp::<(f32, u64)>(rail_sel_id())).filter(|(_, p)| *p == pass).map(|(y, _)| y - top);
+    let base = egui::Id::unique("rc_rail_pill");
+    let (y_id, h_id, to_id) = (base.with("y"), base.with("h"), base.with("to"));
+    let last = ctx.data(|d| d.get_temp::<f32>(to_id));
+    if let (Some(new), Some(old)) = (sel, last) && new != old {
+        // Where the pill is now (no retarget): a trip out of view grows in place.
+        let at = value(&ctx, y_id, old, BASE);
+        if jumps(ui.clip_rect().y_range(), top + at, top + new) {
+            forget(&ctx, y_id);
+            set_value(&ctx, h_id, 0.0);
+        }
+    }
+    if let Some(y) = sel {
+        ctx.data_mut(|d| d.insert_temp(to_id, y));
+    }
+    let y = value(&ctx, y_id, sel.or(last).unwrap_or(0.0), BASE);
+    let h = value(&ctx, h_id, if sel.is_some() { 40.0 } else { 0.0 }, FAST);
+    if h < 1.0 {
+        return;
+    }
+    let tk = theme.tokens();
+    let pill = Rect::from_min_size(pos2(ui.max_rect().left(), top + y - h / 2.0), vec2(4.0, h));
+    if super::light::lit(&tk) && h >= 21.0 {
+        let t = pill_t(h);
+        let near = Rect::from_min_max(pill.left_top() - vec2(0.0, 8.0), pos2(pill.left() + 24.0, pill.bottom() + 8.0));
+        let glow = |r: Rect, radius: f32, a: f32, blur: f32| super::light::glow(r, radius, tk.accent.gamma_multiply(a * t).additive(), blur);
+        ui.painter().set(light, Shape::Vec(vec![glow(pill, 4.0, 0.75, 12.0), glow(near, 8.0, 0.35, 24.0)]));
+    }
+    rail_pill(ui.painter(), pill, theme.colors.text.to_color32(), tk.accent);
+}
+
+/// Whether a pill trip between two content y's has an end outside the visible `view` (it then grows
+/// in place: sliding past tiles nobody can see says nothing).
+fn jumps(view: egui::Rangef, from: f32, to: f32) -> bool {
+    !view.contains(from) || !view.contains(to)
 }
 
 fn pill_t(h: f32) -> f32 {
@@ -469,8 +550,8 @@ fn home_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     let c = cx.theme.colors.clone();
     let tk = cx.theme.tokens();
     let selected = cx.state.selected_guild.is_none();
-    let (row, icon, resp, morph, h) = icon_slot(ui, "home", (selected, false));
-    let corners = tile_corners(pill_t(h));
+    let (row, icon, resp, morph, h, corner) = icon_slot(ui, "home", (selected, false));
+    let corners = tile_corners(corner);
     // The logo itself: a neutral tile with the purple R; hover and selection turn the tile purple
     // (the one place hover is purple).
     let tile = c.surface.to_color32().lerp_to_gamma(tk.accent, morph);
@@ -501,8 +582,8 @@ fn guild_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, badges: &HashMap<I
     let (unread, mentions) = badges.get(&id).copied().unwrap_or_default();
     let mark = icons::guild_mark(&g.features, g.premium_tier);
 
-    let (row, icon, resp, morph, h) = icon_slot(ui, ("guild", id), (selected, unread));
-    let corners = tile_corners(pill_t(h));
+    let (row, icon, resp, morph, h, corner) = icon_slot(ui, ("guild", id), (selected, unread));
+    let corners = tile_corners(corner);
     let drag = dragged(ui.ctx());
     let resp = if cx.state.account.settings.loaded { resp.interact(Sense::drag()) } else { resp };
     if resp.drag_started() {
@@ -540,7 +621,7 @@ fn guild_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, badges: &HashMap<I
 /// "Add a server" (+) under the servers: opens the join / create dialog (server_menu.rs).
 fn add_server_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     let c = cx.theme.colors.clone();
-    let (_, icon, resp, morph, _) = icon_slot(ui, "add_server", (false, false));
+    let (_, icon, resp, morph, ..) = icon_slot(ui, "add_server", (false, false));
     let fill = tile_fill(ui, &c, morph);
     ui.painter().rect_filled(icon, ICON_R, fill);
     let fg = c.text_muted.to_color32().lerp_to_gamma(crate::theme::applied_tokens(ui.ctx()).positive, morph);
@@ -921,9 +1002,15 @@ fn initials(name: &str) -> String {
 /// `right_center`. `ring` draws a 4 px outline in the background color so the badge stands out
 /// on top of icons. Returns the badge width.
 pub(super) fn badge(ui: &egui::Ui, c: &ThemeColors, right_center: egui::Pos2, count: u32, ring: Option<Color32>) -> f32 {
+    badge_with(ui, c, right_center, count, ring, None)
+}
+
+/// `badge` with its digits rolling from the count `roll.0` at eased `roll.1` (0 -> 1): the old number
+/// leaves 6 px up, the new one rises 6 px in, both cut to the pill; the box has the new width at once.
+fn badge_with(ui: &egui::Ui, c: &ThemeColors, right_center: egui::Pos2, count: u32, ring: Option<Color32>, roll: Option<(u32, f32)>) -> f32 {
     let tk = crate::theme::Tokens::new(c);
-    let text = if count > 99 { "99+".to_owned() } else { count.to_string() };
-    let galley = ui.painter().layout_no_wrap(text, bold(11.0), tk.danger_label);
+    let text = |n: u32| if n > 99 { "99+".to_owned() } else { n.to_string() };
+    let galley = ui.painter().layout_no_wrap(text(count), bold(11.0), tk.danger_label);
     let h = 16.0;
     let w = (galley.size().x + 8.0).max(h);
     let rect = Rect::from_min_max(pos2(right_center.x - w, right_center.y - h / 2.0), pos2(right_center.x, right_center.y + h / 2.0));
@@ -931,7 +1018,15 @@ pub(super) fn badge(ui: &egui::Ui, c: &ThemeColors, right_center: egui::Pos2, co
         ui.painter().rect_filled(rect.expand(4.0), CornerRadius::same(12), ring);
     }
     ui.painter().rect_filled(rect, CornerRadius::same(8), tk.danger_fill);
-    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, tk.danger_label);
+    match roll {
+        Some((from, e)) => {
+            let p = ui.painter().with_clip_rect(rect.intersect(ui.painter().clip_rect()));
+            let old = ui.painter().layout_no_wrap(text(from), bold(11.0), tk.danger_label);
+            p.galley_with_override_text_color(rect.center() - old.size() / 2.0 - vec2(0.0, 6.0 * e), old, tk.danger_label.gamma_multiply(1.0 - e));
+            p.galley_with_override_text_color(rect.center() - galley.size() / 2.0 + vec2(0.0, 6.0 * (1.0 - e)), galley, tk.danger_label.gamma_multiply(e));
+        }
+        None => ui.painter().galley(rect.center() - galley.size() / 2.0, galley, tk.danger_label),
+    }
     w
 }
 
@@ -1214,10 +1309,11 @@ pub fn channel_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     if let Some(px) = nav_demo_value("scroll").and_then(|v| v.parse::<f32>().ok()) {
         area = area.vertical_scroll_offset(px);
     }
-    let out = match guild {
+    let moved = super::arrival(ui.ctx(), cx.state, cx.view).guild;
+    let out = super::motion::arriving(ui, moved, |ui| match guild {
         Some(gid) => Some(area.show(ui, |ui| guild_channels(ui, cx, gid))),
         None => dm_list(ui, cx, area.content_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 12 })),
-    };
+    });
     // The list fades into the card at its scrolled edges; the top one takes the server's band along.
     if let (true, Some(out)) = (flat, out) {
         let side = cx.theme.colors.sidebar.to_color32();
@@ -2722,6 +2818,23 @@ mod tests {
         assert!(!pops(Some(1), 2, true, 5.0, 5.0), "muted");
         assert!(!pops(Some(1), 2, false, 1.0, 5.0), "the connection just changed");
         assert!(!pops(Some(1), 2, false, 5.0, 0.5), "popped a moment ago");
+    }
+
+    #[test]
+    fn a_trip_out_of_view_grows_in_place() {
+        let view = egui::Rangef::new(0.0, 100.0);
+        assert!(!jumps(view, 10.0, 90.0));
+        assert!(jumps(view, 10.0, 190.0));
+        assert!(jumps(view, -20.0, 50.0));
+    }
+
+    #[test]
+    fn badge_digits_roll_only_between_shown_counts() {
+        assert!(rolls(Some(1), 2));
+        assert!(!rolls(None, 2), "first sight");
+        assert!(!rolls(Some(0), 1), "appearing");
+        assert!(!rolls(Some(2), 0), "going away");
+        assert!(!rolls(Some(3), 3), "same count");
     }
 
     #[test]
