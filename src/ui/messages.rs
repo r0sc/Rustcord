@@ -881,6 +881,8 @@ struct Memo {
     newest: Option<Id>,
     arrived: Option<f64>,
     rise: Option<(Id, f64)>,
+    /// A mention of me that just arrived live: its bar draws and flashes once (DESIGN §9.10).
+    mark: Option<(Id, f64)>,
     /// Nonces of this channel's unfailed pending messages in the last pass, and my message that
     /// Discord just confirmed (its text turns from muted to normal, DESIGN §7).
     sending: Vec<String>,
@@ -1289,7 +1291,8 @@ pub(super) fn demo(flag: &str) -> bool {
 fn demo_arrive(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>) {
     use std::sync::atomic::{AtomicU8, Ordering::Relaxed};
     static STEP: AtomicU8 = AtomicU8::new(0);
-    let (arrive, sent) = (demo("arrive"), demo("sent"));
+    let (mention, sent) = (demo("arrive-mention"), demo("sent"));
+    let arrive = demo("arrive") || mention;
     let (Some(newest), true, step) = (newest, arrive || sent, STEP.load(Relaxed)) else { return };
     if step == 0 && sent {
         cx.state.pending.push(PendingMessage { nonce: "4242".into(), channel_id: ch, content: "pushing the fix now".into(), failed: None, reply: None });
@@ -1315,7 +1318,11 @@ fn demo_arrive(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id
         cx.state.apply_send_result(ch, "4242", Ok(msg));
     } else {
         let Some(author) = others.first().map(|u| (*u).clone()) else { return };
-        cx.state.apply_gateway(crate::model::GatewayEvent::MessageCreate(Box::new(Message { author, content: "on my way".into(), ..msg })), Some(ch));
+        let (content, mentions) = match &me {
+            Some(me) if mention => (format!("<@{}> on my way", me.id.0), vec![me.clone()]),
+            _ => ("on my way".to_owned(), Vec::new()),
+        };
+        cx.state.apply_gateway(crate::model::GatewayEvent::MessageCreate(Box::new(Message { author, content, mentions, ..msg })), Some(ch));
     }
     STEP.store(2, Relaxed);
 }
@@ -1744,6 +1751,13 @@ fn note_arrivals(cx: &UiCx<'_>, lc: &Lcx, memo: &mut Memo, now: f64) {
             if rises(new.len(), memo.arrived.map(|a| now - a), memo.at_bottom, cx.view.window_focused) && !mine(last) {
                 memo.rise = Some((last.id, now));
             }
+            // Mentions of me are rare and matter: any number of new messages, not only a lone one.
+            if memo.at_bottom
+                && cx.view.window_focused
+                && let Some(m) = new.iter().find(|m| !mine(m) && for_me(cx, m))
+            {
+                memo.mark = Some((m.id, now));
+            }
             memo.arrived = Some(now);
         }
     }
@@ -2027,7 +2041,17 @@ fn message_block(
         // Mentions me or a keyword alert: the `mention_highlight` row and a 2 px `accent_ink` bar.
         let tint = if h > 0.0 { pal.mention.blend(pal.tk.hover.gamma_multiply(h)) } else { pal.mention };
         shapes.push(Shape::rect_filled(rect, 0.0, tint));
-        shapes.push(Shape::rect_filled(Rect::from_min_size(rect.min, vec2(2.0, rect.height())), 0.0, pal.tk.accent_ink));
+        // A live arrival draws its bar top down over BASE and, on dark themes, flashes once.
+        let mark = memo.mark.filter(|m| m.0 == msg.id).map(|(_, at)| (super::motion::since(ui.ctx(), at, super::motion::BASE), super::motion::since(ui.ctx(), at, super::motion::BASE + super::motion::LARGE)));
+        if mark.is_some_and(|m| m.1 >= 1.0) {
+            memo.mark = None;
+        }
+        let (draw, flash) = mark.unwrap_or((1.0, 1.0));
+        let bar = Rect::from_min_size(rect.min, vec2(2.0, rect.height() * draw));
+        if flash < 1.0 && super::light::lit(&pal.tk) {
+            shapes.push(super::light::glow(bar.expand2(vec2(4.0, 6.0)), 3.0, pal.tk.accent_ink.gamma_multiply(0.8 * (1.0 - flash)).additive(), 14.0));
+        }
+        shapes.push(Shape::rect_filled(bar, 0.0, pal.tk.accent_ink));
     } else if h > 0.0 {
         shapes.push(Shape::rect_filled(rect, 0.0, pal.hover.gamma_multiply(h)));
     }
@@ -4093,6 +4117,38 @@ mod tests {
         h.frame();
         arrive(&mut h, 9_001);
         assert!(h.memo().rise.is_none(), "unfocused window");
+    }
+
+    #[test]
+    fn a_live_mention_of_me_is_marked() {
+        let arrive = |h: &mut Harness, author: u64, mentions_me: bool| {
+            let ch = h.state.selected_channel.unwrap();
+            let last = h.state.messages[&ch].msgs.last().unwrap().clone();
+            let me = h.state.me.clone().unwrap();
+            let author = if author == 0 { me.clone() } else { User { id: Id(author), ..Default::default() } };
+            let mentions = if mentions_me { vec![me] } else { Vec::new() };
+            let m = Message { id: Id(last.id.0 + (60_000 << 22)), author, mentions, ..last };
+            h.state.messages.get_mut(&ch).unwrap().msgs.push(m.clone());
+            h.frame();
+            m.id
+        };
+        let mut h = Harness::new();
+        h.view.window_focused = true;
+        h.frame();
+        assert!(h.memo().mark.is_none(), "a channel's first pass only records where it ends");
+        h.frame();
+        arrive(&mut h, 9_001, false);
+        assert!(h.memo().mark.is_none(), "no mention");
+        arrive(&mut h, 0, true);
+        assert!(h.memo().mark.is_none(), "my own message");
+        let id = arrive(&mut h, 9_001, true);
+        assert_eq!(h.memo().mark.map(|m| m.0), Some(id), "a live mention of me at the bottom");
+        let mut h = Harness::new();
+        h.view.window_focused = false;
+        h.frame();
+        h.frame();
+        arrive(&mut h, 9_001, true);
+        assert!(h.memo().mark.is_none(), "unfocused window");
     }
 
     #[test]
