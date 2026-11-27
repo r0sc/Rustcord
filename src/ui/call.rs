@@ -758,10 +758,15 @@ fn controls(ui: &mut egui::Ui, cx: &mut UiCx<'_>, bar: Rect) {
 /// `share` (I share my screen), `focus` (the first tile expanded), `chat` (text chat open),
 /// `connecting` (still joining), `picker` (the screen share picker with sample sources),
 /// `stream:<picture>` (with `people`: the third user's stream, watched, showing that local PNG /
-/// JPEG instead of `video`'s test desktop; README screenshots).
+/// JPEG instead of `video`'s test desktop; README screenshots), `connect` (joining for the first
+/// 2 s after start, then connected: the island's dot and width; local state only).
 pub(super) fn demo(cx: &mut UiCx<'_>) {
     static FLAGS: OnceLock<String> = OnceLock::new();
     let flags = FLAGS.get_or_init(|| std::env::var("RUSTCORD_CALL_DEMO").unwrap_or_default());
+    if cx.state.voice.channel_id.is_some() && flags.split(',').any(|f| f.trim() == "connect") {
+        static START: OnceLock<Instant> = OnceLock::new();
+        cx.state.voice.connected = START.get_or_init(Instant::now).elapsed().as_secs_f32() > 2.0;
+    }
     if flags.is_empty() || cx.view.call_ui.demo_done {
         return;
     }
@@ -811,6 +816,7 @@ pub(super) fn demo(cx: &mut UiCx<'_>) {
             "focus" => cx.view.call_ui.focus = tiles(cx, ch).first().map(|t| t.key.clone()),
             "chat" => cx.view.call_ui.chat = true,
             "connecting" => cx.state.voice.connected = false,
+            "connect" => {}
             "picker" => {
                 let v = &mut cx.state.voice.video;
                 v.monitors = vec![

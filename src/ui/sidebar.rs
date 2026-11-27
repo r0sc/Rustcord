@@ -633,6 +633,24 @@ struct IslandInfo {
     server: Option<String>,
 }
 
+/// The island's width, gliding over BASE only when what it shows changed within the last BASE
+/// (state word, channel, whether the server name fits); a CallTimer tick or a window resize
+/// changes it at once.
+fn island_width(ctx: &egui::Context, key: egui::Id, look: (bool, Id, bool), width: f32) -> f32 {
+    let now = ctx.input(|i| i.time);
+    let since = ctx.data_mut(|d| {
+        let e = d.get_temp_mut_or(key.with("look"), (look, now));
+        if e.0 != look {
+            *e = (look, now);
+        }
+        e.1
+    });
+    if now - since > f64::from(super::motion::secs(ctx, super::motion::BASE)) {
+        super::motion::forget(ctx, key.with("w"));
+    }
+    super::motion::value(ctx, key.with("w"), width, super::motion::BASE)
+}
+
 /// Call island (docs/DESIGN.md §8): a pill centred in the title bar while I am in a voice or DM
 /// call, over the location label: state, channel, server, mute and disconnect. Returns its
 /// opacity (0 when it is not shown), which the label fades against.
@@ -675,7 +693,7 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
     let server_w = server_full.as_ref().map_or(0.0, |g| 6.0 + g.size().x);
     let show_server = chan_full.size().x + server_w <= room;
     let chan_w = chan_full.size().x.min(room.max(0.0));
-    let width = (fixed + chan_w + if show_server { server_w } else { 0.0 }).max(160.0);
+    let width = island_width(&ctx, key, (info.connected, info.channel, show_server), (fixed + chan_w + if show_server { server_w } else { 0.0 }).max(160.0));
 
     let pill = Rect::from_center_size(row.center(), vec2(width, 28.0));
     let scale = egui::lerp(0.92..=1.0, t);
@@ -683,6 +701,14 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
     let unmute = Rect::from_min_size(pos2(to_gap, pill.center().y - 12.0), Vec2::splat(24.0));
     let hang = unmute.translate(vec2(28.0, 0.0));
     let place = Rect::from_min_max(pill.min, pos2(unmute.left() - 4.0, pill.max.y));
+    // Connected: the dot blends to green over FAST and pops once (docs/DESIGN.md §7); the first sight just shows it.
+    let dot = super::motion::anim(&ctx, key.with("dot"), info.connected, super::motion::FAST, super::motion::FAST);
+    let was = ctx.data(|d| d.get_temp::<bool>(key.with("was")));
+    ctx.data_mut(|d| d.insert_temp(key.with("was"), info.connected));
+    if was == Some(false) && info.connected {
+        super::motion::pop(&ctx, key.with("pop"));
+    }
+    let pop = super::motion::popped(&ctx, key.with("pop"));
     let pal = super::messages::Pal::new(cx.theme);
     let mut action = None;
     ui.with_visual_transform(super::motion::about(pill.center(), scale), |ui| {
@@ -700,7 +726,7 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
             p.rect_filled(place, CornerRadius { nw: 14, sw: 14, ne: 4, se: 4 }, tk.hover);
         }
         let mid = pill.center().y;
-        p.circle_filled(pos2(pill.left() + 12.0 + 4.0, mid), 4.0, if info.connected { tk.positive } else { tk.attention });
+        p.circle_filled(pos2(pill.left() + 12.0 + 4.0, mid), 4.0 * pop, tk.attention.lerp_to_gamma(tk.positive, dot));
         let mut x = pill.left() + 12.0 + 8.0 + 8.0;
         p.galley(pos2(x, mid - word_g.size().y / 2.0), word_g.clone(), word_color);
         x += word_g.size().x + 8.0;
@@ -2513,6 +2539,26 @@ fn connection_label(conn: &ConnState, elapsed_secs: u64, offline_mode: bool) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn island_width_glides_only_for_a_new_look() {
+        let ctx = egui::Context::default();
+        let key = egui::Id::unique("island_test");
+        let at = |t: f64, look: (bool, Id, bool), w: f32| {
+            let mut v = 0.0;
+            let mut out = ctx.run_ui(egui::RawInput { time: Some(t), ..Default::default() }, |ui| v = island_width(ui.ctx(), key, look, w));
+            out.textures_delta.clear();
+            v
+        };
+        let (a, b) = ((false, Id(1), true), (true, Id(1), true));
+        assert_eq!(at(0.0, a, 200.0), 200.0);
+        assert_eq!(at(1.0, a, 207.0), 207.0, "a timer tick: at once");
+        assert_eq!(at(2.0, b, 237.0), 207.0, "a new look starts from where it is");
+        let mid = at(2.1, b, 237.0);
+        assert!(mid > 207.0 && mid < 237.0);
+        assert_eq!(at(2.5, b, 237.0), 237.0);
+        assert_eq!(at(3.0, b, 244.0), 244.0, "later changes are at once again");
+    }
 
     #[test]
     fn listed_channels_follow_the_sidebar() {

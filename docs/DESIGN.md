@@ -341,6 +341,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Settings panel (with backdrop and scrim) | LARGE: fade + 0.98 → 1 about the panel centre | instant | `anim(.., LARGE, 0.0)` + `about` (existing) | 8, 18 |
 | Backdrop picture | appears under the already fading scrim (ready by frame 2) | dropped at once | | 16 |
 | Call island appear / leave | BASE: fade + scale 0.92 → 1 about its centre; the label fades out | BASE x OUT fade; the label fades in | `anim(.., BASE, BASE * OUT)` | 5, 18 |
+| Call island connects | dot `attention` → `positive` over FAST + one pop 1 → 1.12 → 1 over BASE; the width glides over BASE (`island_width`) | | `anim`, `pop`, `value` + `forget` | 5, 7, 9, 19 |
 | Focus mode panes (rail, channel list, user panel) | returning: LARGE ease-out | leaving: BASE ease-in; content slides left with its narrowing column | `anim(.., LARGE, BASE)` | 5, 8, 17, 18 |
 | Tab bar appears (second tab) | FAST: height 0 → 40 ease-out, tabs ride its bottom edge | at once | `anim(.., FAST, 0.0)` | 5, 8, 18 |
 | New tab | FAST: fade + grow 0.96 → 1 about its centre (`scaled`) | closes at once; the tabs to its right glide left over FAST in-out | `anim`, `value` on a slot index | 5, 11, 18 |
@@ -362,7 +363,7 @@ Ending cleanly (0 % idle CPU):
 - Every row above ends and stops asking for frames. Nothing loops: no glow, no pulse, no
   shimmer, no animated gradient. Existing loops stay: typing dots, incoming ring, spinners.
 - The sheen, the speech corner and the backdrop are static paint.
-- The island repaints only while it fades. CallTimer (when on) keeps its existing 1 Hz tick.
+- The island repaints only while it fades, glides or pops. CallTimer (when on) keeps its existing 1 Hz tick.
 - Reduced motion (setting or Windows "Animation effects" off): every duration 0, final states
   at once.
 
@@ -1193,7 +1194,7 @@ Lives in `sidebar.rs` (new fn `call_island(ui, cx, row) -> f32`, about 120 lines
   (HC 1.5 px muted), sheen. Centred on the window. Width = its content, min 160, max
   `min(420, row.width() − 240)` (keeps clear of the inbox button and the update pill). If even
   160 does not fit, no island (label stays).
-- **Content, left to right:** 12 pad; 8 px dot (`positive` connected, `attention` connecting);
+- **Content, left to right:** 12 pad; 8 px dot (`positive` connected, `attention` connecting; on connect it blends over FAST and pops once 1 → 1.12 → 1 over BASE);
   8; the state word, label 13/600: "Voice connected" in `positive_text` or "Connecting…" in
   `readable_on(attention, raised)`, through `plugins::sidebar::call_timer(ctx, state, word)` so
   the CallTimer plugin shows the time here too; 8; channel name ui 14/600 `text`; 6; server name
@@ -1205,6 +1206,7 @@ Lives in `sidebar.rs` (new fn `call_island(ui, cx, row) -> f32`, about 120 lines
     `Command::LeaveVoice` (as voice_panel). Tooltip "Disconnect".
   - Too narrow: drop the server name first, then end the channel name with "…". The state word
     stays.
+- **Width:** glides over BASE (cubic in-out, `island_width`) when the state word, the channel or whether the server name fits changes; a CallTimer tick or a window resize changes it at once.
 - **The text part** (dot to server name) is one button: hover `hover` over that part of the pill;
   click selects the call's channel and closes settings (same as voice_panel);
   tooltip "Open {channel}"; accessible name "Voice connected, {channel}, {server}"; focus ring.

@@ -197,6 +197,12 @@ pub fn value(ctx: &Context, id: Id, target: f32, s: f32) -> f32 {
     cur
 }
 
+/// Drops `value`'s tween under `id`: its next call starts at its target, no glide from a stale
+/// spot (a card opened afresh, an island width that only the call timer's tick changed).
+pub fn forget(ctx: &Context, id: Id) {
+    ctx.data_mut(|d| d.remove::<Tween>(id));
+}
+
 /// Puts `value`'s tween under `id` at `v` at once; the next `value` call eases from there to its
 /// target (a dragged tab follows the pointer, then settles into its slot).
 pub fn set_value(ctx: &Context, id: Id, v: f32) {
@@ -386,6 +392,18 @@ mod tests {
         // A new target mid-way starts from where the value is, not from the old target.
         let (back, _) = run(&ctx, 1.0, 0.03, |c| value(c, v, 0.0, FAST));
         assert!(back > 0.0 && back < 40.0);
+    }
+
+    #[test]
+    fn forget_makes_the_next_value_land_at_once() {
+        let ctx = Context::default();
+        let v = Id::unique("forget");
+        run(&ctx, 0.0, 0.0, |c| value(c, v, 0.0, FAST));
+        let (mid, busy) = run(&ctx, 0.1, 0.05, |c| value(c, v, 40.0, FAST));
+        assert!(mid > 0.0 && mid < 40.0 && busy);
+        forget(&ctx, v);
+        let (now, busy) = run(&ctx, 0.3, 0.05, |c| value(c, v, 10.0, FAST));
+        assert!(now == 10.0 && !busy);
     }
 
     #[test]
