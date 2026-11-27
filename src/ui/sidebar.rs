@@ -78,15 +78,16 @@ pub fn guild_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
 
             let badges = cx.state.guild_unreads();
             let mut target = None;
+            let mut fold = super::motion::Fold::default();
             for (i, item) in cx.state.server_bar().into_iter().enumerate() {
                 match item {
                     ServerBarItem::Guild(id) => {
-                        guild_button(ui, cx, id, &badges, Slot::Top(i), &mut target);
+                        fold.row(ui, None, |ui| guild_button(ui, cx, id, &badges, Slot::Top(i), &mut target));
                     }
-                    ServerBarItem::Folder(f) => folder(ui, cx, &f, i, &badges, &mut target),
+                    ServerBarItem::Folder(f) => folder(ui, cx, &f, i, &badges, &mut target, &mut fold),
                 }
             }
-            add_server_button(ui, cx);
+            fold.row(ui, None, |ui| add_server_button(ui, cx));
             ui.add_space(16.0);
             finish_drag(ui, cx, target);
         });
@@ -192,7 +193,7 @@ fn save_folders(ctx: &egui::Context, cx: &mut UiCx<'_>) {
 
 /// A server folder: closed, a tile in its colour with up to four mini icons; open, a folder
 /// glyph over its servers on a tinted background. A click toggles it (local only).
-fn folder(ui: &mut egui::Ui, cx: &mut UiCx<'_>, f: &GuildFolder, index: usize, badges: &HashMap<Id, (bool, u32)>, target: &mut Option<Target>) {
+fn folder(ui: &mut egui::Ui, cx: &mut UiCx<'_>, f: &GuildFolder, index: usize, badges: &HashMap<Id, (bool, u32)>, target: &mut Option<Target>, fold: &mut super::motion::Fold) {
     let c = cx.theme.colors.clone();
     let fid = f.id.unwrap_or_default();
     let open_key = folder_open_id(fid);
@@ -206,50 +207,59 @@ fn folder(ui: &mut egui::Ui, cx: &mut UiCx<'_>, f: &GuildFolder, index: usize, b
     let (unread, mentions) = f.guild_ids.iter().filter_map(|g| badges.get(g)).fold((false, 0), |(u, m), (gu, gm)| (u || *gu, m + gm));
     let selected = cx.state.selected_guild.is_some_and(|g| f.guild_ids.contains(&g));
     let open = crate::plugins::sidebar::force_open(open, selected);
+    let k = super::motion::anim(ui.ctx(), open_key.with("fold"), open, super::motion::BASE, super::motion::BASE * super::motion::OUT);
     let bg = ui.painter().add(Shape::Noop);
-    let (row, icon, resp, morph, h) = icon_slot(ui, ("rc_folder", fid), (selected && !open, unread && !open));
-    let corners = tile_corners(pill_t(h));
-    if open {
-        // The folder glyph on a plain tile; the background spans it and its servers.
-        let tab = Rect::from_min_size(icon.center() + vec2(-11.0, -9.0), vec2(9.0, 5.0));
-        ui.painter().rect_filled(tab, 2, color);
-        ui.painter().rect_filled(Rect::from_center_size(icon.center() + vec2(0.0, 2.0), vec2(22.0, 15.0)), 3, color);
-    } else {
-        ui.painter().rect_filled(icon, corners, color.gamma_multiply(0.25 + 0.15 * morph));
-        for (k, g) in f.guild_ids.iter().take(4).enumerate() {
-            let at = icon.min + vec2(3.0 + 18.0 * (k % 2) as f32, 3.0 + 18.0 * (k / 2) as f32);
-            if let Some(i) = cx.state.guilds.iter().position(|x| x.id == *g) {
-                paint_guild_icon(ui, cx, i, Rect::from_min_size(at, Vec2::splat(16.0)), 5.0, 0.0, false);
+    let base = fold.shift();
+    // The tile folds with everything above it; its servers slide out from under it (`Fold`).
+    let icon = fold.row(ui, None, |ui| {
+        let (row, icon, resp, morph, h) = icon_slot(ui, ("rc_folder", fid), (selected && !open, unread && !open));
+        let corners = tile_corners(pill_t(h));
+        if open {
+            // The folder glyph on a plain tile; the background spans it and its servers.
+            let tab = Rect::from_min_size(icon.center() + vec2(-11.0, -9.0), vec2(9.0, 5.0));
+            ui.painter().rect_filled(tab, 2, color);
+            ui.painter().rect_filled(Rect::from_center_size(icon.center() + vec2(0.0, 2.0), vec2(22.0, 15.0)), 3, color);
+        } else {
+            ui.painter().rect_filled(icon, corners, color.gamma_multiply(0.25 + 0.15 * morph));
+            for (k, g) in f.guild_ids.iter().take(4).enumerate() {
+                let at = icon.min + vec2(3.0 + 18.0 * (k % 2) as f32, 3.0 + 18.0 * (k / 2) as f32);
+                if let Some(i) = cx.state.guilds.iter().position(|x| x.id == *g) {
+                    paint_guild_icon(ui, cx, i, Rect::from_min_size(at, Vec2::splat(16.0)), 5.0, 0.0, false);
+                }
             }
         }
-    }
-    decorate(ui, &c, (row, icon, &resp), (h, corners), if open { 0 } else { mentions });
-    resp.widget_info(|| WidgetInfo::selected(Role::Button, true, open, format!("Folder {name}")));
-    let dragging = dragged(ui.ctx()).is_some();
-    if !dragging {
-        side_tooltip(&resp, &name, None);
-    }
-    if resp.clicked() {
-        ui.data_mut(|d| d.insert_temp(open_key, !open));
-        crate::plugins::sidebar::folder_clicked(ui.ctx(), cx.state, fid, !open);
-    }
-    if dragging {
-        let into = GuildDrop::Folder { id: fid, index: if open { 0 } else { usize::MAX } };
-        let t = zone(ui.ctx().pointer_latest_pos(), icon, Slot::Top(index), Some(into));
-        // Open: below the glyph's top edge everything goes in, first.
-        let t = t.map(|t| if open && !matches!(t.to, GuildDrop::Top(i) if i == index) { Target { to: into, line: Some(icon.bottom() + 4.0), ring: None } } else { t });
-        if t.is_some() {
-            *target = t;
+        decorate(ui, &c, (row, icon, &resp), (h, corners), if open { 0 } else { mentions });
+        resp.widget_info(|| WidgetInfo::selected(Role::Button, true, open, format!("Folder {name}")));
+        let dragging = dragged(ui.ctx()).is_some();
+        if !dragging {
+            side_tooltip(&resp, &name, None);
         }
-    }
-    if !open {
+        if resp.clicked() {
+            ui.data_mut(|d| d.insert_temp(open_key, !open));
+            crate::plugins::sidebar::folder_clicked(ui.ctx(), cx.state, fid, !open);
+        }
+        if dragging {
+            let into = GuildDrop::Folder { id: fid, index: if open { 0 } else { usize::MAX } };
+            let t = zone(ui.ctx().pointer_latest_pos(), icon, Slot::Top(index), Some(into));
+            // Open: below the glyph's top edge everything goes in, first.
+            let t = t.map(|t| if open && !matches!(t.to, GuildDrop::Top(i) if i == index) { Target { to: into, line: Some(icon.bottom() + 4.0), ring: None } } else { t });
+            if t.is_some() {
+                *target = t;
+            }
+        }
+        icon
+    });
+    if !open && k <= 0.0 {
         return;
     }
     let mut last = icon;
+    let run = egui::Id::unique(("rc_fold", fid));
     for (j, g) in f.guild_ids.iter().enumerate() {
-        last = guild_button(ui, cx, *g, badges, Slot::Child(fid, j), target);
+        last = fold.row(ui, Some((run, k)), |ui| guild_button(ui, cx, *g, badges, Slot::Child(fid, j), target));
     }
-    let back = Rect::from_min_max(icon.min - Vec2::splat(4.0), last.max + Vec2::splat(4.0));
+    fold.end(ui.ctx());
+    // The background slot is outside every shifted range: placed in screen terms.
+    let back = Rect::from_min_max(icon.min - Vec2::splat(4.0) - vec2(0.0, base), last.max + Vec2::splat(4.0) - vec2(0.0, fold.shift()));
     ui.painter().set(bg, Shape::rect_filled(back, ICON_R + 4.0, color.gamma_multiply(0.15)));
 }
 
@@ -299,7 +309,7 @@ fn demo_boost(state: &mut AppState) {
 /// (every vector icon over the window, `icons::sheet`), `no-tray` (Linux: the settings page as
 /// without a tray host, `user_settings/app.rs`), `press:<shortcut>` (that key combination,
 /// e.g. `Alt+Down`, pressed once at frame 14 where the focus is; `user_settings::parse` names),
-/// `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
+/// `collapsed` (the open server's first category folded at start; a click opens it), `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
 /// not read; a click on Play / Pause flips it).
 pub(super) fn nav_demo(flag: &str) -> bool {
     nav_flags().split(',').any(|f| f.trim() == flag)
@@ -1159,9 +1169,19 @@ fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
         empty_state(ui, cx, 12.0, "No visible channels");
         return;
     }
+    if nav_demo("collapsed") {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            if let Some(SidebarItem::Category { id, .. }) = items.iter().find(|i| matches!(i, SidebarItem::Category { .. })) {
+                cx.view.collapsed_categories.insert(*id);
+            }
+        });
+    }
     // Parent -> its threads listed under it (threads.rs draws them).
     let threads = cx.state.sidebar_threads(guild_id);
     let mut collapsed = false;
+    // Categories fold open and shut (paint only, `motion::Fold`): k is the current one's.
+    let (mut fold, mut k, mut moving) = (super::motion::Fold::default(), 1.0, false);
     for (i, item) in items.into_iter().enumerate() {
         match item {
             SidebarItem::Category { id, name } => {
@@ -1169,7 +1189,7 @@ fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
                     ui.add_space(12.0); // + item spacing = 16 between sections
                 }
                 collapsed = cx.view.collapsed_categories.contains(&id);
-                let resp = category_row(ui, cx, id, &name, collapsed);
+                let resp = fold.row(ui, None, |ui| category_row(ui, cx, id, &name, collapsed));
                 resp.context_menu(|ui| server_menu::category_menu(ui, cx, guild_id, id));
                 if resp.clicked() {
                     collapsed = !collapsed;
@@ -1179,24 +1199,42 @@ fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
                         cx.view.collapsed_categories.remove(&id);
                     }
                 }
+                k = super::motion::anim(ui.ctx(), egui::Id::unique(("rc_cat_fold", id)), !collapsed, super::motion::BASE, super::motion::BASE * super::motion::OUT);
+                moving |= k > 0.0 && k < 1.0;
             }
             SidebarItem::Channel { id } => {
                 // Collapsed categories still show the open channel, channels needing attention
-                // and occupied voice channels.
+                // and occupied voice channels; the others fold away while k runs down.
                 let occupied = cx.state.voice_states.contains_key(&id);
-                let shown = !collapsed || stays_listed(cx.state, id);
+                let stays = stays_listed(cx.state, id);
+                let shown = !collapsed || stays || k > 0.0;
                 if shown {
-                    channel_row(ui, cx, id);
-                    if occupied {
-                        voice_users(ui, cx, guild_id, id);
-                    }
-                }
-                if let Some(t) = threads.get(&id).filter(|_| shown) {
-                    threads::sidebar_rows(ui, cx, id, t);
+                    let folds = (!stays).then(|| (egui::Id::unique(("rc_fold", id)), k));
+                    fold.row(ui, folds, |ui| {
+                        channel_row(ui, cx, id);
+                        if occupied {
+                            voice_users(ui, cx, guild_id, id);
+                        }
+                        if let Some(t) = threads.get(&id) {
+                            threads::sidebar_rows(ui, cx, id, t);
+                        }
+                    });
                 }
             }
         }
     }
+    fold.end(ui.ctx());
+    ui.data_mut(|d| d.insert_temp(fold_moving_id(), moving));
+}
+
+fn fold_moving_id() -> egui::Id {
+    egui::Id::unique("rc_fold_moving")
+}
+
+/// Whether a category folds this pass: rows whose layout spot is out of view may still be painted
+/// in view (`in_view`).
+pub(super) fn folding(ui: &egui::Ui) -> bool {
+    ui.data(|d| d.get_temp::<bool>(fold_moving_id())).unwrap_or(false)
 }
 
 /// What a collapsed category still lists: the open channel, an occupied voice channel, one with
@@ -1288,7 +1326,7 @@ fn category_row(ui: &mut egui::Ui, cx: &UiCx<'_>, id: Id, name: &str, collapsed:
 /// widget (focus order, menu, keyboard clicks, animations) but skips the paint, which the clip
 /// would drop anyway: rows paint inside their rect, the margin covers anti-aliasing.
 fn in_view(ui: &egui::Ui, row: Rect) -> bool {
-    ui.is_rect_visible(row.expand(4.0))
+    ui.is_rect_visible(row.expand(4.0)) || folding(ui)
 }
 
 /// Keyboard focus ring of a full-width list row, inset so it stays inside the card.

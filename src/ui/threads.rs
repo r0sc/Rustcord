@@ -107,7 +107,7 @@ pub fn sidebar_rows(ui: &mut egui::Ui, cx: &mut UiCx<'_>, parent: Id, threads: &
         let name = cx.state.channel_name(t);
         // Out of view (the channel list isn't virtualized) the row keeps its widget but skips
         // the paint, like `sidebar::channel_row`; the rect includes the spine above the row.
-        if ui.is_rect_visible(Rect::from_min_max(pos2(row.left(), top), row.max).expand(4.0)) {
+        if ui.is_rect_visible(Rect::from_min_max(pos2(row.left(), top), row.max).expand(4.0)) || super::sidebar::folding(ui) {
             let x = row.left() + SPINE_X;
             let y = row.center().y;
             let p = ui.painter();

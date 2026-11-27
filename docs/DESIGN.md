@@ -28,7 +28,7 @@ signature, the speech corner.
 Rules:
 1. **Discord's layout, our material.** No control in the main window moves or resizes, except
    where the user asks for it: focus mode folds the rail and the channel list away (§10.9); the tab
-   bar (while two or more tabs are open) and the split view take room in the page (§10.10).
+   bar (while two or more tabs are open) and the split view take room in the page (§10.10). (Exception: server folders and channel categories fold open and shut, §7; paint only, the layout changes in one step.)
 2. **Purple budget.** One big purple fill per view: the primary button. Everything else purple
    is small (a 4 px pill, a 2 px ring or bar, an 18 px icon, a 40x24 switch, a caret) or soft (a
    tint). Hover is never purple, except the home tile, which is the logo. List selection
@@ -358,6 +358,9 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | My reaction | pop 1 → 1.12 → 1 over BASE | | `pop` (existing) | 9 |
 | Login error shake, update pill | LARGE | | existing | 9 |
 | Music section of the user panel appears / leaves | BASE: height 0 → 41 and opacity 0 → 1, ease-out; the row is laid out at its final size against the section's bottom edge and clipped, so the panel's rising top edge reveals it | BASE x OUT, the same curve backwards | `anim(.., BASE, BASE * OUT)` | 5, 8, 11, 18 |
+| Server folder, channel category open / close | BASE ease-out: the rows slide out from under the folder tile or header, rows below follow | BASE x OUT ease-in | `Fold` + `anim` | 5, 11, 17, 18 |
+
+Folding is paint only: opening lays the rows out at once, closing keeps them laid out until shut, so hit-testing and drop targets never slide.
 
 Ending cleanly (0 % idle CPU):
 - Every row above ends and stops asking for frames. Nothing loops: no glow, no pulse, no

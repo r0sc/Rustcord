@@ -203,6 +203,92 @@ pub fn forget(ctx: &Context, id: Id) {
     ctx.data_mut(|d| d.remove::<Tween>(id));
 }
 
+/// `add` painted `dy` lower without a child Ui (layout, widget ids and input unchanged). Its shapes
+/// stay clipped to `ui`'s clip (egui's `with_visual_transform` moves the clip with them, which
+/// would paint list rows over a header) and, with `clip_top`, to below that screen y.
+pub fn shifted<R>(ui: &mut Ui, dy: f32, clip_top: Option<f32>, add: impl FnOnce(&mut Ui) -> R) -> R {
+    if dy == 0.0 && clip_top.is_none() {
+        return add(ui);
+    }
+    let (layer, mut clip) = (ui.layer_id(), ui.clip_rect());
+    if let Some(y) = clip_top {
+        clip.min.y = clip.min.y.max(y); // past max.y: nothing shows
+    }
+    let start = ui.ctx().graphics(|g| g.get(layer).map_or(0, |l| l.next_idx().0));
+    let out = add(ui);
+    let t = TSTransform::from_translation(egui::vec2(0.0, dy));
+    ui.ctx().graphics_mut(|g| {
+        let list = g.entry(layer);
+        for i in start..list.next_idx().0 {
+            list.mutate_shape(egui::layers::ShapeIdx(i), |c| {
+                c.transform(t);
+                c.clip_rect = c.clip_rect.intersect(clip);
+            });
+        }
+    });
+    out
+}
+
+/// Paint-only folding for a list whose sections open and shut (server folders, channel
+/// categories; DESIGN §7). The caller keeps a closing section laid out until its k reaches 0, so
+/// layout, hit-testing and drop targets never slide. Consecutive rows of one folding section form
+/// a run that slides out from under the row above it (clipped there) by (1 - k) of its height;
+/// every later row is drawn that much higher. A run's height is last pass's (a run never drawn
+/// before is hidden for its first pass, when k is still ~0).
+#[derive(Default)]
+pub struct Fold {
+    shift: f32,
+    run: Option<Run>,
+}
+
+struct Run {
+    key: Id,
+    clip: f32,
+    k: f32,
+    h: f32,
+}
+
+impl Fold {
+    /// One row; `folds`: (the row's own key, its section's k) while that section is laid out
+    /// (also at k == 1, so its height is known when it starts closing), else None.
+    pub fn row<R>(&mut self, ui: &mut Ui, folds: Option<(Id, f32)>, add: impl FnOnce(&mut Ui) -> R) -> R {
+        let Some((key, k)) = folds else {
+            self.end(ui.ctx());
+            return shifted(ui, -self.shift, None, add);
+        };
+        let top = ui.cursor().top();
+        if self.run.as_ref().is_none_or(|r| r.k != k) {
+            self.end(ui.ctx());
+            self.run = Some(Run { key, clip: top - self.shift, k, h: 0.0 });
+        }
+        let (run_key, clip) = self.run.as_ref().map_or((key, top), |r| (r.key, r.clip));
+        let known = ui.ctx().data(|d| d.get_temp::<f32>(run_key));
+        let out = match known {
+            _ if k >= 1.0 => shifted(ui, -self.shift, None, add),
+            Some(h) => shifted(ui, -(self.shift + (1.0 - k) * h), Some(clip), add),
+            None => shifted(ui, -self.shift, Some(ui.clip_rect().max.y), add),
+        };
+        let bottom = ui.cursor().top();
+        if let Some(r) = &mut self.run {
+            r.h += bottom - top; // the row and its item spacing
+        }
+        out
+    }
+
+    /// Ends the current run: later rows move up by what it hides; its height is kept for next pass.
+    pub fn end(&mut self, ctx: &Context) {
+        if let Some(r) = self.run.take() {
+            self.shift += (1.0 - r.k) * r.h;
+            ctx.data_mut(|d| d.insert_temp(r.key, r.h));
+        }
+    }
+
+    /// How much higher the next row is drawn.
+    pub fn shift(&self) -> f32 {
+        self.shift
+    }
+}
+
 /// Puts `value`'s tween under `id` at `v` at once; the next `value` call eases from there to its
 /// target (a dragged tab follows the pointer, then settles into its slot).
 pub fn set_value(ctx: &Context, id: Id, v: f32) {
@@ -404,6 +490,73 @@ mod tests {
         forget(&ctx, v);
         let (now, busy) = run(&ctx, 0.3, 0.05, |c| value(c, v, 10.0, FAST));
         assert!(now == 10.0 && !busy);
+    }
+
+    /// The rect of the shape filled `c` and its clip rect, from a pass's output.
+    fn painted(out: &egui::FullOutput, c: Color32) -> (egui::Rect, egui::Rect) {
+        out.shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Rect(r) if r.fill == c => Some((r.rect, s.clip_rect)),
+                _ => None,
+            })
+            .expect("the block was painted")
+    }
+
+    fn tile(ui: &mut Ui, c: Color32) {
+        let (r, _) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
+        ui.painter().rect_filled(r, 0.0, c);
+    }
+
+    #[test]
+    fn shifted_moves_paint_not_layout() {
+        let ctx = Context::default();
+        let (mut top, mut used) = (0.0, 0.0);
+        let mut out = ctx.run_ui(egui::RawInput { time: Some(0.0), ..Default::default() }, |ui| {
+            top = ui.cursor().top();
+            shifted(ui, -10.0, Some(top + 4.0), |ui| tile(ui, Color32::RED));
+            used = ui.cursor().top() - top;
+        });
+        out.textures_delta.clear();
+        let (rect, clip) = painted(&out, Color32::RED);
+        assert_eq!(rect.top(), top - 10.0, "painted 10 px higher");
+        assert_eq!(clip.top(), top + 4.0, "clipped to below the row above");
+        assert!(used >= 20.0, "layout took the row's own room");
+    }
+
+    #[test]
+    fn a_folding_run_slides_and_later_rows_follow() {
+        let ctx = Context::default();
+        let key = Id::unique("fold_run");
+        let pass = |t: f64, k: f32| {
+            let (mut top, mut shift) = (0.0, 0.0);
+            let mut out = ctx.run_ui(egui::RawInput { time: Some(t), ..Default::default() }, |ui| {
+                top = ui.cursor().top();
+                let mut fold = Fold::default();
+                fold.row(ui, None, |ui| tile(ui, Color32::RED));
+                fold.row(ui, Some((key, k)), |ui| tile(ui, Color32::GREEN));
+                fold.row(ui, Some((key, k)), |ui| tile(ui, Color32::BLUE));
+                fold.row(ui, None, |ui| tile(ui, Color32::YELLOW));
+                fold.end(ui.ctx());
+                shift = fold.shift();
+            });
+            out.textures_delta.clear();
+            (out, top, shift)
+        };
+        let (_, top, shift) = pass(0.0, 0.5);
+        let h = ctx.data(|d| d.get_temp::<f32>(key)).expect("the run's height is kept");
+        assert_eq!(shift, 0.5 * h);
+        let (out, _, _) = pass(0.1, 0.5);
+        let row = h / 2.0; // two rows of one pitch
+        let (yellow, _) = painted(&out, Color32::YELLOW);
+        assert_eq!(yellow.top(), top + 3.0 * row - 0.5 * h, "a later row is drawn the hidden part higher");
+        let (green, clip) = painted(&out, Color32::GREEN);
+        assert_eq!(clip.top(), top + row, "the run slides out from under the row above");
+        assert_eq!(green.top(), top + row - 0.5 * h);
+        let (out, _, shift) = pass(0.2, 1.0);
+        assert_eq!(shift, 0.0);
+        assert_eq!(painted(&out, Color32::YELLOW).0.top(), top + 3.0 * row, "open: nothing moved");
+        assert_eq!(painted(&out, Color32::GREEN).0.top(), top + row);
     }
 
     #[test]
