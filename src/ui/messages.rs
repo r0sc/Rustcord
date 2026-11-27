@@ -1271,7 +1271,7 @@ fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>
         }
         if demo("mention") && let Some(m) = cx.state.messages.get(&ch).and_then(|c| c.msgs.iter().rev().find(|m| cx.state.me.as_ref().is_none_or(|u| u.id != m.author.id))) {
             let member = message_member(cx.state, cx.state.channels.get(&ch).and_then(|c| c.guild_id), m);
-            let name = cx.state.member_display_name(cx.state.channels.get(&ch).and_then(|c| c.guild_id), &m.author, member.as_ref());
+            let name = cx.state.real_display_name(cx.state.channels.get(&ch).and_then(|c| c.guild_id), &m.author, member.as_ref());
             composer::queue_mention(ctx, ch, format!("@{name}"), format!("<@{}>", m.author.id.0));
         }
         if (demo("roleicons") || demo("roleicons-emoji"))
@@ -3102,7 +3102,8 @@ fn hover_toolbar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
                 && let Some(m) = shown(cx.state, lc.ch).iter().find(|m| m.id == h.id)
             {
                 let member = message_member(cx.state, lc.guild_id, m);
-                let name = cx.state.member_display_name(lc.guild_id, &m.author, member.as_ref());
+                // The real name: a local name must never reach sent text.
+                let name = cx.state.real_display_name(lc.guild_id, &m.author, member.as_ref());
                 composer::queue_mention(ui.ctx(), lc.ch, format!("@{name}"), format!("<@{}>", m.author.id.0));
             }
             if reacts {
