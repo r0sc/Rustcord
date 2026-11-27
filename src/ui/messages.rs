@@ -881,6 +881,10 @@ struct Memo {
     newest: Option<Id>,
     arrived: Option<f64>,
     rise: Option<(Id, f64)>,
+    /// Nonces of this channel's unfailed pending messages in the last pass, and my message that
+    /// Discord just confirmed (its text turns from muted to normal, DESIGN §7).
+    sending: Vec<String>,
+    confirm: Option<(Id, f64)>,
     #[cfg(test)]
     offset: f32,
 }
@@ -1272,32 +1276,48 @@ fn new_messages_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut M
 /// click on the newest message not by me), `badges` (public flags on the demo authors), `hidden-open` (hidden-word messages but the first start shown), `translate` / `translate-wait` / `translate-error` (the newest message not by me
 /// translated, waiting or failed; no request) and
 /// `roleicons` / `roleicons-emoji` (the first hoisted role gets an image icon or an emoji, `ROLE_ICONS` on) and
-/// `arrive` (1.5 s after start one message from another cached user arrives, as the gateway delivers it).
+/// `arrive` (1.5 s after start one message from another cached user arrives, as the gateway delivers it) and
+/// `sent` (a pending message of mine from the start, confirmed 1.5 s later).
 pub(super) fn demo(flag: &str) -> bool {
     static FLAGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     FLAGS.get_or_init(|| std::env::var("RUSTCORD_MSG_DEMO").unwrap_or_default()).split(',').any(|f| f.trim() == flag)
 }
 
 /// `RUSTCORD_MSG_DEMO=arrive`: once, 1.5 s after start, "on my way" from the first cached user that
-/// is not me reaches the open channel as `MessageCreate` (local state only, nothing is sent).
+/// is not me reaches the open channel as `MessageCreate`. `sent`: a pending message of mine is shown
+/// from the start and confirmed (`apply_send_result`) 1.5 s later. Local state only, nothing is sent.
 fn demo_arrive(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>) {
-    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    use std::sync::atomic::Ordering::Relaxed;
-    let (Some(newest), true, false) = (newest, demo("arrive"), DONE.load(Relaxed)) else { return };
+    use std::sync::atomic::{AtomicU8, Ordering::Relaxed};
+    static STEP: AtomicU8 = AtomicU8::new(0);
+    let (arrive, sent) = (demo("arrive"), demo("sent"));
+    let (Some(newest), true, step) = (newest, arrive || sent, STEP.load(Relaxed)) else { return };
+    if step == 0 && sent {
+        cx.state.pending.push(PendingMessage { nonce: "4242".into(), channel_id: ch, content: "pushing the fix now".into(), failed: None, reply: None });
+        STEP.store(1, Relaxed);
+    }
+    if step >= 2 {
+        return;
+    }
     let left = 1.5 - ctx.input(|i| i.time);
     if left > 0.0 {
         ctx.request_repaint_after(Duration::from_secs_f64(left));
         return;
     }
-    let me = cx.state.me.as_ref().map(|u| u.id);
-    let mut others: Vec<&crate::model::User> = cx.state.users.values().filter(|u| Some(u.id) != me).collect();
+    let me = cx.state.me.clone();
+    let mut others: Vec<&crate::model::User> = cx.state.users.values().filter(|u| Some(u.id) != me.as_ref().map(|m| m.id)).collect();
     others.sort_by_key(|u| u.id);
-    let Some(author) = others.first().map(|u| (*u).clone()) else { return };
-    DONE.store(true, Relaxed);
     let id = Id(newest.0 + (1500 << 22));
     let timestamp = chrono::DateTime::from_timestamp_millis(id.timestamp_ms() as i64).map(|t| t.to_rfc3339()).unwrap_or_default();
-    let msg = Message { id, channel_id: ch, guild_id: cx.state.channels.get(&ch).and_then(|c| c.guild_id), author, content: "on my way".into(), timestamp, ..Default::default() };
-    cx.state.apply_gateway(crate::model::GatewayEvent::MessageCreate(Box::new(msg)), Some(ch));
+    let msg = Message { id, channel_id: ch, guild_id: cx.state.channels.get(&ch).and_then(|c| c.guild_id), timestamp, ..Default::default() };
+    if sent {
+        let Some(author) = me else { return };
+        let msg = Message { author, content: "pushing the fix now".into(), nonce: Some("4242".into()), ..msg };
+        cx.state.apply_send_result(ch, "4242", Ok(msg));
+    } else {
+        let Some(author) = others.first().map(|u| (*u).clone()) else { return };
+        cx.state.apply_gateway(crate::model::GatewayEvent::MessageCreate(Box::new(Message { author, content: "on my way".into(), ..msg })), Some(ch));
+    }
+    STEP.store(2, Relaxed);
 }
 
 fn demo_setup(ctx: &egui::Context, cx: &mut UiCx<'_>, ch: Id, newest: Option<Id>) {
@@ -1711,13 +1731,19 @@ fn note_arrivals(cx: &UiCx<'_>, lc: &Lcx, memo: &mut Memo, now: f64) {
     if let Some(seen) = memo.newest {
         let new: Vec<&Message> = msgs.iter().rev().take_while(|m| m.id > seen).collect();
         if let Some(last) = new.first() {
-            if rises(new.len(), memo.arrived.map(|a| now - a), memo.at_bottom, cx.view.window_focused) && Some(last.author.id) != lc.me {
+            // My own message never rises; one that was pending settles from grey instead.
+            let mine = |m: &&Message| Some(m.author.id) == lc.me;
+            if let Some(m) = new.iter().find(|m| mine(m) && m.nonce_str().is_some_and(|n| memo.sending.contains(&n))) {
+                memo.confirm = Some((m.id, now));
+            }
+            if rises(new.len(), memo.arrived.map(|a| now - a), memo.at_bottom, cx.view.window_focused) && !mine(last) {
                 memo.rise = Some((last.id, now));
             }
             memo.arrived = Some(now);
         }
     }
     memo.newest = msgs.last().map(|m| m.id);
+    memo.sending = cx.state.pending.iter().filter(|p| p.channel_id == lc.ch && p.failed.is_none()).map(|p| p.nonce.clone()).collect();
 }
 
 /// Applies scroll requests and keeps the reading position stable. Returns the viewport top
@@ -2317,6 +2343,12 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
     // MessageLogger: earlier versions above, a deleted message greyed.
     crate::plugins::message_logger::show_versions(ui, cx.theme, msg.id);
     let deleted = crate::plugins::message_logger::is_deleted(msg.id).then_some(pal.muted.gamma_multiply(0.75));
+    // My message Discord just confirmed: its text eases from the pending row's muted colour to normal.
+    let sent = memo.confirm.filter(|c| c.0 == msg.id).map(|c| super::motion::since(ui.ctx(), c.1, super::motion::BASE)).filter(|t| *t < 1.0);
+    if sent.is_none() && memo.confirm.is_some_and(|c| c.0 == msg.id) {
+        memo.confirm = None;
+    }
+    let body_color = deleted.or(sent.map(|t| pal.muted.lerp_to_gamma(pal.text, t)));
     // Translate (the user's click on the menu entry): the translation in place of the text, with its line below.
     let translated = crate::plugins::enabled(Plugin::Translate).then(|| translate::view(msg.id, &msg.content)).flatten();
     let fade_id = egui::Id::unique("rc_translated").with(msg.id.0);
@@ -2339,7 +2371,7 @@ fn body(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo, msg: &M
                 ui.multiply_opacity(t);
             }
             if show_content {
-                let opts = MdOpts { guild_id: lc.guild_id, mentions, id_salt: msg.id, color: deleted, highlight: &[], bg: Some(row_bg(cx, &pal, msg)) };
+                let opts = MdOpts { guild_id: lc.guild_id, mentions, id_salt: msg.id, color: body_color, highlight: &[], bg: Some(row_bg(cx, &pal, msg)) };
                 markdown::render(ui, cx, text, &opts);
             }
             if let Some(note) = note {
@@ -4042,6 +4074,24 @@ mod tests {
         h.frame();
         arrive(&mut h, 9_001);
         assert!(h.memo().rise.is_none(), "unfocused window");
+    }
+
+    #[test]
+    fn my_confirmed_message_settles_from_grey() {
+        let mut h = Harness::new();
+        let ch = h.state.selected_channel.unwrap();
+        h.state.pending.push(PendingMessage { nonce: "77".into(), channel_id: ch, content: "hi".into(), failed: None, reply: None });
+        h.frame();
+        h.frame();
+        assert_eq!(h.memo().sending, vec!["77".to_owned()]);
+        let last = h.state.messages[&ch].msgs.last().unwrap().id;
+        let id = Id(last.0 + (60_000 << 22));
+        let me = h.state.me.clone().unwrap();
+        let msg = Message { id, channel_id: ch, author: me, content: "hi".into(), nonce: Some("77".into()), ..Default::default() };
+        h.state.apply_send_result(ch, "77", Ok(msg));
+        h.frame();
+        assert_eq!(h.memo().confirm.map(|c| c.0), Some(id), "the pending row's nonce matched");
+        assert!(h.memo().rise.is_none(), "my own message never rises");
     }
 
     #[test]

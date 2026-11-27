@@ -360,6 +360,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Music section of the user panel appears / leaves | BASE: height 0 → 41 and opacity 0 → 1, ease-out; the row is laid out at its final size against the section's bottom edge and clipped, so the panel's rising top edge reveals it | BASE x OUT, the same curve backwards | `anim(.., BASE, BASE * OUT)` | 5, 8, 11, 18 |
 | Server folder, channel category open / close | BASE ease-out: the rows slide out from under the folder tile or header, rows below follow | BASE x OUT ease-in | `Fold` + `anim` | 5, 11, 17, 18 |
 | A message arriving in the open chat | BASE: 6 px rise + fade, ease-out; only the only new one, over 1 s after the last arrival, window focused, chat at the bottom | | `since`, `shifted` | 5, 20 |
+| My message confirmed | BASE: body `text_muted` → `text`, ease-out; links and mentions keep their colours | | `since` | 16, 19 |
 
 Folding is paint only: opening lays the rows out at once, closing keeps them laid out until shut, so hit-testing and drop targets never slide.
 
@@ -833,6 +834,7 @@ lines next to `button`.
   bar (was `attention`). Hovered: tint + `hover` (unchanged). A reply to me gets it too.
 - Jumped-to flash: `link` (unchanged: it is navigation).
 - A new message in a calm chat rises in (§7); busy chats stay still.
+- My pending message (muted) turns to `text` over BASE when Discord confirms it.
 - Composer (composer.rs): E1 `surface`, radius 12, no border (HC `rule`), **sheen**.
 - Embeds, code, attachments, hover toolbar, separators, "New": unchanged.
 
