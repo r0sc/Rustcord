@@ -959,9 +959,11 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
         // Mute and disconnect: 24 px round buttons, 16 px icons.
         let mic = ui.interact(unmute, ui.make_persistent_id("call_island_mute"), Sense::click());
         let r = super::motion::pressed(&mic, unmute);
-        let (fill, fg) = if info.muted { (danger.gamma_multiply(0.12), danger) } else { (if mic.hovered() { tk.hover } else { Color32::TRANSPARENT }, text) };
+        // Muting draws the slash from its top end while the danger tint comes in (§7).
+        let slash = super::motion::anim(&ctx, key.with("slash"), info.muted, super::motion::FAST, super::motion::FAST * super::motion::OUT);
+        let fill = if slash > 0.0 { danger.gamma_multiply(0.12 * slash) } else if mic.hovered() { tk.hover } else { Color32::TRANSPARENT };
         p.circle_filled(r.center(), r.width() / 2.0, fill);
-        icons::paint(&p, if info.muted { Icon::MicOff } else { Icon::Mic }, Rect::from_center_size(r.center(), Vec2::splat(16.0)), fg, tk.raised.blend(fill));
+        icons::paint_slashed(&p, Icon::Mic, Rect::from_center_size(r.center(), Vec2::splat(16.0)), text.lerp_to_gamma(danger, slash), tk.raised.blend(fill), slash);
         let tip = if info.muted { "Unmute" } else { "Mute" };
         mic.widget_info(|| WidgetInfo::labeled(Role::Button, true, tip));
         if mic.has_focus() {
@@ -2318,7 +2320,7 @@ fn panel_r(theme: &Theme) -> u8 {
 /// size), plus the voice section and a hairline while in a call, and the quest video section
 /// and its hairline while a quest video plays.
 fn user_panel_h(ctx: &egui::Context, cx: &UiCx<'_>) -> f32 {
-    user_panel_height(cx.state, cx.view, cx.theme) + (MUSIC_H + 1.0) * music(ctx, cx).0
+    user_panel_height(cx.state, cx.view, cx.theme) - voice_target(cx.state) + voice_h(ctx, cx.state) + (MUSIC_H + 1.0) * music(ctx, cx).0
 }
 
 /// The "Quest video" section with its hairline, or nothing.
@@ -2362,9 +2364,21 @@ fn music(ctx: &egui::Context, cx: &UiCx<'_>) -> (f32, Option<(crate::now_playing
 /// `user_panel_h` without a `UiCx` (startup hooks).
 // shortcut: the startup profile hook ignores the music row; pass ctx if RUSTCORD_OPEN=profile is ever combined with music.
 pub(super) fn user_panel_height(state: &AppState, view: &ViewState, theme: &Theme) -> f32 {
+    account_h(theme) + voice_target(state) + quest_h(view)
+}
+
+/// The voice section's final height with its hairline: 0 outside a call, the connection row alone
+/// while connecting, with the camera / share row once connected.
+fn voice_target(state: &AppState) -> f32 {
     let buttons = if state.voice.connected { VOICE_BUTTONS_H } else { 0.0 };
-    let voice = if state.voice.channel_id.is_some() { VOICE_PANEL_H + buttons + 1.0 } else { 0.0 };
-    account_h(theme) + voice + quest_h(view)
+    if state.voice.channel_id.is_some() { VOICE_PANEL_H + buttons + 1.0 } else { 0.0 }
+}
+
+/// The voice section's height now (docs/DESIGN.md §7): grows over BASE in a call, shrinks over BASE x OUT
+/// after it; the camera row joining it once connected glides the same way.
+fn voice_h(ctx: &egui::Context, state: &AppState) -> f32 {
+    use super::motion::{BASE, OUT};
+    super::motion::value(ctx, egui::Id::unique("rc_voice_section"), voice_target(state), if state.voice.channel_id.is_some() { BASE } else { BASE * OUT })
 }
 
 fn account_h(theme: &Theme) -> f32 {
@@ -2391,7 +2405,8 @@ pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32, shift: f32
     let c = cx.theme.colors.clone();
     let (open, track) = music(ctx, cx);
     let music_h = (MUSIC_H + 1.0) * open;
-    let h = user_panel_height(cx.state, cx.view, cx.theme) + music_h;
+    let voice_now = voice_h(ctx, cx.state);
+    let h = user_panel_height(cx.state, cx.view, cx.theme) - voice_target(cx.state) + voice_now + music_h;
     let screen = ctx.content_rect();
     let pos = pos2(screen.left() + PANEL_MARGIN - shift, screen.bottom() - PANEL_MARGIN - h);
     egui::Area::new(egui::Id::unique("user_panel")).order(egui::Order::Middle).fixed_pos(pos).fade_in(false).show(ctx, |ui| {
@@ -2414,20 +2429,30 @@ pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32, shift: f32
             });
         }
         let quest_h = quest_h(cx.view);
-        let voice_h = h - music_h - account_h(cx.theme) - quest_h;
         if quest_h > 0.0 {
             super::quests::panel(ui, cx, Rect::from_min_max(pos2(rect.left(), top), pos2(rect.right(), top + quest_h - 1.0)));
             ui.painter().hline(rect.x_range(), top + quest_h - 0.5, line(&c));
         }
-        if voice_h > 0.0 {
-            let split = top + quest_h + voice_h;
-            voice_panel(ui, cx, Rect::from_min_max(pos2(rect.left(), top + quest_h), pos2(rect.right(), split - 1.0)));
+        if voice_now > 0.0 {
+            let split = top + quest_h + voice_now;
+            // Laid out against the account row at its final size and clipped to the part that is
+            // open (the rising top edge reveals it); the camera row joining it moves the rest up.
+            let target = voice_target(cx.state);
+            if target > 0.0 {
+                ui.scope(|ui| {
+                    ui.set_clip_rect(ui.clip_rect().intersect(Rect::from_min_max(pos2(rect.left(), split - voice_now), pos2(rect.right(), split))));
+                    ui.multiply_opacity((voice_now / target).min(1.0));
+                    let full = (voice_now - 1.0).max(VOICE_PANEL_H);
+                    voice_panel(ui, cx, Rect::from_min_max(pos2(rect.left(), split - 1.0 - full), pos2(rect.right(), split - 1.0)));
+                });
+            }
             ui.painter().hline(rect.x_range(), split - 0.5, line(&c));
         }
-        account_row(ui, cx, rect.with_min_y(top + quest_h + voice_h), rect.left_top());
+        account_row(ui, cx, rect.with_min_y(top + quest_h + voice_now), rect.left_top());
         // Last: the outline and the lit top edge stay over the nameplate.
         ui.painter().rect_stroke(rect, panel_r(cx.theme), line(&c), egui::StrokeKind::Inside);
-        super::messages::sheen(ui.painter(), rect, f32::from(panel_r(cx.theme)), &cx.theme.tokens());
+        // The top edge catches the pointer (§6.2).
+        ui.painter().add(super::light::rim(ctx, rect, f32::from(panel_r(cx.theme)), &cx.theme.tokens()));
     });
 }
 
@@ -2788,14 +2813,16 @@ fn voice_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, group: Rect, output: bool,
     let resp = ui.interact(button, ui.make_persistent_id(("panel_button", icon as u8)), Sense::click());
     let more = ui.interact(chevron, ui.make_persistent_id(("panel_devices", icon as u8)), Sense::click());
     let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&more));
+    let slash = super::motion::anim(ui.ctx(), ui.make_persistent_id(("rc_slash", output)), slashed, super::motion::FAST, super::motion::FAST * super::motion::OUT);
     let (hot, more_hot) = (resp.hovered() || resp.has_focus(), open || more.hovered() || more.has_focus());
     let r = cx.theme.layout.corner_radius.clamp(0.0, 16.0).round() as u8;
     let p = ui.painter();
     // What the icon sits on (the slash's gap).
     let mut under = user_panel_fill(&c);
-    if slashed {
-        p.rect_filled(group, r, c.danger.to_color32().gamma_multiply(0.12));
-        under = under.blend(c.danger.to_color32().gamma_multiply(0.12));
+    if slash > 0.0 {
+        let tint = c.danger.to_color32().gamma_multiply(0.12 * slash);
+        p.rect_filled(group, r, tint);
+        under = under.blend(tint);
     }
     // Discord: one pill around icon and ∨ while either is hovered, the hovered half brighter.
     if hot || more_hot {
@@ -2807,8 +2834,8 @@ fn voice_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, group: Rect, output: bool,
             under = under.blend(c.text.to_color32().gamma_multiply(0.06));
         }
     }
-    let color = if slashed { c.danger.to_color32() } else if hot { c.text.to_color32() } else { panel_icon_rest(&c) };
-    icons::paint(p, if slashed { icon.off() } else { icon }, button.shrink(7.0), color, under);
+    let color = if hot { c.text.to_color32() } else { panel_icon_rest(&c) }.lerp_to_gamma(c.danger.to_color32(), slash);
+    icons::paint_slashed(p, icon, button.shrink(7.0), color, under, slash);
     let k = chevron.center() - vec2(2.0, 0.0);
     let v = if more_hot { c.text.to_color32() } else { panel_icon_rest(&c) };
     p.add(Shape::line(vec![k + vec2(-3.5, -1.75), k + vec2(0.0, 1.75), k + vec2(3.5, -1.75)], Stroke::new(1.5, v)));

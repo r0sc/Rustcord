@@ -191,6 +191,20 @@ pub(crate) fn paint_channel(p: &Painter, (icon, badge): (Icon, Option<Badge>), r
     p.extend(shapes(icon, badge, rect, color, bg, p.pixels_per_point()));
 }
 
+/// `icon` (its on form: `Mic`, `Headphones`) crossed out `t` of the way (0: not, 1: the off icon):
+/// the slash draws from its top end (docs/DESIGN.md §7). `bg` cuts the gap beside it.
+pub(crate) fn paint_slashed(p: &Painter, icon: Icon, rect: Rect, color: Color32, bg: Color32, t: f32) {
+    p.extend(slashed_shapes(icon, rect, color, bg, p.pixels_per_point(), t));
+}
+
+fn slashed_shapes(icon: Icon, rect: Rect, color: Color32, bg: Color32, ppp: f32, t: f32) -> Vec<Shape> {
+    let color = if color.a() < 255 && bg.a() == 255 { bg.blend(color) } else { color };
+    let mut k = Pen::new(rect.round_to_pixels(ppp), color, bg, ppp);
+    draw(&mut k, icon, false);
+    k.slash_to(t);
+    k.out
+}
+
 /// The icon of a channel kind (§8.4), the single source for every place a channel shows its
 /// kind. `locked`: @everyone can't see it; `rules`: the server's rules channel.
 pub(crate) fn channel(kind: u8, locked: bool, nsfw: bool, rules: bool) -> (Icon, Option<Badge>) {
@@ -464,7 +478,16 @@ impl Pen {
 
     /// The crossed-out form: a slash with a gap in `bg` on both sides.
     fn slash(&mut self) {
-        let ends = [(20.5, 3.5), (3.5, 20.5)];
+        self.slash_to(1.0);
+    }
+
+    /// The slash drawn `t` of the way from its top end (0: none, 1: the whole slash).
+    fn slash_to(&mut self, t: f32) {
+        if t <= 0.0 {
+            return;
+        }
+        let ((x0, y0), (x1, y1)) = ((20.5, 3.5), (3.5, 20.5));
+        let ends = [(x0, y0), (x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)];
         let w = self.w;
         self.cut(|k| {
             k.w = w + 2.5 * k.u;
@@ -1260,6 +1283,16 @@ mod tests {
         shapes.iter().map(Shape::visual_bounding_rect).fold(Rect::NOTHING, |a, b| a.union(b))
     }
 
+    #[test]
+    fn a_slash_draws_from_nothing_to_the_off_icon() {
+        let rect = Rect::from_min_size(pos2(10.0, 20.0), egui::Vec2::splat(20.0));
+        let (fg, bg) = (Color32::WHITE, Color32::BLACK);
+        for (on, off) in [(Icon::Mic, Icon::MicOff), (Icon::Headphones, Icon::Deafened)] {
+            assert_eq!(slashed_shapes(on, rect, fg, bg, 1.0, 0.0).len(), shapes(on, None, rect, fg, bg, 1.0).len(), "t = 0 is the plain icon");
+            assert_eq!(slashed_shapes(on, rect, fg, bg, 1.0, 1.0).len(), shapes(off, None, rect, fg, bg, 1.0).len(), "t = 1 is the off icon");
+            assert!(slashed_shapes(on, rect, fg, bg, 1.0, 0.5).len() > shapes(on, None, rect, fg, bg, 1.0).len());
+        }
+    }
     #[test]
     fn every_icon_paints_inside_its_rect() {
         for side in [16.0, 20.0, 24.0, 48.0] {
