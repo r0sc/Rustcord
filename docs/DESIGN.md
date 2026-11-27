@@ -291,11 +291,13 @@ Callers to switch (everything else keeps its helper):
 | Level | What | Fill | Edge | Sheen | Shadow (`egui::Shadow`) |
 |---|---|---|---|---|---|
 | E0 pane | title bar, rail, channel card, chat, member list | pane | `rule` where panes meet (§6.3) | no | none |
-| E1 card | composer, user panel, island, settings option groups | `surface` | 1 px `rule` (composer: none; HC `rule`) | yes | none |
-| E2 float | menus, tooltips, popouts, pickers, autocomplete, hover toolbar, toasts | `raised` | 1 px `rule` (HC 1.5 px muted) | our own floats only | dark `[0,12]` blur 32 black 55 %; light `[0,12]` blur 32 black 12 % |
-| E3 layer | modals, settings panel, quick switcher, login card, incoming call card | `raised` (settings: two pane fills) | 1 px `rule` (HC 1.5 px muted) | yes | dark `[0,24]` blur 64 black 65 %; light `[0,24]` blur 64 black 18 % |
+| E1 card | composer, user panel, island, settings option groups | `surface` | 1 px `rule` (composer: none; HC `rule`) | yes | none (the island: the contact shadow only, in the E2 colour) |
+| E2 float | menus, tooltips, popouts, pickers, autocomplete, hover toolbar, toasts | `raised` | 1 px `rule` (HC 1.5 px muted) | our own floats only | dark `[0,12]` blur 32 black 55 %; light `[0,12]` blur 32 black 12 %; plus a contact shadow `[0,1]` blur 3 in that colour at 60 % |
+| E3 layer | modals, settings panel, quick switcher, login card, incoming call card | `raised` (settings: two pane fills) | 1 px `rule` (HC 1.5 px muted) | yes | dark `[0,24]` blur 64 black 65 %; light `[0,24]` blur 64 black 18 %; plus a contact shadow `[0,1]` blur 3 in that colour at 60 % |
 
 HC: no shadows, no sheen (as today: `Shadow::NONE`, the 1.5 px muted edge).
+
+The contact shadow (`messages::contact`) goes under every float whose frame has a shadow, egui's menus and tooltips too (`messages::contact_shadows`, run by `motion::end_pass`), and under the call island. Static paint. HC: none.
 
 ### 6.2 The sheen (lit top edge)
 

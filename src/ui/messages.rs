@@ -255,6 +255,35 @@ pub(super) fn sheen(p: &egui::Painter, rect: Rect, radius: f32, tk: &crate::them
     }
 }
 
+/// The tight contact shadow under a float's wide one (DESIGN §6.1): `[0,1]` blur 3 in the wide
+/// shadow's colour at 60 %. Static paint.
+pub(super) fn contact(body: Rect, radius: egui::CornerRadius, wide: Color32) -> Shape {
+    egui::Shadow { offset: [0, 1], blur: 3, spread: 0, color: wide.gamma_multiply(0.6) }.as_shape(body, radius).into()
+}
+
+/// Puts `contact` under the wide shadow of a frame painted by `egui::Frame::paint` (`[wide, body]`).
+/// Anything else, a frame without a shadow (High Contrast) included, stays as it is.
+fn add_contact(shape: &mut Shape) {
+    let Shape::Vec(v) = shape else { return };
+    if let [Shape::Rect(wide), Shape::Rect(body)] = v.as_slice()
+        && wide.blur_width > 0.0
+    {
+        let c = contact(body.rect, body.corner_radius, wide.fill);
+        v.insert(1, c);
+    }
+}
+
+/// Under every float's wide shadow on `layer`: egui's own menus and tooltips too (no other hook).
+/// Run by `motion::end_pass`.
+pub(super) fn contact_shadows(ctx: &egui::Context, layer: egui::LayerId) {
+    ctx.graphics_mut(|g| {
+        let list = g.entry(layer);
+        for i in 0..list.next_idx().0 {
+            list.mutate_shape(egui::layers::ShapeIdx(i), |c| add_contact(&mut c.shape));
+        }
+    });
+}
+
 /// Button kinds of §9. One `Primary` per view (purple); `Danger` only for destructive confirms.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[allow(dead_code, reason = "shared §9 kinds; Secondary / Positive are adopted by the area views")]
@@ -3888,6 +3917,26 @@ mod tests {
             author: User { id: Id(author), ..Default::default() },
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn contact_goes_under_every_frame_shadow() {
+        let wide = egui::Shadow { offset: [0, 12], blur: 32, spread: 0, color: Color32::from_black_alpha(140) };
+        let frame = egui::Frame::new().fill(Color32::GRAY).corner_radius(12).shadow(wide);
+        let rect = Rect::from_min_size(pos2(10.0, 10.0), vec2(100.0, 50.0));
+        let mut shape = frame.paint(rect);
+        add_contact(&mut shape);
+        let Shape::Vec(v) = &shape else { panic!("a frame with a shadow is a Vec") };
+        assert_eq!(v.len(), 3);
+        let (Shape::Rect(c), Shape::Rect(body)) = (&v[1], &v[2]) else { panic!("contact then body") };
+        assert_eq!(c.blur_width, 3.0);
+        assert_eq!(c.rect, body.rect.translate(vec2(0.0, 1.0)));
+        assert!((i32::from(c.fill.a()) - i32::from(Color32::from_black_alpha(140).gamma_multiply(0.6).a())).abs() <= 1);
+        add_contact(&mut shape);
+        assert!(matches!(&shape, Shape::Vec(v) if v.len() == 3), "idempotent");
+        let mut hc = egui::Frame::new().fill(Color32::GRAY).paint(rect);
+        add_contact(&mut hc);
+        assert!(matches!(hc, Shape::Rect(_)), "no shadow, nothing added");
     }
 
     #[test]

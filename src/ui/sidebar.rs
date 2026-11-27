@@ -689,6 +689,7 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
         ui.multiply_opacity(((t - 0.3) / 0.7).clamp(0.0, 1.0));
         let p = ui.painter().clone();
         let stroke = if tk.mode == crate::theme::Mode::HighContrast { Stroke::new(1.5, muted) } else { Stroke::new(1.0, tk.rule) };
+        p.add(super::messages::contact(pill, CornerRadius::same(14), ctx.global_style().visuals.popup_shadow.color));
         p.rect_filled(pill, 14, tk.raised);
         p.rect_stroke(pill, 14, stroke, egui::StrokeKind::Inside);
         super::messages::sheen(&p, pill, 14.0, &tk);

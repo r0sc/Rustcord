@@ -310,23 +310,27 @@ pub fn modal<R>(ctx: &Context, area: egui::Area, frame: egui::Frame, scrim: Colo
     resp
 }
 
-/// Last call of every pass (`RustcordApp::ui`). Menus, context menus, submenus, tooltips and
-/// popovers (each Foreground / Tooltip area not `own`ed) grow GROW -> 1 about their pivot (the
-/// point egui attached them to the trigger; the click for context menus) over FAST while egui
-/// fades them in over the same time; they close at once (principle 20). Then the `leave` ghosts.
+/// Last call of every pass (`RustcordApp::ui`). Every float (each Foreground / Tooltip area) gets
+/// its contact shadow (`messages::contact_shadows`). Menus, context menus, submenus, tooltips and
+/// popovers not `own`ed grow GROW -> 1 about their pivot (the point egui attached them to the
+/// trigger; the click for context menus) over FAST while egui fades them in over the same time;
+/// they close at once (principle 20). Then the `leave` ghosts.
 pub fn end_pass(ctx: &Context) {
     let own = ctx.data_mut(|d| std::mem::take(d.get_temp_mut_or_default::<Own>(own_id())));
-    if secs(ctx, FAST) > 0.0 {
-        for layer in ctx.memory(|m| m.areas().visible_layer_ids()) {
-            if !matches!(layer.order, Order::Foreground | Order::Tooltip) || own.0.contains(&layer) {
-                continue;
-            }
-            let t = opened(ctx, layer, FAST);
-            if t < 1.0
-                && let Some(o) = AreaState::load(ctx, layer.id).and_then(|a| a.pivot_pos)
-            {
-                ctx.transform_layer_shapes_after_rounding(layer, about(o, egui::lerp(GROW..=1.0, t)));
-            }
+    let grow = secs(ctx, FAST) > 0.0;
+    for layer in ctx.memory(|m| m.areas().visible_layer_ids()) {
+        if !matches!(layer.order, Order::Foreground | Order::Tooltip) {
+            continue;
+        }
+        super::messages::contact_shadows(ctx, layer);
+        if !grow || own.0.contains(&layer) {
+            continue;
+        }
+        let t = opened(ctx, layer, FAST);
+        if t < 1.0
+            && let Some(o) = AreaState::load(ctx, layer.id).and_then(|a| a.pivot_pos)
+        {
+            ctx.transform_layer_shapes_after_rounding(layer, about(o, egui::lerp(GROW..=1.0, t)));
         }
     }
     ghosts(ctx);
