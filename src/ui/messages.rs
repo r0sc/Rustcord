@@ -3059,10 +3059,12 @@ fn pending_rows(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, last_author: Opt
         let upload = cx.state.chat.uploads.get(&p.nonce).cloned();
         let header_user = me.as_ref().filter(|_| i == 0 && header);
         if header_user.is_some() {
-            ui.add_space(16.0);
+            ui.add_space(if lc.compact { 4.0 } else { cx.settings.message_group_spacing });
         }
         Frame::new().inner_margin(Margin { left: 16, right: 16, top: 2, bottom: 2 }).show(ui, |ui| {
             ui.set_width(ui.available_width());
+            // Same metrics as `message_block`, so a confirmed message keeps its height.
+            ui.spacing_mut().interact_size.y = ui.text_style_height(&egui::TextStyle::Body);
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 match header_user {
