@@ -340,7 +340,7 @@ fn demo_boost(state: &mut AppState) {
 /// (every vector icon over the window, `icons::sheet`), `no-tray` (Linux: the settings page as
 /// without a tray host, `user_settings/app.rs`), `press:<shortcut>` (that key combination,
 /// e.g. `Alt+Down`, pressed once at frame 14 where the focus is; `user_settings::parse` names),
-/// `long-list` (40 local channels in the open server's first category), `scroll:<px>` (the channel list opens
+/// `unread` (3 s after start the open server's last text channel turns unread), `ping-again` (a second `ping` mention 1.5 s later), `long-list` (40 local channels in the open server's first category), `scroll:<px>` (the channel list opens
 /// scrolled by that much), `ping` (3 s after start one mention reaches a server that is not open), `collapsed` (the open server's first category folded at start; a click opens it), `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
 /// not read; a click on Play / Pause flips it).
 pub(super) fn nav_demo(flag: &str) -> bool {
@@ -1367,8 +1367,35 @@ fn demo_long_list(state: &mut AppState, guild_id: Id) {
     });
 }
 
+/// RUSTCORD_NAV_DEMO=unread: once, 3 s after start, the open server's last text channel (not the open
+/// one) turns unread: its last message is one past its read state (local state only).
+fn demo_unread(ctx: &egui::Context, state: &mut AppState, guild_id: Id) {
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !nav_demo("unread") || DONE.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let left = 3.0 - ctx.input(|i| i.time);
+    if left > 0.0 {
+        ctx.request_repaint_after(Duration::from_secs_f64(left));
+        return;
+    }
+    let last = state.sidebar_channels(guild_id).into_iter().rev().find_map(|i| match i {
+        SidebarItem::Channel { id } if state.channels.get(&id).is_some_and(|c| c.kind == ct::GUILD_TEXT) && state.selected_channel != Some(id) => Some(id),
+        _ => None,
+    });
+    if let Some(ch) = last.filter(|ch| state.channels.contains_key(ch)) {
+        let read = Id(1_000_000_000_000_000);
+        state.read_states.insert(ch, crate::model::ReadState { id: ch, last_message_id: Some(read), ..Default::default() });
+        if let Some(c) = state.channels.get_mut(&ch) {
+            c.last_message_id = Some(Id(read.0 + 1));
+        }
+        DONE.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
     demo_long_list(cx.state, guild_id);
+    demo_unread(ui.ctx(), cx.state, guild_id);
     let mut items = cx.state.sidebar_channels_with(guild_id, crate::plugins::sidebar::show_hidden());
     if cx.view.hide_muted.contains(&guild_id) {
         drop_muted(cx.state, &mut items);
@@ -1390,6 +1417,7 @@ fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
     let mut collapsed = false;
     // Categories fold open and shut (paint only, `motion::Fold`): k is the current one's.
     let (mut fold, mut k, mut moving) = (super::motion::Fold::default(), 1.0, false);
+    let mut plate = Plate::new(ui, egui::Id::unique(("rc_plate", guild_id.0)), ROW_H, ui.max_rect().top());
     for (i, item) in items.into_iter().enumerate() {
         match item {
             SidebarItem::Category { id, name } => {
@@ -1419,20 +1447,24 @@ fn guild_channels(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id) {
                 if shown {
                     let folds = (!stays).then(|| (egui::Id::unique(("rc_fold", id)), k));
                     fold.row(ui, folds, |ui| {
-                        channel_row(ui, cx, id);
+                        channel_row(ui, cx, id, &mut plate);
                         if occupied {
-                            voice_users(ui, cx, guild_id, id);
+                            voice_users(ui, cx, guild_id, id, &plate);
                         }
                         if let Some(t) = threads.get(&id) {
                             threads::sidebar_rows(ui, cx, id, t);
                         }
                     });
+                    if cx.state.selected_channel == Some(id) {
+                        plate.shift = fold.shift();
+                    }
                 }
             }
         }
     }
     fold.end(ui.ctx());
     ui.data_mut(|d| d.insert_temp(fold_moving_id(), moving));
+    plate.finish(ui, cx);
 }
 
 fn fold_moving_id() -> egui::Id {
@@ -1543,30 +1575,90 @@ fn row_focus(ui: &egui::Ui, cx: &UiCx<'_>, row: Rect) {
     super::messages::focus_ring(ui, &pal, row.shrink2(vec2(ROW_INSET + 2.0, 2.0)), f32::from(pal.radius));
 }
 
-/// Row background / unread pill shared by channel, DM and voice-user rows. Returns the fill
-/// painted behind the row (transparent when none).
-fn row_chrome(ui: &egui::Ui, cx: &UiCx<'_>, bg_slot: egui::layers::ShapeIdx, row: Rect, selected: bool, hovered: bool, unread: bool) -> Color32 {
-    let c = &cx.theme.colors;
-    let (selected_fill, hover_fill) = row_fills(ui, c);
-    let fill = if selected {
-        selected_fill
-    } else if hovered {
-        hover_fill
-    } else {
-        Color32::TRANSPARENT
-    };
-    let cr = CornerRadius::from(cx.theme.layout.corner_radius);
-    ui.painter().set(bg_slot, Shape::rect_filled(row.shrink2(vec2(ROW_INSET, 0.0)), cr, fill));
-    if unread {
-        let pill = Rect::from_min_size(pos2(row.left(), row.center().y - 4.0), vec2(4.0, 8.0));
-        ui.painter().rect_filled(pill, CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 }, c.text.to_color32());
-    }
-    fill
+/// One gliding selection plate per list (docs/DESIGN.md §7, §9.11): the `selected` fill, with the
+/// sheen line along its top on dark themes, travels from the old row to the new one over BASE. It
+/// lives in the list's content space (`origin` = the content's top), so scrolling never moves it.
+/// A list not drawn last pass, or a selected row not drawn, starts again in place. Rows tell it
+/// which one is selected (`select`) and ask what is under their icons (`row_chrome`).
+struct Plate {
+    slot: egui::layers::ShapeIdx,
+    id: egui::Id,
+    origin: f32,
+    /// A row's height.
+    h: f32,
+    /// Where the plate's top is this pass (before this pass's retarget).
+    now: Option<f32>,
+    sel: Option<Rect>,
+    /// How much higher a fold above draws the selected row.
+    shift: f32,
 }
 
-/// The colour under a row's icons: the sidebar with the row's fill (`row_chrome`) on top.
-fn row_bg(c: &ThemeColors, fill: Color32) -> Color32 {
-    c.sidebar.to_color32().blend(fill)
+impl Plate {
+    fn new(ui: &egui::Ui, id: egui::Id, h: f32, origin: f32) -> Self {
+        let ctx = ui.ctx();
+        let (pass, pass_id) = (ctx.cumulative_pass_nr(), id.with("pass"));
+        if ctx.data(|d| d.get_temp::<u64>(pass_id)).is_none_or(|p| pass > p + 1) {
+            super::motion::forget(ctx, id);
+            ctx.data_mut(|d| d.remove::<f32>(id.with("to")));
+        }
+        ctx.data_mut(|d| d.insert_temp(pass_id, pass));
+        let now = ctx.data(|d| d.get_temp::<f32>(id.with("to"))).map(|to| origin + super::motion::value(ctx, id, to, super::motion::BASE));
+        Self { slot: ui.painter().add(Shape::Noop), id, origin, h, now, sel: None, shift: 0.0 }
+    }
+
+    /// Whether the plate lies over `row` right now (its middle is inside it).
+    fn covers(&self, row: Rect) -> bool {
+        self.now.is_some_and(|y| (y..y + self.h).contains(&row.center().y))
+    }
+
+    fn select(&mut self, row: Rect) {
+        self.sel = Some(row);
+    }
+
+    /// Draws the plate at its tween's place; no selected row: forgets it.
+    fn finish(self, ui: &egui::Ui, cx: &UiCx<'_>) {
+        let (ctx, to_id) = (ui.ctx(), self.id.with("to"));
+        let Some(r) = self.sel else {
+            super::motion::forget(ctx, self.id);
+            ctx.data_mut(|d| d.remove::<f32>(to_id));
+            return;
+        };
+        let to = r.top() - self.shift - self.origin;
+        ctx.data_mut(|d| d.insert_temp(to_id, to));
+        if folding(ui) {
+            // A category folding above moves the row each frame: the plate stays on it.
+            super::motion::set_value(ctx, self.id, to);
+        }
+        let y = self.origin + super::motion::value(ctx, self.id, to, super::motion::BASE);
+        let (fill, tk, cr) = (row_fills(ui, &cx.theme.colors).0, crate::theme::applied_tokens(ctx), CornerRadius::from(cx.theme.layout.corner_radius));
+        let rect = Rect::from_min_size(pos2(r.left(), y), r.size()).shrink2(vec2(ROW_INSET, 0.0));
+        let mut shapes = vec![Shape::rect_filled(rect, cr, fill)];
+        if tk.sheen.a() > 0 {
+            let r = f32::from(cr.nw);
+            shapes.push(Shape::hline(rect.left() + r..=rect.right() - r, rect.top() + 0.5, Stroke::new(1.0, tk.sheen)));
+        }
+        ui.painter().set(self.slot, Shape::Vec(shapes));
+    }
+}
+
+/// Row hover and unread pill shared by channel, DM and voice-user rows (the selected fill is the
+/// list's `Plate`). Hover is on at once and fades out over FAST (`trail`, keyed by `id`); the unread
+/// pill grows 0 -> 8 px over FAST. Returns the opaque colour under the row's icons now: the plate's
+/// where it covers the row, else the sidebar with the fading hover fill.
+#[allow(clippy::too_many_arguments)]
+fn row_chrome(ui: &egui::Ui, cx: &UiCx<'_>, bg_slot: egui::layers::ShapeIdx, row: Rect, id: egui::Id, hovered: bool, unread: bool, plate: &Plate) -> Color32 {
+    let c = &cx.theme.colors;
+    let (selected_fill, hover_fill) = row_fills(ui, c);
+    // The selected row shows the plate, not a hover fill over it.
+    let hover = hover_fill.gamma_multiply(super::motion::trail(ui.ctx(), id.with("trail"), hovered && plate.sel != Some(row)));
+    let cr = CornerRadius::from(cx.theme.layout.corner_radius);
+    ui.painter().set(bg_slot, Shape::rect_filled(row.shrink2(vec2(ROW_INSET, 0.0)), cr, hover));
+    let u = super::motion::value(ui.ctx(), id.with("unread"), if unread { 8.0 } else { 0.0 }, super::motion::FAST);
+    if u >= 0.5 {
+        let pill = Rect::from_min_size(pos2(row.left(), row.center().y - u / 2.0), vec2(4.0, u));
+        ui.painter().rect_filled(pill, CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 }, c.text.to_color32());
+    }
+    if plate.covers(row) { selected_fill } else { c.sidebar.to_color32().blend(hover) }
 }
 
 /// (selected, hovered) fills of rows: the `selected` and `hover` tokens over the sidebar colour,
@@ -1589,7 +1681,7 @@ fn row_text_color(c: &ThemeColors, dim: bool, bright: bool) -> Color32 {
 
 /// One channel. A click on a voice/stage channel joins it (the hover chat button opens its
 /// text chat); the connected one has a green bar on its left.
-fn channel_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
+fn channel_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, plate: &mut Plate) {
     // ShowHiddenChannels: a locked, unselectable row.
     if crate::plugins::sidebar::hidden_row(ui, cx, id, ROW_H) {
         return;
@@ -1608,6 +1700,9 @@ fn channel_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
         ui.scroll_to_rect(row, None);
         ui.data_mut(|d| d.remove::<Id>(reveal_id()));
     }
+    if selected {
+        plate.select(row);
+    }
     let shown = in_view(ui, row);
     let bg_slot = shown.then(|| ui.painter().add(Shape::Noop));
     let resp = ui.interact(row, ui.make_persistent_id(("channel", id)), if supported { Sense::click() } else { Sense::hover() });
@@ -1618,7 +1713,7 @@ fn channel_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
         let muted = cx.state.is_channel_muted(id);
         let unread = supported && !muted && !selected && cx.state.is_unread(id);
         let mentions = if supported { cx.state.mention_count(id) } else { 0 };
-        let fill = row_chrome(ui, cx, bg_slot, row, selected, hovered, unread);
+        let fill = row_chrome(ui, cx, bg_slot, row, resp.id, hovered, unread, plate);
 
         let c = &cx.theme.colors;
         let size = cx.theme.font.size;
@@ -1629,7 +1724,7 @@ fn channel_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
         let color = row_text_color(c, !supported || muted, selected || unread || hovered);
         // 20 px icon after 8 px of row padding, then the name; it follows the name's colour.
         let slot = Rect::from_center_size(pos2(row.left() + ROW_INSET + 18.0, row.center().y), Vec2::splat(20.0));
-        icons::paint_channel(ui.painter(), icons::of(&cx.state.channels[&id], cx.state), slot, color, row_bg(c, fill));
+        icons::paint_channel(ui.painter(), icons::of(&cx.state.channels[&id], cx.state), slot, color, fill);
         let mut right = row.right() - ROW_INSET - 8.0;
         if voice && hovered {
             let pal = Pal::new(cx.theme);
@@ -1720,7 +1815,7 @@ struct VoiceUser {
 }
 
 /// The people in a voice channel, sorted by name, as 24 px avatar rows under its row.
-fn voice_users(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, channel_id: Id) {
+fn voice_users(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, channel_id: Id, plate: &Plate) {
     let Some(states) = cx.state.voice_states.get(&channel_id) else { return };
     let mut people: Vec<VoiceUser> = states
         .values()
@@ -1740,11 +1835,11 @@ fn voice_users(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, channel_id: I
         .collect();
     people.sort_by_cached_key(|p| (p.name.to_lowercase(), p.id));
     for p in &people {
-        voice_user_row(ui, cx, guild_id, p);
+        voice_user_row(ui, cx, guild_id, p, plate);
     }
 }
 
-fn voice_user_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, u: &VoiceUser) {
+fn voice_user_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, u: &VoiceUser, plate: &Plate) {
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), VOICE_ROW_H), Sense::hover());
     let bg_slot = ui.painter().add(Shape::Noop);
     let avatar = Rect::from_min_size(pos2(row.left() + 36.0, row.center().y - 12.0), Vec2::splat(24.0));
@@ -1759,7 +1854,7 @@ fn voice_user_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, u: &VoiceU
     let resp = ui.interact(row, ui.make_persistent_id(("voice_user", u.id)), Sense::click());
     let hovered = resp.hovered();
     // The hover fill starts 8 px left of the avatar.
-    let fill = row_chrome(ui, cx, bg_slot, row.with_min_x(row.left() + 20.0), false, hovered, false);
+    let fill = row_chrome(ui, cx, bg_slot, row.with_min_x(row.left() + 20.0), resp.id, hovered, false, plate);
 
     let c = &cx.theme.colors;
     let size = cx.theme.font.size;
@@ -1767,7 +1862,7 @@ fn voice_user_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, u: &VoiceU
     if speak > 0.0 {
         ui.painter().circle_stroke(avatar.center(), 13.5, Stroke::new(2.0, presence_color(Presence::Online, c).gamma_multiply(speak)));
     }
-    let bg = row_bg(c, fill);
+    let bg = fill;
     let (muted, mark) = (c.text_muted.to_color32(), if u.by_server { c.danger } else { c.text_muted }.to_color32());
     let (mut right, cy) = (row.right() - ROW_INSET - 6.0, row.center().y);
     // Right to left, 4 px apart: "Live" tag, camera, deafened, muted.
@@ -1814,12 +1909,15 @@ fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) -> Opti
     let (requests, spam) = cx.state.request_counts();
     // The "Message requests" row, while there are any or its page is open.
     let req = usize::from(requests + spam > 0 || cx.view.requests_ui.open);
+    let plate_id = egui::Id::unique(("rc_plate", 0u64));
     if ids.is_empty() {
-        friends_row(ui, cx, Home::Friends);
-        friends_row(ui, cx, Home::Quests);
+        let mut plate = Plate::new(ui, plate_id, DM_ROW_H, ui.max_rect().top());
+        friends_row(ui, cx, Home::Friends, &mut plate);
+        friends_row(ui, cx, Home::Quests, &mut plate);
         if req == 1 {
-            friends_row(ui, cx, Home::Requests);
+            friends_row(ui, cx, Home::Requests, &mut plate);
         }
+        plate.finish(ui, cx);
         dm_header(ui, cx, false);
         empty_state(ui, cx, 24.0, if query.is_empty() { "No direct messages yet. Start one from your friends list." } else { "No conversations match that name." });
         return None;
@@ -1829,17 +1927,21 @@ fn dm_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, area: egui::ScrollArea) -> Opti
     let head = usize::from(pins > 0);
     let top = 2 + req;
     Some(area.show_rows(ui, DM_ROW_H, ids.len() + 3 + req + head, |ui, range| {
+        // The closure's ui starts at the first visible row: the content's top is above it.
+        let origin = ui.max_rect().top() - range.start as f32 * (DM_ROW_H + ui.spacing().item_spacing.y);
+        let mut plate = Plate::new(ui, plate_id, DM_ROW_H, origin);
         for i in range {
             match i {
-                0 => friends_row(ui, cx, Home::Friends),
-                1 => friends_row(ui, cx, Home::Quests),
-                2 if req == 1 => friends_row(ui, cx, Home::Requests),
+                0 => friends_row(ui, cx, Home::Friends, &mut plate),
+                1 => friends_row(ui, cx, Home::Quests, &mut plate),
+                2 if req == 1 => friends_row(ui, cx, Home::Requests, &mut plate),
                 i if i == top && head == 1 => dm_header(ui, cx, true),
                 i if i == top + head + pins => dm_header(ui, cx, false),
-                i if i < top + head + pins => dm_row(ui, cx, ids[i - top - head]),
-                i => dm_row(ui, cx, ids[i - top - 1 - head]),
+                i if i < top + head + pins => dm_row(ui, cx, ids[i - top - head], &mut plate),
+                i => dm_row(ui, cx, ids[i - top - 1 - head], &mut plate),
             }
         }
+        plate.finish(ui, cx);
     }))
 }
 
@@ -1869,7 +1971,7 @@ enum Home {
 /// "Friends" on top of the DM list: opens the Friends page (friends.rs); pending requests as a
 /// badge. "Quests" (quests.rs, rewards to claim as the badge) and "Message requests"
 /// (requests.rs, pending requests as the badge) sit under it.
-fn friends_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, home: Home) {
+fn friends_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, home: Home, plate: &mut Plate) {
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), DM_ROW_H), Sense::hover());
     let bg_slot = ui.painter().add(Shape::Noop);
     let id = match home {
@@ -1884,7 +1986,10 @@ fn friends_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, home: Home) {
         Home::Quests => super::friends::is_open(cx.state) && quests,
         Home::Requests => requests && !quests,
     };
-    let fill = row_chrome(ui, cx, bg_slot, row, selected, resp.hovered(), false);
+    if selected {
+        plate.select(row);
+    }
+    let fill = row_chrome(ui, cx, bg_slot, row, resp.id, resp.hovered(), false, plate);
     let c = &cx.theme.colors;
     let color = row_text_color(c, false, selected || resp.hovered());
     let size = cx.theme.font.size;
@@ -1894,7 +1999,7 @@ fn friends_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, home: Home) {
         Home::Quests => (Icon::Quest, "Quests"),
         Home::Requests => (Icon::Envelope, "Message requests"),
     };
-    icons::paint(ui.painter(), glyph, icon, color, row_bg(c, fill));
+    icons::paint(ui.painter(), glyph, icon, color, fill);
     let mut right = row.right() - ROW_INSET - 8.0;
     let pending = match home {
         Home::Friends => cx.state.pending_count(),
@@ -1999,7 +2104,7 @@ pub(super) fn name_and_status(ui: &egui::Ui, cx: &mut UiCx<'_>, name: Arc<egui::
     (at, at.right().max(sub.right()))
 }
 
-fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
+fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, list: &mut Plate) {
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), DM_ROW_H), Sense::hover());
     let Some(ch) = cx.state.channels.get(&id) else { return };
     let group = ch.kind == ct::GROUP_DM;
@@ -2026,16 +2131,20 @@ fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     super::images::decoration_at(ui, cx.images, avatar, fx.decoration.as_ref(), fx_anim, 1.0);
     // Registered after the avatar widget so the whole row stays clickable.
     let resp = ui.interact(row, ui.make_persistent_id(("dm", id)), Sense::click());
-    let fill = row_chrome(ui, cx, bg_slot, row, selected, hot, unread);
+    if selected {
+        list.select(row);
+    }
+    let fill = row_chrome(ui, cx, bg_slot, row, resp.id, hot, unread, list);
     // Selected or hovered: the other person's aura washes in from the left (ui/aura.rs).
-    let aura = other.filter(|_| selected || hot).and_then(|u| cx.state.users.get(&u).cloned()).and_then(|u| super::aura::of(ui.ctx(), cx, &u, None));
+    let h = super::motion::trail(ui.ctx(), resp.id.with("trail"), hot && !selected);
+    let aura = other.filter(|_| selected || h > 0.0).and_then(|u| cx.state.users.get(&u).cloned()).and_then(|u| super::aura::of(ui.ctx(), cx, &u, None));
 
     let c = &cx.theme.colors;
     let size = cx.theme.font.size;
     // The opaque colour under the row's text: the fill with the person's wash blended in.
-    let mut ring = if fill == Color32::TRANSPARENT { c.sidebar.to_color32() } else { fill };
+    let mut ring = fill;
     if let Some(a) = aura {
-        let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if selected { 1.0 } else { 0.75 };
+        let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if selected { 1.0 } else { 0.75 * h };
         let radius = cx.theme.layout.corner_radius as u8;
         ui.painter().set(wash_slot, super::aura::row_wash(ui.ctx(), row.shrink2(vec2(ROW_INSET, 0.0)), radius, a, alpha, 0.75));
         ring = ring.blend(a.gamma_multiply(alpha * 0.85));
@@ -2044,7 +2153,7 @@ fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
         user_dot(ui.painter(), avatar, cx.state, u, c, ring);
     }
     let color = row_text_color(c, muted, selected || unread || hot);
-    let chip_under = if fill == Color32::TRANSPARENT { c.sidebar.to_color32() } else { fill };
+    let chip_under = fill;
     let mut right = row.right() - ROW_INSET - 8.0;
     let mut close = false;
     if hot {
