@@ -1560,7 +1560,9 @@ fn message_list(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo)
         // would paint messages over the composer.
         .min_scrolled_height(0.0)
         .content_margin(Margin::ZERO);
-    let out = area.show_viewport(ui, |ui, viewport| list_contents(ui, cx, lc, memo, viewport));
+    // A switched channel arrives (DESIGN §7); the thread and split panels never move.
+    let moved = if lc.panel { (1.0, 0.0) } else { super::arrival(ui.ctx(), cx.state, cx.view).chat };
+    let out = super::motion::arriving(ui, moved, |ui| area.show_viewport(ui, |ui, viewport| list_contents(ui, cx, lc, memo, viewport)));
     if let Some(bar) = memo.new_bar.filter(|_| !memo.bar_closed) {
         new_messages_bar(ui, cx, lc, memo, out.inner_rect, bar);
     }
@@ -1700,6 +1702,9 @@ fn list_contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
     memo.toolbar = None;
     if let Some(h) = &hover_row {
         hover_toolbar(ui, cx, lc, memo, h);
+    } else {
+        // Nothing hovered: the next toolbar arrives again, whichever row it lands on.
+        super::motion::arrive(&ctx, toolbar_in_id(), 0, super::motion::FAST);
     }
     if let Some((_, until)) = flash {
         // The highlight fades out over its last half second.
@@ -2009,20 +2014,22 @@ fn message_block(
         memo.menu = Some(MsgMenu { id: msg.id, anchor: Rect::from_pos(pos), from_button: false, new: true });
         ui.ctx().request_repaint();
     }
+    // Hover is on at once and fades out over FAST (DESIGN §7).
+    let h = super::motion::trail(ui.ctx(), egui::Id::unique("rc_msg_trail").with(msg.id.0), hovered);
     let mut shapes = Vec::new();
     if flashing > 0.0 {
         // A jumped-to message: the navigation colour (`link`), fading out.
         shapes.push(Shape::rect_filled(rect, 0.0, pal.link.gamma_multiply(0.18 * flashing)));
     } else if crate::plugins::message_logger::is_deleted(msg.id) {
         // MessageLogger: a deleted message keeps a faint red tint.
-        shapes.push(Shape::rect_filled(rect, 0.0, pal.danger.gamma_multiply(if hovered { 0.16 } else { 0.1 })));
+        shapes.push(Shape::rect_filled(rect, 0.0, pal.danger.gamma_multiply(0.1 + 0.06 * h)));
     } else if system.is_none() && for_me(cx, msg) {
         // Mentions me or a keyword alert: the `mention_highlight` row and a 2 px `accent_ink` bar.
-        let tint = if hovered { pal.mention.blend(pal.tk.hover) } else { pal.mention };
+        let tint = if h > 0.0 { pal.mention.blend(pal.tk.hover.gamma_multiply(h)) } else { pal.mention };
         shapes.push(Shape::rect_filled(rect, 0.0, tint));
         shapes.push(Shape::rect_filled(Rect::from_min_size(rect.min, vec2(2.0, rect.height())), 0.0, pal.tk.accent_ink));
-    } else if hovered {
-        shapes.push(Shape::rect_filled(rect, 0.0, pal.hover));
+    } else if h > 0.0 {
+        shapes.push(Shape::rect_filled(rect, 0.0, pal.hover.gamma_multiply(h)));
     }
     ui.painter().set(bg, Shape::Vec(shapes));
     hovered.then(|| HoverRow {
@@ -3190,15 +3197,19 @@ fn hover_toolbar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
     let area = Rect::from_min_max(pos2(h.rect.left(), top), pos2(right, top + SIDE + 4.0));
     // A child that is not allocated in the list, so it neither moves the cursor nor the content size.
     let mut bar = ui.new_child(UiBuilder::new().max_rect(area).layout(Layout::right_to_left(Align::Center)));
+    // It rises 4 px and fades in each time it lands on a row (paint only: the hit area is where it settles).
+    let t = super::motion::arrive(ui.ctx(), toolbar_in_id(), h.id.0, super::motion::FAST);
+    bar.multiply_opacity(t);
     let shadow = egui::Shadow { offset: [0, 2], blur: 8, spread: 0, color: Color32::from_black_alpha(if pal.dark { 60 } else { 18 }) };
     // A float (E2 colours; a small shadow, the bar sits on the message it belongs to).
-    let rect = Frame::new()
+    let rect = super::motion::shifted(&mut bar, 4.0 * (1.0 - t), None, |bar| {
+        Frame::new()
         .fill(pal.tk.raised)
         .stroke(Stroke::new(1.0, pal.tk.rule))
         .corner_radius(pal.card_radius())
         .shadow(shadow)
         .inner_margin(Margin::same(2))
-        .show(&mut bar, |ui| {
+        .show(bar, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             // Right-to-left: the first button ends up rightmost.
             let open = lc.menu_target == Some(h.id);
@@ -3254,8 +3265,14 @@ fn hover_toolbar(ui: &mut egui::Ui, cx: &mut UiCx<'_>, lc: &Lcx, memo: &mut Memo
             }
         })
         .response
-        .rect;
+        .rect
+    });
     memo.toolbar = Some((h.id, rect));
+}
+
+/// The hover toolbar's arrival clock: keyed by the message it sits on, 0 when none.
+fn toolbar_in_id() -> egui::Id {
+    egui::Id::unique("rc_toolbar_in")
 }
 
 /// `RUSTCORD_MSG_DEMO=menu` opens the menu once, as if "…" was clicked.
