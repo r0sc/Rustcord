@@ -109,6 +109,10 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
         super::motion::forget(ctx, glide.with("y"));
     }
     let at = pos2(super::motion::value(ctx, glide.with("x"), t.anchor.x, super::motion::BASE), super::motion::value(ctx, glide.with("y"), t.anchor.y, super::motion::BASE));
+    // Opening afresh: the card springs out of its row and its parts follow (DESIGN §7). Time since
+    // it became visible, so a card that glides to the next person does not start over.
+    super::motion::own(ctx, layer);
+    let secs = super::motion::open_for(ctx, layer, super::motion::SPRING_T);
     let resp = egui::Area::new(egui::Id::unique("rc_profile_card"))
         .order(Order::Foreground)
         .pivot(t.pivot)
@@ -140,13 +144,15 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
                     let max_h = bounds.height() - 2.0;
                     // Fixed width like Discord's: content never widens the card.
                     egui::ScrollArea::vertical().max_width(WIDTH).max_height(max_h).min_scrolled_height(max_h).show(ui, |ui| {
-                        banner_bottom = card(ui, cx, &pal, &user, member.as_ref(), guild_id, (is_me, account), look.theme, r);
-                        if account {
-                            // Status picker, custom status, Edit Profile (user_settings.rs).
-                            super::user_settings::account_popout(ui, cx, &pal);
-                        } else {
-                            actions(ui, cx, &pal, user.id, guild_id, is_me);
-                        }
+                        banner_bottom = card(ui, cx, &pal, &user, member.as_ref(), guild_id, (is_me, account), look.theme, r, secs);
+                        part(ui, secs, 3, |ui| {
+                            if account {
+                                // Status picker, custom status, Edit Profile (user_settings.rs).
+                                super::user_settings::account_popout(ui, cx, &pal);
+                            } else {
+                                actions(ui, cx, &pal, user.id, guild_id, is_me);
+                            }
+                        });
                     });
                     if let Some(colors) = look.theme {
                         ui.painter().set(theme_slot, cosmetics::theme_shapes(ui.ctx(), "card", ui.min_rect(), r, colors, banner_bottom, pal.dark));
@@ -162,9 +168,22 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
             look.finish(ui, cx.images, rect, r, behind, cosmetics::shown_for(ui.ctx(), ("card", user.id)), animate);
         })
         .response;
+    if secs < super::motion::SPRING_T {
+        let s = super::motion::springy(secs);
+        // From the side the row is on: right of the list (RIGHT_TOP) it comes from the right, above the user panel up from below.
+        let from = if t.pivot.y() == egui::Align::Max { vec2(0.0, 12.0) } else { vec2(t.pivot.x().to_sign() * 12.0, 0.0) };
+        ctx.transform_layer_shapes_after_rounding(layer, super::motion::about(at, egui::lerp(0.94..=1.0, s)) * egui::emath::TSTransform::from_translation(from * (1.0 - s)));
+    }
     if !menu_open && (ctx.input(|i| i.key_pressed(Key::Escape)) || (pass != opened && resp.clicked_elsewhere())) {
         cx.view.profile_card = None;
     }
+}
+
+/// A part of the card arriving: its `k`-th stagger after the card opened, rising 4 px and fading in over
+/// FAST (`secs`: time since the card opened; done by 240 ms at k = 3).
+fn part<R>(ui: &mut egui::Ui, secs: f32, k: usize, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let e = super::motion::ease(((secs - k as f32 * super::motion::STAGGER) / super::motion::FAST).clamp(0.0, 1.0));
+    super::motion::arriving(ui, (e, 4.0 * (1.0 - e)), add)
 }
 
 /// The card's banner, avatar and names; others' cards and my own (not the account popout) also
@@ -172,7 +191,7 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
 /// cosmetics (ui/cosmetics.rs): decoration, name style, guild tag, badges; `theme`: the
 /// profile theme the caller paints under it. Returns the banner's bottom edge.
 #[allow(clippy::too_many_arguments, reason = "one call site; the card's whole context")]
-fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Option<&Member>, guild_id: Option<Id>, (is_me, account): (bool, bool), theme: Option<(u32, u32)>, r: u8) -> f32 {
+fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Option<&Member>, guild_id: Option<Id>, (is_me, account): (bool, bool), theme: Option<(u32, u32)>, r: u8, secs: f32) -> f32 {
     ui.set_width(WIDTH);
     ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
     let top = CornerRadius { nw: r, ne: r, sw: 0, se: 0 };
@@ -251,8 +270,6 @@ fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Op
             crate::theme::append_boxed(&mut job, &name, &format);
             ui.painter().layout_job(job)
         };
-        let (r, _) = ui.allocate_exact_size(name_g.size(), Sense::hover());
-        cosmetics::paint_name(ui.painter(), r.min, name_g, style, pal.text, pal.dark);
         let handle = match user.discriminator.as_deref() {
             // Streamer Mode: my own username is personal information.
             _ if is_me && cx.settings.streamer.hides_personal() => String::new(),
@@ -266,55 +283,68 @@ fn card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, user: &User, member: Op
         let note = profile.filter(|_| !is_me).map(|p| p.note.clone().unwrap_or_default());
         // The account popout too: the profile's badges, not only the `public_flags` ones.
         let badges = cosmetics::badges(user, profile_modal::loaded(cx, user.id, guild_id));
-        ui.horizontal_wrapped(|ui| {
-            // "alice", 8 px, "they/them": no bullet between them.
-            ui.spacing_mut().item_spacing.x = 8.0;
-            if !handle.is_empty() {
-                ui.label(RichText::new(handle).color(pal.muted));
-            }
-            if let Some(pg) = cosmetics::guild_tag(user, member) {
-                let h = ui.text_style_height(&egui::TextStyle::Body);
-                cosmetics::tag_button(ui, cx, pg, pal.size, h, pal.text);
-            }
-            if let Some(p) = pronouns {
-                ui.label(RichText::new(p).color(pal.muted));
-            }
-            if user.bot {
-                tag(ui, "Bot", pal.tk.chip, pal.link);
+        part(ui, secs, 1, |ui| {
+            let (r, _) = ui.allocate_exact_size(name_g.size(), Sense::hover());
+            cosmetics::paint_name(ui.painter(), r.min, name_g, style, pal.text, pal.dark);
+            ui.horizontal_wrapped(|ui| {
+                // "alice", 8 px, "they/them": no bullet between them.
+                ui.spacing_mut().item_spacing.x = 8.0;
+                if !handle.is_empty() {
+                    ui.label(RichText::new(handle).color(pal.muted));
+                }
+                if let Some(pg) = cosmetics::guild_tag(user, member) {
+                    let h = ui.text_style_height(&egui::TextStyle::Body);
+                    cosmetics::tag_button(ui, cx, pg, pal.size, h, pal.text);
+                }
+                if let Some(p) = pronouns {
+                    ui.label(RichText::new(p).color(pal.muted));
+                }
+                if user.bot {
+                    tag(ui, "Bot", pal.tk.chip, pal.link);
+                }
+            });
+            cosmetics::badge_row(ui, cx.images, pal, &badges);
+            if let Some((servers, friends)) = mutual.filter(|m| *m != (0, 0)) {
+                mutual_line(ui, cx, pal, user.id, guild_id, servers, friends);
             }
         });
-        cosmetics::badge_row(ui, cx.images, pal, &badges);
-        if let Some((servers, friends)) = mutual.filter(|m| *m != (0, 0)) {
-            mutual_line(ui, cx, pal, user.id, guild_id, servers, friends);
-        }
         // Sections 16 apart, each under a label-role heading; no rules between them (§12).
-        if let Some(bio) = bio {
-            section(ui, pal, "About me");
-            let opts = super::markdown::MdOpts { guild_id, mentions: &[], id_salt: user.id, color: Some(pal.text), highlight: &[], bg: None };
-            super::markdown::render(ui, cx, &bio, &opts);
-        }
-        // Its own section like Roles: "Playing", "Listening to Spotify", … as the label. Mine
-        // includes the game I share.
-        if let Some(activity) = crate::activity::activity_of(cx.state, user.id).map(std::borrow::Cow::into_owned) {
-            section(ui, pal, &activity.heading());
-            activity_section(ui, cx, pal, user.id, &activity, 64.0, pal.surface);
-        }
-        if !account {
-            section(ui, pal, "Member since");
-            ui.label(RichText::new(member_since(user.id)).size(pal.ui()).color(pal.text));
+        let activity = crate::activity::activity_of(cx.state, user.id).map(std::borrow::Cow::into_owned);
+        if bio.is_some() || activity.is_some() {
+            part(ui, secs, 2, |ui| {
+                if let Some(bio) = bio {
+                    section(ui, pal, "About me");
+                    let opts = super::markdown::MdOpts { guild_id, mentions: &[], id_salt: user.id, color: Some(pal.text), highlight: &[], bg: None };
+                    super::markdown::render(ui, cx, &bio, &opts);
+                }
+                // Its own section like Roles: "Playing", "Listening to Spotify", … as the label. Mine
+                // includes the game I share.
+                if let Some(activity) = activity {
+                    section(ui, pal, &activity.heading());
+                    activity_section(ui, cx, pal, user.id, &activity, 64.0, pal.surface);
+                }
+            });
         }
         let roles = guild_roles(cx, guild_id, member);
-        if !roles.is_empty() {
-            section(ui, pal, "Roles");
-            role_pills(ui, cx.images, pal, &roles, 3);
-        }
-        if !account {
-            // Plugins: Friends Since, In Voice, Mutual Groups, Connections, Online On, permissions.
-            crate::plugins::people::profile_sections(ui, cx, user, guild_id, true, &|ui, list| cosmetics::connections_grid(ui, pal, list));
-        }
-        if let Some(note) = note {
-            section(ui, pal, "Note");
-            profile_modal::note_field(ui, cx, user.id, &note);
+        if !account || !roles.is_empty() || note.is_some() {
+            part(ui, secs, 3, |ui| {
+                if !account {
+                    section(ui, pal, "Member since");
+                    ui.label(RichText::new(member_since(user.id)).size(pal.ui()).color(pal.text));
+                }
+                if !roles.is_empty() {
+                    section(ui, pal, "Roles");
+                    role_pills(ui, cx.images, pal, &roles, 3);
+                }
+                if !account {
+                    // Plugins: Friends Since, In Voice, Mutual Groups, Connections, Online On, permissions.
+                    crate::plugins::people::profile_sections(ui, cx, user, guild_id, true, &|ui, list| cosmetics::connections_grid(ui, pal, list));
+                }
+                if let Some(note) = note {
+                    section(ui, pal, "Note");
+                    profile_modal::note_field(ui, cx, user.id, &note);
+                }
+            });
         }
     });
     rect.bottom()
