@@ -388,12 +388,12 @@ impl Md<'_, '_> {
             self.inlines(ui, content, Look { bg: self.pal.muted.gamma_multiply(0.15), ..look });
             return;
         }
-        // Covered: same-colored text on the cover keeps roughly the content's size. Opaque,
-        // so the text can't show through.
+        // Covered: same-colored text on the cover keeps roughly the content's size. The glyphs
+        // are never painted, so a fading list can't let them show through the cover.
         let mut text = String::new();
         cover_text(content, &mut text);
         let cover = self.pal.code_bg.lerp_to_gamma(self.pal.muted, 0.25);
-        let rt = RichText::new(text).size(look.size).color(cover).background_color(cover);
+        let rt = RichText::new(text).size(look.size).color(Color32::TRANSPARENT).background_color(cover);
         let r = ui
             .add(Label::new(rt).selectable(false).sense(Sense::click()))
             .on_hover_cursor(CursorIcon::PointingHand)
