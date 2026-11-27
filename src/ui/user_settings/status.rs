@@ -338,6 +338,8 @@ fn flyout(ctx: &egui::Context, id: egui::Id, row: Rect, resp: &egui::Response, l
         .kind(egui::PopupKind::Menu)
         .style(egui::containers::menu::menu_style)
         .open_memory(cmd)
+        // A click in the list (the × on a preset) keeps it open; picks close the whole popout.
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .align(egui::RectAlign::RIGHT_START)
         .align_alternatives(&[egui::RectAlign::LEFT_START])
         .gap(16.0)
