@@ -24,7 +24,7 @@ use crate::model::{Id, Presence, VoiceState};
 use crate::state::AppState;
 use crate::voice::video::stream::{CONNECT_TIMEOUT, parse_stream_key, stream_key};
 use crate::voice::video::{MonitorInfo, ScreenSource, VideoCommand, VideoFrames, VideoKey, WindowInfo, capture};
-use egui::{Color32, CursorIcon, FontId, Rect, Role, Sense, Stroke, StrokeKind, TextureHandle, UiBuilder, Vec2, WidgetInfo, pos2, vec2};
+use egui::{Color32, CursorIcon, FontId, Rect, Role, Sense, Shape, Stroke, StrokeKind, TextureHandle, UiBuilder, Vec2, WidgetInfo, pos2, vec2};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
@@ -402,14 +402,27 @@ pub(super) fn stage(ui: &mut egui::Ui, cx: &mut UiCx<'_>, ch: Id) {
     let (bar_h, pad) = if rect.height() < 240.0 { (64.0, 12.0) } else { (BAR_H, 16.0) };
     let bar = Rect::from_min_max(pos2(rect.left(), rect.bottom() - bar_h), rect.max);
     let area = Rect::from_min_max(rect.min + vec2(16.0, pad), pos2(rect.right() - 16.0, bar.top()));
-    match focus {
-        Some(i) => focused(ui, cx, &tiles, i, area),
-        None => grid_view(ui, cx, &tiles, area),
+    demo_speak(ui.ctx(), cx);
+    // The tiles arrive one after another when the stage opens (not drawn last pass): armed here, run by `arrives`.
+    let (ctx, pass) = (ui.ctx().clone(), ui.ctx().cumulative_pass_nr());
+    let (seen, tiles_in) = (egui::Id::unique("rc_stage_seen"), egui::Id::unique("rc_tiles_in"));
+    if ctx.data(|d| d.get_temp::<u64>(seen)).is_none_or(|last| last + 1 < pass) {
+        super::motion::stagger(&ctx, tiles_in, false, 0);
     }
+    ctx.data_mut(|d| d.insert_temp(seen, pass));
+    // The speaking light lies on the stage under the tiles, cut off above the control bar.
+    let lights = ui.painter().with_clip_rect(rect.with_max_y(bar.top()));
+    let slot = lights.add(Shape::Noop);
+    let mut glow = Vec::new();
+    match focus {
+        Some(i) => focused(ui, cx, &tiles, i, area, &mut glow),
+        None => grid_view(ui, cx, &tiles, area, &mut glow),
+    }
+    lights.set(slot, Shape::Vec(glow));
     controls(ui, cx, bar);
 }
 
-fn grid_view(ui: &mut egui::Ui, cx: &mut UiCx<'_>, tiles: &[Tile], area: Rect) {
+fn grid_view(ui: &mut egui::Ui, cx: &mut UiCx<'_>, tiles: &[Tile], area: Rect, glow: &mut Vec<Shape>) {
     let n = tiles.len();
     let (cols, size) = grid(n, area.size());
     let rows = n.div_ceil(cols);
@@ -423,7 +436,8 @@ fn grid_view(ui: &mut egui::Ui, cx: &mut UiCx<'_>, tiles: &[Tile], area: Rect) {
             // The last row is centred too.
             let in_row = (n - r * cols).min(cols) as f32;
             let left = block.center().x - (in_row * (size.x + GAP) - GAP) / 2.0;
-            tile(ui, cx, t, Rect::from_min_size(pos2(left + c as f32 * (size.x + GAP), top + r as f32 * (size.y + GAP)), size));
+            let at = Rect::from_min_size(pos2(left + c as f32 * (size.x + GAP), top + r as f32 * (size.y + GAP)), size);
+            arrives(ui, i, at, |ui, a| tile(ui, cx, t, at, (glow, a)));
         }
         // More rows below: the cut-off row fades into the stage instead of ending in a sliver.
         let clip = ui.clip_rect();
@@ -445,13 +459,13 @@ fn fade(p: &egui::Painter, r: Rect) {
 }
 
 /// Tile `i` large, the others in a strip below (scrolls sideways when even square tiles don't fit).
-fn focused(ui: &mut egui::Ui, cx: &mut UiCx<'_>, tiles: &[Tile], i: usize, area: Rect) {
+fn focused(ui: &mut egui::Ui, cx: &mut UiCx<'_>, tiles: &[Tile], i: usize, area: Rect, glow: &mut Vec<Shape>) {
     // A short stage has no room for the strip: the focused tile alone.
     let others = if area.height() < 200.0 { 0 } else { tiles.len() - 1 };
     let strip_h = if others == 0 { 0.0 } else { (area.height() * 0.2).clamp(72.0, 132.0) };
     let main = area.with_max_y(area.bottom() - if others == 0 { 0.0 } else { strip_h + GAP });
     // First, so it gets one of the 4 remote videos.
-    tile(ui, cx, &tiles[i], main);
+    arrives(ui, 0, main, |ui, a| tile(ui, cx, &tiles[i], main, (glow, a)));
     if others == 0 {
         return;
     }
@@ -465,12 +479,26 @@ fn focused(ui: &mut egui::Ui, cx: &mut UiCx<'_>, tiles: &[Tile], i: usize, area:
         let (block, _) = ui.allocate_exact_size(vec2(total_w.max(strip.width()), strip_h), Sense::hover());
         let left = block.left() + ((block.width() - total_w) / 2.0).max(0.0);
         for (k, t) in tiles.iter().enumerate().filter(|&(j, _)| j != i).map(|(_, t)| t).enumerate() {
-            tile(ui, cx, t, Rect::from_min_size(pos2(left + k as f32 * (size.x + GAP), block.top()), size));
+            let r = Rect::from_min_size(pos2(left + k as f32 * (size.x + GAP), block.top()), size);
+            arrives(ui, k + 1, r, |ui, a| tile(ui, cx, t, r, (glow, a)));
         }
     });
 }
 
-fn tile(ui: &mut egui::Ui, cx: &mut UiCx<'_>, t: &Tile, rect: Rect) {
+/// Tile number `k` (at most 6 count) arriving (`add` gets how far it has arrived, 0 -> 1) with the stage: 0.96 -> 1 about its centre and fading in
+/// over BASE, STAGGER apart (DESIGN §7). Always wrapped, so ids do not change when it ends.
+fn arrives<R>(ui: &mut egui::Ui, k: usize, rect: Rect, add: impl FnOnce(&mut egui::Ui, f32) -> R) -> R {
+    let a = super::motion::stagger(ui.ctx(), egui::Id::unique("rc_tiles_in"), true, k);
+    ui.with_visual_transform(super::motion::about(rect.center(), egui::lerp(super::motion::GROW..=1.0, a)), |ui| {
+        if a < 1.0 {
+            ui.multiply_opacity(a);
+        }
+        add(ui, a)
+    })
+    .inner
+}
+
+fn tile(ui: &mut egui::Ui, cx: &mut UiCx<'_>, t: &Tile, rect: Rect, (glow, arrived): (&mut Vec<Shape>, f32)) {
     // Scrolled away: not painted, so `sync` hides its video.
     if !ui.is_rect_visible(rect) {
         return;
@@ -516,6 +544,14 @@ fn tile(ui: &mut egui::Ui, cx: &mut UiCx<'_>, t: &Tile, rect: Rect) {
     let speak = super::motion::anim(ui.ctx(), ui.make_persistent_id(("rc_speak", &t.key)), t.speaking, 0.0, super::motion::FAST);
     if speak > 0.0 {
         p.rect_stroke(rect, 8, Stroke::new(2.0, green.gamma_multiply(speak)), StrokeKind::Inside);
+    }
+    // Their light: blooms over BASE, holds still while they speak (no frames), fades over FAST (DESIGN §10.8). High Contrast: the ring only.
+    let lit = super::motion::anim(ui.ctx(), ui.make_persistent_id(("rc_light", &t.key)), t.speaking, super::motion::BASE, super::motion::FAST);
+    if lit > 0.0 && !crate::theme::is_high_contrast(&c) {
+        let user = cx.state.users.get(&t.user).or(cx.state.me.as_ref().filter(|u| u.id == t.user));
+        let guild_id = cx.state.selected_guild;
+        let colour = user.and_then(|u| super::aura::of(ui.ctx(), cx, u, guild_id)).unwrap_or(green);
+        glow.push(super::light::soft_glow(rect, 8.0, colour.gamma_multiply(0.55 * lit * arrived).additive(), 36.0));
     }
     if t.stream.is_some() {
         live_pill(&p, rect.left_top() + vec2(8.0, 16.0), red);
@@ -759,7 +795,8 @@ fn controls(ui: &mut egui::Ui, cx: &mut UiCx<'_>, bar: Rect) {
 /// `connecting` (still joining), `picker` (the screen share picker with sample sources),
 /// `stream:<picture>` (with `people`: the third user's stream, watched, showing that local PNG /
 /// JPEG instead of `video`'s test desktop; README screenshots), `connect` (joining for the first
-/// 2 s after start, then connected: the island's dot and width; local state only).
+/// 2 s after start, then connected: the island's dot and width; local state only), `speak` (with
+/// `people`: the first person speaks from 2 s to 4 s, `demo_speak`).
 pub(super) fn demo(cx: &mut UiCx<'_>) {
     static FLAGS: OnceLock<String> = OnceLock::new();
     let flags = FLAGS.get_or_init(|| std::env::var("RUSTCORD_CALL_DEMO").unwrap_or_default());
@@ -782,6 +819,8 @@ pub(super) fn demo(cx: &mut UiCx<'_>) {
                 for (i, &user_id) in others.iter().take(4).enumerate() {
                     let mut vs = VoiceState { guild_id, channel_id: Some(ch), user_id, ..Default::default() };
                     match i {
+                        // `speak` starts them silent (`demo_speak`).
+                        0 if flags.split(',').any(|f| f.trim() == "speak") => {}
                         0 => _ = cx.state.voice.speaking.insert(user_id),
                         1 => vs.self_mute = true,
                         2 => (vs.self_mute, vs.self_deaf, vs.self_stream) = (true, true, true),
@@ -846,6 +885,27 @@ pub(super) fn demo(cx: &mut UiCx<'_>) {
             }
             _ => {}
         }
+    }
+}
+
+/// Test hook `RUSTCORD_CALL_DEMO=people,speak` (run by the stage): the first person speaks from 2 s to 4 s
+/// after the stage first drew; local state only.
+fn demo_speak(ctx: &egui::Context, cx: &mut UiCx<'_>) {
+    static ON: OnceLock<bool> = OnceLock::new();
+    static START: OnceLock<Instant> = OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var("RUSTCORD_CALL_DEMO").is_ok_and(|v| v.split(',').any(|f| f.trim() == "speak"))) || !cx.view.call_ui.demo_done {
+        return;
+    }
+    let (t, me) = (START.get_or_init(Instant::now).elapsed().as_secs_f32(), cx.state.me.as_ref().map(|u| u.id));
+    let first = cx.state.users.keys().copied().filter(|&u| Some(u) != me).min();
+    let Some(first) = first else { return };
+    if (2.0..4.0).contains(&t) {
+        cx.state.voice.speaking.insert(first);
+    } else {
+        cx.state.voice.speaking.remove(&first);
+    }
+    if let Some(next) = [2.0, 4.0].into_iter().find(|&at| at > t) {
+        ctx.request_repaint_after(std::time::Duration::from_secs_f32(next - t));
     }
 }
 
