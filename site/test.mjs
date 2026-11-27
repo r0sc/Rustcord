@@ -199,9 +199,12 @@ test('inject needs every marker exactly once', () => {
 
 test('Next release flags match the latest tag', t => {
   const git = (...a) => execFileSync('git', a, { cwd: root, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
-  let tag, old;
-  try { tag = git('describe', '--tags', '--abbrev=0').trim(); old = parseMeta(git('show', `${tag}:src/plugins/mod.rs`)); }
-  catch { return t.skip('no release tag in this clone'); }
+  // The tag of the version in Cargo.toml, not the newest tag in the clone: Netlify's cached clone
+  // misses recent tags, and a release commit is pushed together with its tag.
+  const tag = `v${readFileSync(new URL('Cargo.toml', root), 'utf8').match(/^version = "([^"]+)"/m)[1]}`;
+  let old;
+  try { old = parseMeta(git('show', `${tag}:src/plugins/mod.rs`)); }
+  catch { return t.skip(`${tag} is not in this clone`); }
   const was = new Map(old.map(m => [m.name, m.desc]));
   const err = [];
   for (const m of parseMeta(modRs)) {
