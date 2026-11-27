@@ -61,6 +61,7 @@ pub fn guild_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     user_panel_space(ui, cx, "guild_bar_panel_space");
     demo_folders(ui, cx.state);
     demo_boost(cx.state);
+    demo_ping(ui.ctx(), cx.state);
     save_folders(ui.ctx(), cx);
     egui::ScrollArea::vertical()
         .id_salt("guild_bar")
@@ -228,7 +229,10 @@ fn folder(ui: &mut egui::Ui, cx: &mut UiCx<'_>, f: &GuildFolder, index: usize, b
                 }
             }
         }
-        decorate(ui, &c, (row, icon, &resp), (h, corners), if open { 0 } else { mentions });
+        // The folder's total counts the real number (open or shut), so closing it never pops.
+        let muted = f.guild_ids.iter().all(|g| cx.state.is_guild_muted(*g));
+        let pop = ping(ui.ctx(), resp.id, mentions, muted, &cx.state.conn);
+        decorate(ui, &c, (row, icon, &resp), (h, corners), (if open { 0 } else { mentions }, pop));
         resp.widget_info(|| WidgetInfo::selected(Role::Button, true, open, format!("Folder {name}")));
         let dragging = dragged(ui.ctx()).is_some();
         if !dragging {
@@ -287,6 +291,27 @@ fn demo_folders(ui: &egui::Ui, state: &mut AppState) {
     });
 }
 
+/// RUSTCORD_NAV_DEMO=ping: once, 3 s after start, a mention arrives in the first text channel of the
+/// first server that is not open (local state only).
+fn demo_ping(ctx: &egui::Context, state: &mut AppState) {
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !nav_demo("ping") || DONE.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let left = 3.0 - ctx.input(|i| i.time);
+    if left > 0.0 {
+        ctx.request_repaint_after(Duration::from_secs_f64(left));
+        return;
+    }
+    let Some(guild) = state.guilds.iter().map(|g| g.id).find(|g| state.selected_guild != Some(*g)) else { return };
+    let mut texts: Vec<Id> = state.channels.values().filter(|c| c.guild_id == Some(guild) && c.kind == crate::model::channel_type::GUILD_TEXT).map(|c| c.id).collect();
+    texts.sort_unstable();
+    if let Some(ch) = texts.first() {
+        state.read_states.entry(*ch).or_insert_with(|| crate::model::ReadState { id: *ch, ..Default::default() }).mention_count += 1;
+        DONE.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// RUSTCORD_NAV_DEMO=boost: server marks as READY would bring them: the first server boost level
 /// 2 with 9 boosts, the second verified, the third partnered (and level 1, 3 boosts).
 fn demo_boost(state: &mut AppState) {
@@ -309,7 +334,7 @@ fn demo_boost(state: &mut AppState) {
 /// (every vector icon over the window, `icons::sheet`), `no-tray` (Linux: the settings page as
 /// without a tray host, `user_settings/app.rs`), `press:<shortcut>` (that key combination,
 /// e.g. `Alt+Down`, pressed once at frame 14 where the focus is; `user_settings::parse` names),
-/// `collapsed` (the open server's first category folded at start; a click opens it), `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
+/// `ping` (3 s after start one mention reaches a server that is not open), `collapsed` (the open server's first category folded at start; a click opens it), `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
 /// not read; a click on Play / Pause flips it).
 pub(super) fn nav_demo(flag: &str) -> bool {
     nav_flags().split(',').any(|f| f.trim() == flag)
@@ -347,16 +372,57 @@ fn icon_slot(ui: &mut egui::Ui, salt: impl egui::AsIdSalt, (selected, unread): (
     (row, super::motion::pressed(&resp, icon), resp, morph, h)
 }
 
+/// Whether a server-bar badge going from `before` to `now` mentions pops (DESIGN §7): more than it
+/// had (not the tile's first sight), not muted, the connection state held for 2 s (READY's counts
+/// at start and on a reconnect stay still), a second since its last pop.
+fn pops(before: Option<u32>, now: u32, muted: bool, settled_for: f64, since_pop: f64) -> bool {
+    before.is_some_and(|b| now > b) && !muted && settled_for >= 2.0 && since_pop >= 1.0
+}
+
+/// Seconds the connection state (not its attempt counter) has held.
+fn conn_settled(ctx: &egui::Context, conn: &crate::backend::ConnState) -> f64 {
+    let (now, id) = (ctx.input(|i| i.time), egui::Id::unique("rc_conn_since"));
+    let kind = std::mem::discriminant(conn);
+    let (_, since) = ctx.data_mut(|d| {
+        let e = d.get_temp_mut_or(id, (kind, now));
+        if e.0 != kind {
+            *e = (kind, now);
+        }
+        *e
+    });
+    now - since
+}
+
+/// The pop scale of the badge on the tile `id` (1 at rest): starts a pop when its mentions rose
+/// (`pops`). A tile not drawn for a second (a shut folder's servers) counts as seen again.
+fn ping(ctx: &egui::Context, id: egui::Id, mentions: u32, muted: bool, conn: &crate::backend::ConnState) -> f32 {
+    let now = ctx.input(|i| i.time);
+    let key = id.with("ping");
+    let (before, last_pop) = match ctx.data(|d| d.get_temp::<(u32, f64, f64)>(key)) {
+        Some((count, pop, seen)) if now - seen < 1.0 => (Some(count), pop),
+        Some((_, pop, _)) => (None, pop),
+        None => (None, f64::NEG_INFINITY),
+    };
+    let pop = pops(before, mentions, muted, conn_settled(ctx, conn), now - last_pop);
+    ctx.data_mut(|d| d.insert_temp(key, (mentions, if pop { now } else { last_pop }, now)));
+    if pop {
+        super::motion::pop(ctx, id.with("pop"));
+    }
+    super::motion::popped(ctx, id.with("pop"))
+}
+
 /// The left-edge pill of height `h`, the mention badge with a cut-out ring in the bar color, and
 /// the focus ring (it follows the tile's `corners`).
-fn decorate(ui: &egui::Ui, c: &ThemeColors, (row, icon, resp): (Rect, Rect, &egui::Response), (h, corners): (f32, CornerRadius), mentions: u32) {
+fn decorate(ui: &egui::Ui, c: &ThemeColors, (row, icon, resp): (Rect, Rect, &egui::Response), (h, corners): (f32, CornerRadius), (mentions, pop): (u32, f32)) {
     let tk = crate::theme::applied_tokens(ui.ctx());
     if h >= 1.0 {
         let pill = Rect::from_min_size(pos2(row.left(), row.center().y - h / 2.0), vec2(4.0, h));
         rail_pill(ui.painter(), pill, c.text.to_color32(), tk.accent);
     }
     if mentions > 0 {
-        badge(ui, c, pos2(icon.right() + 4.0, icon.bottom() - 4.0), mentions, Some(c.guild_bar.to_color32()));
+        let at = pos2(icon.right() + 4.0, icon.bottom() - 4.0);
+        // Pops about the badge's centre (about its right edge less half the 16 px minimum width).
+        super::motion::painted_scaled(ui, at - vec2(8.0, 0.0), pop, || _ = badge(ui, c, at, mentions, Some(c.guild_bar.to_color32())));
     }
     if resp.has_focus() {
         let grow = |r: u8| r.saturating_add(2);
@@ -408,7 +474,9 @@ fn home_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
     // (the one place hover is purple).
     let tile = c.surface.to_color32().lerp_to_gamma(tk.accent, morph);
     logo_mark(ui.painter(), icon, corners, tile, tk.accent_ink.lerp_to_gamma(tk.on_accent, morph));
-    decorate(ui, &c, (row, icon, &resp), (h, corners), cx.state.dm_unread_count());
+    let dms = cx.state.dm_unread_count();
+    let pop = ping(ui.ctx(), resp.id, dms, false, &cx.state.conn);
+    decorate(ui, &c, (row, icon, &resp), (h, corners), (dms, pop));
 
     resp.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, "Direct messages"));
     side_tooltip(&resp, "Direct messages", None);
@@ -446,7 +514,8 @@ fn guild_button(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id, badges: &HashMap<I
         // Its place while it is dragged: faded.
         ui.painter().rect_filled(icon, corners, c.guild_bar.to_color32().gamma_multiply(0.7));
     }
-    decorate(ui, &c, (row, icon, &resp), (h, corners), mentions);
+    let pop = ping(ui.ctx(), resp.id, mentions, cx.state.is_guild_muted(id), &cx.state.conn);
+    decorate(ui, &c, (row, icon, &resp), (h, corners), (mentions, pop));
 
     // "Rust Workshop, boost level 2".
     let label = mark.map_or_else(|| name.clone(), |(_, what)| format!("{name}, {}", what.to_lowercase()));
@@ -2596,6 +2665,17 @@ mod tests {
         assert!(mid > 207.0 && mid < 237.0);
         assert_eq!(at(2.5, b, 237.0), 237.0);
         assert_eq!(at(3.0, b, 244.0), 244.0, "later changes are at once again");
+    }
+
+    #[test]
+    fn badges_pop_only_for_new_unmuted_mentions() {
+        assert!(pops(Some(1), 2, false, 5.0, 5.0));
+        assert!(!pops(None, 2, false, 5.0, 5.0), "first sight");
+        assert!(!pops(Some(2), 2, false, 5.0, 5.0), "same count");
+        assert!(!pops(Some(3), 2, false, 5.0, 5.0), "going down");
+        assert!(!pops(Some(1), 2, true, 5.0, 5.0), "muted");
+        assert!(!pops(Some(1), 2, false, 1.0, 5.0), "the connection just changed");
+        assert!(!pops(Some(1), 2, false, 5.0, 0.5), "popped a moment ago");
     }
 
     #[test]

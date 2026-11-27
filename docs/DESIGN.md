@@ -40,7 +40,7 @@ Rules:
 5. **Calm by default, loud for exceptions.** Grey panes; colour means something happened.
 6. **Motion only answers an action** and always stops (0 % idle CPU). Exception (approved): the
    user panel's music section eases in and out when the computer starts or stops playing, which
-   answers the user's own action in another app, not one inside Rustcord. Exceptions (approved): a message that arrives in a calm, followed chat rises in (§7).
+   answers the user's own action in another app, not one inside Rustcord. Exceptions (approved): a message that arrives in a calm, followed chat rises in (§7); the server bar's mention badge pops when new mentions arrive (§7).
 
 ---
 
@@ -360,6 +360,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Music section of the user panel appears / leaves | BASE: height 0 → 41 and opacity 0 → 1, ease-out; the row is laid out at its final size against the section's bottom edge and clipped, so the panel's rising top edge reveals it | BASE x OUT, the same curve backwards | `anim(.., BASE, BASE * OUT)` | 5, 8, 11, 18 |
 | Server folder, channel category open / close | BASE ease-out: the rows slide out from under the folder tile or header, rows below follow | BASE x OUT ease-in | `Fold` + `anim` | 5, 11, 17, 18 |
 | A message arriving in the open chat | BASE: 6 px rise + fade, ease-out; only the only new one, over 1 s after the last arrival, window focused, chat at the bottom | | `since`, `shifted` | 5, 20 |
+| Server-bar mention badge, count up | pop 1 → 1.12 → 1 over BASE about its centre; not on first sight, not within 2 s of a connection change, at most once a second per tile, never for a muted server | | `pop` | 9 |
 | My message confirmed | BASE: body `text_muted` → `text`, ease-out; links and mentions keep their colours | | `since` | 16, 19 |
 
 Folding is paint only: opening lays the rows out at once, closing keeps them laid out until shut, so hit-testing and drop targets never slide.
@@ -806,7 +807,7 @@ right of the chat. 8 px dot: `danger` errors, `positive` done, muted info. Never
 
 | Thing | Look |
 |---|---|
-| Count badge | `danger_fill` pill 16 tall, 11/700, 4 px ring in the parent fill (unchanged) |
+| Count badge | `danger_fill` pill 16 tall, 11/700, 4 px ring in the parent fill (unchanged; server bar: pops once when it goes up, §7) |
 | "New" / "Live" tags | `danger_fill`, chip radius (unchanged) |
 | Mention / channel / @everyone / @here / slash pills (markdown.rs `pill`) | `chip` fill (purple), **`accent_ink` text** (was `link`). **Hover: the fill stays; the label gets a 1 px underline in `accent_ink`** (2 px in from both ends, 1 px above the bottom). The old hover fill (fg @ 28 %) drops ink to 4.4:1 |
 | App / bot tag | `chip` + `accent_ink` |

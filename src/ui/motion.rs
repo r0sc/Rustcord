@@ -241,6 +241,18 @@ pub fn shifted<R>(ui: &mut Ui, dy: f32, clip_top: Option<f32>, add: impl FnOnce(
     out
 }
 
+/// What `add` paints, scaled by `s` about `o` (no child Ui: layout and widget ids are untouched).
+pub fn painted_scaled(ui: &Ui, o: Pos2, s: f32, add: impl FnOnce()) {
+    let layer = ui.layer_id();
+    let start = ui.ctx().graphics(|g| g.get(layer).map_or(0, |l| l.next_idx().0));
+    add();
+    ui.ctx().graphics_mut(|g| {
+        let list = g.entry(layer);
+        let end = list.next_idx();
+        list.transform_range(egui::layers::ShapeIdx(start), end, about(o, s));
+    });
+}
+
 /// Paint-only folding for a list whose sections open and shut (server folders, channel
 /// categories; DESIGN §7). The caller keeps a closing section laid out until its k reaches 0, so
 /// layout, hit-testing and drop targets never slide. Consecutive rows of one folding section form
