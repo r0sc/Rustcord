@@ -58,7 +58,7 @@ fn fresh(ctx: &egui::Context, k: &egui::KeyboardShortcut) -> bool {
     })
 }
 
-const KEYS: [Bind; 9] = [
+const KEYS: [Bind; 10] = [
     Bind::QuickSwitcher,
     Bind::Shortcuts,
     Bind::PrevChannel,
@@ -68,6 +68,7 @@ const KEYS: [Bind; 9] = [
     Bind::PrevServer,
     Bind::NextServer,
     Bind::MarkServerRead,
+    Bind::FocusMode,
 ];
 
 /// The switcher's and the navigation shortcuts (called from `user_settings::app::global_keys`, main screen only).
@@ -110,6 +111,13 @@ fn act(ctx: &egui::Context, cx: &mut UiCx<'_>, b: Bind, open: bool) {
         Bind::MarkServerRead => {
             if let Some(g) = cx.state.selected_guild {
                 super::server_menu::mark_server_read(cx, g);
+            }
+        }
+        Bind::FocusMode => {
+            cx.view.focus_mode = !cx.view.focus_mode;
+            if cx.view.focus_mode && !std::mem::replace(&mut cx.view.focus_hint_shown, true) {
+                let keys = shortcut(cx.settings, b).map_or_else(String::new, |k| format!(" {}", ctx.format_shortcut(&k)));
+                cx.view.toast(format!("Focus mode is on. Press{keys} to bring the lists back."), false);
             }
         }
         // The other binds are handled elsewhere.

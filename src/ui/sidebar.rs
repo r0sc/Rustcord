@@ -1953,13 +1953,17 @@ fn user_panel_space(ui: &mut egui::Ui, cx: &UiCx<'_>, salt: &str) {
 
 /// The floating user panel, 8 px from the window's bottom-left corner over the server bar and
 /// the channel list (`width` = both): the voice connection while in a call, then my account.
-pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32) {
+pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32, shift: f32) {
+    // Focus mode slides the panel left with the lists (`shift` px); gone once it is out.
+    if shift >= width {
+        return;
+    }
     let c = cx.theme.colors.clone();
     let (open, track) = music(ctx, cx);
     let music_h = (MUSIC_H + 1.0) * open;
     let h = user_panel_height(cx.state, cx.view, cx.theme) + music_h;
     let screen = ctx.content_rect();
-    let pos = pos2(screen.left() + PANEL_MARGIN, screen.bottom() - PANEL_MARGIN - h);
+    let pos = pos2(screen.left() + PANEL_MARGIN - shift, screen.bottom() - PANEL_MARGIN - h);
     egui::Area::new(egui::Id::unique("user_panel")).order(egui::Order::Middle).fixed_pos(pos).fade_in(false).show(ctx, |ui| {
         let (rect, _) = ui.allocate_exact_size(vec2(width - 2.0 * PANEL_MARGIN, h), Sense::hover());
         ui.painter().rect_filled(rect, panel_r(cx.theme), user_panel_fill(&c));

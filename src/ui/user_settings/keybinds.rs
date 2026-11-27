@@ -28,10 +28,11 @@ pub enum Bind {
     PrevServer,
     NextServer,
     MarkServerRead,
+    FocusMode,
 }
 
 impl Bind {
-    pub(super) const ALL: [Bind; 16] = [
+    pub(super) const ALL: [Bind; 17] = [
         Bind::ToggleMute,
         Bind::ToggleDeafen,
         Bind::ToggleStreamerMode,
@@ -48,6 +49,7 @@ impl Bind {
         Bind::PrevServer,
         Bind::NextServer,
         Bind::MarkServerRead,
+        Bind::FocusMode,
     ];
 
     /// Key in `Settings::keybinds`.
@@ -69,6 +71,7 @@ impl Bind {
             Bind::PrevServer => "prev_server",
             Bind::NextServer => "next_server",
             Bind::MarkServerRead => "mark_server_read",
+            Bind::FocusMode => "focus_mode",
         }
     }
 
@@ -90,6 +93,7 @@ impl Bind {
             Bind::PrevServer => "Previous server",
             Bind::NextServer => "Next server",
             Bind::MarkServerRead => "Mark server as read",
+            Bind::FocusMode => "Focus mode",
         }
     }
 
@@ -111,6 +115,7 @@ impl Bind {
             Bind::PrevServer => "Ctrl+Alt+Up",
             Bind::NextServer => "Ctrl+Alt+Down",
             Bind::MarkServerRead => "Shift+Escape",
+            Bind::FocusMode => "Ctrl+Shift+F",
         }
     }
 }
@@ -257,6 +262,11 @@ mod tests {
         assert_eq!(shortcut(&s, Bind::Inbox), Some(KeyboardShortcut::new(Modifiers::ALT | Modifiers::SHIFT, Key::F5)));
         s.keybinds.insert("inbox".into(), String::new());
         assert_eq!(shortcut(&s, Bind::Inbox), None);
+        // Every bind has its own key name and no two defaults collide (Ctrl+Shift+F vs Ctrl+F).
+        let names: std::collections::HashSet<_> = Bind::ALL.iter().map(|b| b.name()).collect();
+        assert_eq!(names.len(), Bind::ALL.len());
+        let defaults: Vec<_> = Bind::ALL.iter().map(|b| b.default_text()).filter(|t| !t.is_empty()).collect();
+        assert_eq!(defaults.iter().collect::<std::collections::HashSet<_>>().len(), defaults.len());
         assert_eq!(parse("Ctrl+Nope"), None);
         assert_eq!(parse("Shift+Escape"), Some(KeyboardShortcut::new(Modifiers::SHIFT, Key::Escape)));
         assert_eq!(parse("Ctrl+Slash"), Some(KeyboardShortcut::new(Modifiers::COMMAND, Key::Slash)));

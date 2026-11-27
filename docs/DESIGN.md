@@ -26,7 +26,8 @@ signature, the speech corner.
 | red | `danger*` | destructive actions, count badges, "New", "Live" tag, Do not disturb, errors |
 
 Rules:
-1. **Discord's layout, our material.** No control in the main window moves or resizes.
+1. **Discord's layout, our material.** No control in the main window moves or resizes, except
+   where the user asks for it: focus mode folds the rail and the channel list away (§10.9).
 2. **Purple budget.** One big purple fill per view: the primary button. Everything else purple
    is small (a 4 px pill, a 2 px ring or bar, an 18 px icon, a 40x24 switch, a caret) or soft (a
    tint). Hover is never purple, except the home tile, which is the logo. List selection
@@ -337,6 +338,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Settings panel (with backdrop and scrim) | LARGE: fade + 0.98 → 1 about the panel centre | instant | `anim(.., LARGE, 0.0)` + `about` (existing) | 8, 18 |
 | Backdrop picture | appears under the already fading scrim (ready by frame 2) | dropped at once | | 16 |
 | Call island appear / leave | BASE: fade + scale 0.92 → 1 about its centre; the label fades out | BASE x OUT fade; the label fades in | `anim(.., BASE, BASE * OUT)` | 5, 18 |
+| Focus mode panes (rail, channel list, user panel) | returning: LARGE ease-out | leaving: BASE ease-in; content slides left with its narrowing column | `anim(.., LARGE, BASE)` | 5, 8, 17, 18 |
 | Menus, tooltips, popovers, pickers | FAST, grow 0.96 from the trigger | instant | `end_pass` (existing) | 11, 18, 20 |
 | Modals | BASE, grow from the click | BASE x OUT ghost | `modal` (existing) | 11, 18 |
 | Toasts | BASE, 8 px rise + fade | BASE x OUT | existing | 5, 18 |
@@ -1207,6 +1209,24 @@ Same in every theme, like a video player. Violet-black, no brown:
   user's colour (30 %) unchanged.
 - DM call area and incoming card (dm_call.rs): the same constants.
 
+### 10.9 Focus mode
+
+One key (Keybinds > Navigation > "Focus mode", default Ctrl+Shift+F) folds the rail (72), the
+channel list card (its width) and the floating user panel away to the left; the same key brings
+them back. Not persisted: every start shows the lists.
+
+- The page takes the full width under the title bar. In the chat, the message list and the
+  composer form a column centred in the page, at most 800 px wide (`FOCUS_CHAT_W`); the header,
+  the member list and the search results keep their width.
+- Motion: one value (`anim(.., LARGE, BASE)`): the columns narrow while their content slides
+  left at full width (never squeezed), clipped to the column; the chat column widens and
+  narrows with them (`focus_column_w`). Interruptible, instant with reduced motion, frames
+  only while it moves. At rest in focus mode the panes are not created at all.
+- The centring wrapper is always present (also at rest), else the chat's widget ids, and with
+  them its scroll position, would change when the mode turns on.
+- Toast, once per session: "Focus mode is on. Press Ctrl+Shift+F to bring the lists back."
+- The title bar, Inbox, call island, quick switcher and navigation keys work as before.
+
 ---
 
 ## 11. Activities
@@ -1708,7 +1728,7 @@ in `docs/ARCHITECTURE.md`.
 
 ### 15.1 What must not change
 
-- Main-window layout and sizes: title bar 32; rail 72, tiles 40, 8 apart, `ICON_R` 12; channel
+- Main-window layout and sizes (user-asked exception: focus mode, §10.9): title bar 32; rail 72, tiles 40, 8 apart, `ICON_R` 12; channel
   list 303 (192-360) and its 12 px card corner; chat header 48 (+1); rows 32, DM and member rows
   42, categories 24; member list 264; user panel 56 + 8 margin; composer min 44; message avatar 40
   at x 16, text at x 72, 16 between groups, line height 21; compact mode; menu rows 32; buttons

@@ -201,6 +201,10 @@ pub struct ViewState {
     pub thread_panel: Option<Id>,
     /// Inbox popout open (inbox.rs, Ctrl+I).
     pub inbox_open: bool,
+    /// Focus mode (Keybinds): the server bar and channel list are folded away and the chat is centred. Session only.
+    pub focus_mode: bool,
+    /// The "Focus mode is on" toast was shown this session.
+    pub focus_hint_shown: bool,
     // Module-private UI state: one struct per module, defined and owned by that module's file
     // (add fields there, not here). All of it is dropped on logout with the rest of the view.
     pub friends_ui: friends::FriendsUi,
@@ -323,6 +327,8 @@ impl Default for ViewState {
             confirm: None,
             thread_panel: None,
             inbox_open: false,
+            focus_mode: false,
+            focus_hint_shown: false,
             friends_ui: Default::default(),
             inbox_ui: Default::default(),
             threads_ui: Default::default(),
@@ -1311,29 +1317,55 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
         drop(cx.view.backdrop_slot.lock().map(|mut s| s.take()));
         cx.view.settings_themes = None;
     }
+    // Focus mode: 1 = the lists are shown. They fold away to the left (BASE ease-in) and come back (LARGE ease-out).
+    let lists = motion::anim(ui.ctx(), egui::Id::unique("rc_focus"), !cx.view.focus_mode, motion::LARGE, motion::BASE);
+    let origin = ui.available_rect_before_wrap();
+    // Content keeps its full width and slides left with its narrowing column, clipped to it.
+    let slid = |ui: &egui::Ui, w: f32| {
+        let r = ui.max_rect();
+        egui::Rect::from_min_size(egui::pos2(r.right() - w, r.top()), egui::vec2(w, r.height()))
+    };
     let _t = frame_stats::scope("rail");
-    egui::Panel::left("guild_bar")
-        .exact_size(GUILD_BAR_W)
-        .resizable(false)
-        .show_separator_line(false)
-        .frame(egui::Frame::new().fill(fill.frame.to_color32()))
-        .show(ui, |ui| sidebar::guild_bar(ui, cx));
+    if lists > 0.0 {
+        egui::Panel::left("guild_bar")
+            .exact_size(GUILD_BAR_W * lists)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(egui::Frame::new().fill(fill.frame.to_color32()))
+            .show(ui, |ui| {
+                let (clip, full) = (ui.max_rect(), slid(ui, GUILD_BAR_W));
+                ui.scope_builder(egui::UiBuilder::new().max_rect(full), |ui| {
+                    ui.set_clip_rect(clip.intersect(ui.clip_rect()));
+                    sidebar::guild_bar(ui, cx)
+                });
+            });
+    }
     drop(_t);
     let _t = frame_stats::scope("channels");
     // On the server-bar colour, which shows around the card's rounded corner.
-    let list = egui::Panel::left("channel_list")
-        .exact_size(channels_w)
-        .resizable(false)
-        .show_separator_line(false)
-        .frame(egui::Frame::new().fill(fill.frame.to_color32()))
-        .show(ui, |ui| {
-            sidebar::paint_card(ui.painter(), ui.max_rect(), &ThemeColors { sidebar: fill.card, ..c.clone() });
-            sidebar::channel_list(ui, cx)
-        })
-        .response
-        .rect;
+    let list = if lists > 0.0 {
+        egui::Panel::left("channel_list")
+            .exact_size(channels_w * lists)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(egui::Frame::new().fill(fill.frame.to_color32()))
+            .show(ui, |ui| {
+                let (clip, full) = (ui.max_rect(), slid(ui, channels_w));
+                ui.scope_builder(egui::UiBuilder::new().max_rect(full), |ui| {
+                    ui.set_clip_rect(clip.intersect(ui.clip_rect()));
+                    sidebar::paint_card(ui.painter(), full, &ThemeColors { sidebar: fill.card, ..c.clone() });
+                    sidebar::channel_list(ui, cx)
+                });
+            })
+            .response
+            .rect
+    } else {
+        egui::Rect::from_min_size(origin.min, egui::vec2(0.0, origin.height()))
+    };
     drop(_t);
-    ui.painter().vline(list.right() - 0.5, list.y_range(), edge);
+    if lists > 0.0 {
+        ui.painter().vline(list.right() - 0.5, list.y_range(), edge);
+    }
 
     let page = egui::Frame::new().fill(fill.chat.to_color32());
     let _t = frame_stats::scope("page");
@@ -1391,14 +1423,35 @@ fn main_layout(ui: &mut egui::Ui, cx: &mut UiCx<'_>, up: &crate::update::Status)
             // Too narrow for a split: the thread panel takes the page.
             (Some(t), _) if right == 0.0 => threads::panel(ui, cx, t),
             (_, Some(f)) => forum::show(ui, cx, f),
-            _ => messages::show(ui, cx),
+            _ => focus_column(ui, lists, |ui| messages::show(ui, cx)),
         });
     }
     drop(_t);
     // The card's top hairline continues over the message area and the member list.
     ui.painter().hline(list.right()..=ui.max_rect().right(), list.top() + 0.5, edge);
-    channel_list_handle(ui, cx, list, max_w);
-    frame_stats::time("user panel", || sidebar::user_panel(ui.ctx(), cx, GUILD_BAR_W + channels_w));
+    if lists >= 1.0 {
+        channel_list_handle(ui, cx, list, max_w);
+    }
+    let shift = (1.0 - lists) * (GUILD_BAR_W + channels_w);
+    frame_stats::time("user panel", || sidebar::user_panel(ui.ctx(), cx, GUILD_BAR_W + channels_w, shift));
+}
+
+/// Widest the chat column gets in focus mode.
+const FOCUS_CHAT_W: f32 = 800.0;
+
+/// Width of the chat column on a page `full` wide while the lists are `t` shown (1 = all): the
+/// column narrows continuously from the page's width to at most `FOCUS_CHAT_W`.
+fn focus_column_w(full: f32, t: f32) -> f32 {
+    egui::lerp(full.min(FOCUS_CHAT_W)..=full, t.clamp(0.0, 1.0))
+}
+
+/// The chat centred in a column of `focus_column_w`. Always wraps, also at rest: a wrapper that
+/// appeared only in focus mode would change the widget ids under it and reset the scroll.
+fn focus_column(ui: &mut egui::Ui, t: f32, add: impl FnOnce(&mut egui::Ui)) {
+    let page = ui.max_rect();
+    let w = focus_column_w(page.width(), t);
+    let rect = egui::Rect::from_center_size(page.center(), egui::vec2(w, page.height()));
+    ui.scope_builder(egui::UiBuilder::new().id_salt("focus_column").max_rect(rect), add);
 }
 
 /// (width, current maximum) of the channel list in a window `width` wide with a `right` px
@@ -1948,6 +2001,16 @@ mod tests {
         assert_eq!(channel_list_width(600.0, 0.0, None), (192.0, 192.0));
         assert_eq!(channel_list_width(1180.0, 0.0, Some(500.0)), (360.0, 360.0));
         assert_eq!(channel_list_width(1180.0, 0.0, Some(100.0)).0, 192.0);
+    }
+
+    #[test]
+    fn focus_column_narrows_with_the_lists() {
+        assert_eq!(focus_column_w(1200.0, 1.0), 1200.0);
+        assert_eq!(focus_column_w(1200.0, 0.0), FOCUS_CHAT_W);
+        assert_eq!(focus_column_w(600.0, 0.0), 600.0);
+        assert_eq!(focus_column_w(600.0, 0.5), 600.0);
+        let steps: Vec<f32> = (0..=10).map(|i| focus_column_w(1400.0, i as f32 / 10.0)).collect();
+        assert!(steps.windows(2).all(|w| w[0] <= w[1]));
     }
 
     #[test]

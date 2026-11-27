@@ -94,6 +94,7 @@ retakes the screenshots.</sub>
 - Unread indicators, mention badges, a "new messages" bar, jump to present and a message
   context menu.
 - Quick switcher (Ctrl+K) for servers, channels, DMs and friends, with the `@ # ! *` prefixes.
+- Focus mode (Ctrl+Shift+F) folds the server and channel lists away and centres the chat.
 - Discord's navigation keys: Alt+↑/↓, Alt+Shift+↑/↓, Ctrl+Alt+↑/↓, Esc and Shift+Esc to mark
   read, and Ctrl+/. All keys can be changed under Settings → Keybinds.
 - A disk cache of servers, channels, DMs, recent messages and images. Later starts show the
