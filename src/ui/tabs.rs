@@ -446,7 +446,7 @@ pub(super) fn track_focus(ctx: &egui::Context, view: &mut ViewState, split: Opti
         return;
     };
     let t = &mut view.tabs_ui;
-    let focus = ctx.memory(|m| m.focused());
+    let mut focus = ctx.memory(|m| m.focused());
     let focus_rect = focus.and_then(|id| ctx.read_response(id)).map(|r| r.rect);
     let pane = |p: egui::Pos2| if split.contains(p) { Some(true) } else { main.contains(p).then_some(false) };
     let pressed = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.press_origin()).flatten());
