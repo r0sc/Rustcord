@@ -1941,7 +1941,7 @@ fn dm_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, id: Id) {
     if let Some(a) = aura {
         let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if selected { 1.0 } else { 0.75 };
         let radius = cx.theme.layout.corner_radius as u8;
-        ui.painter().set(wash_slot, super::aura::row_wash(ui.ctx(), row.shrink2(vec2(ROW_INSET, 0.0)), radius, a, alpha));
+        ui.painter().set(wash_slot, super::aura::row_wash(ui.ctx(), row.shrink2(vec2(ROW_INSET, 0.0)), radius, a, alpha, 0.75));
         ring = ring.blend(a.gamma_multiply(alpha * 0.85));
     }
     if let Some(u) = other {
@@ -2156,7 +2156,7 @@ pub fn user_panel(ctx: &egui::Context, cx: &mut UiCx<'_>, width: f32, shift: f32
         // My aura from the left, fading out at 75 % (ui/aura.rs).
         if let Some(a) = cx.state.me.clone().and_then(|me| super::aura::of(ctx, cx, &me, None)) {
             let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode);
-            ui.painter().add(super::aura::row_wash(ctx, rect, panel_r(cx.theme), a, alpha));
+            ui.painter().add(super::aura::row_wash(ctx, rect, panel_r(cx.theme), a, alpha, 0.75));
         }
         // The music section: laid out at its final size against its bottom edge, clipped to the
         // part that is open, so the panel's rising top edge reveals it.

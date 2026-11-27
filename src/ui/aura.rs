@@ -170,10 +170,10 @@ pub fn ramp(ctx: &egui::Context, rect: Rect, radius: CornerRadius, color: Color3
     Shape::Rect(RectShape::filled(rect, radius, color).with_texture(tex.id(), uv))
 }
 
-/// A row's wash: the aura from the row's left edge fading out at 75 % of its width, over its
+/// A row's wash: the aura from the row's left edge fading out at `reach` (0.75: 75 %) of its width, over its
 /// hover or selected fill (`radius`: the row's corners, kept on the left).
-pub fn row_wash(ctx: &egui::Context, bg: Rect, radius: u8, color: Color32, alpha: f32) -> Shape {
-    let rect = bg.with_max_x(bg.left() + bg.width() * 0.75);
+pub fn row_wash(ctx: &egui::Context, bg: Rect, radius: u8, color: Color32, alpha: f32, reach: f32) -> Shape {
+    let rect = bg.with_max_x(bg.left() + bg.width() * reach);
     ramp(ctx, rect, CornerRadius { nw: radius, sw: radius, ne: 0, se: 0 }, color.gamma_multiply(alpha), true)
 }
 

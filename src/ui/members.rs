@@ -195,7 +195,7 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
         let mut shapes = vec![Shape::rect_filled(bg, CornerRadius::from(radius), ring)];
         if let Some(a) = super::aura::of(ui.ctx(), cx, user, guild_id) {
             let alpha = super::aura::alpha(cx.settings.people_colors, cx.theme.tokens().mode) * if open { 1.0 } else { 0.75 };
-            shapes.push(super::aura::row_wash(ui.ctx(), bg, radius as u8, a, alpha));
+            shapes.push(super::aura::row_wash(ui.ctx(), bg, radius as u8, a, alpha, 0.75));
             // Under the status dot: the wash near its strong end.
             ring = ring.blend(a.gamma_multiply(alpha * 0.85));
         }

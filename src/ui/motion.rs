@@ -71,21 +71,26 @@ pub fn about(o: Pos2, s: f32) -> TSTransform {
     TSTransform::new(o.to_vec2() * (1.0 - s), s)
 }
 
-/// Eased 0 -> 1 over `s` s since the area on `layer` became visible (egui's own record), for
-/// floats drawn only while open. Before or after its `show`.
-pub fn opened(ctx: &Context, layer: LayerId, s: f32) -> f32 {
-    let dur = secs(ctx, s);
-    if dur == 0.0 {
-        return 1.0;
+/// Seconds since the area on `layer` became visible (egui's own record), in plain durations (the
+/// test scale divided out); INFINITY with reduced motion; asks for frames while under `until`.
+pub fn open_for(ctx: &Context, layer: LayerId, until: f32) -> f32 {
+    if secs(ctx, until) == 0.0 {
+        return f32::INFINITY;
     }
     let (now, half) = ctx.input(|i| (i.time, i.predicted_dt * 0.5));
     let shown = ctx.memory(|m| m.areas().visible_last_frame(&layer));
     let at = AreaState::load(ctx, layer.id).and_then(|a| a.last_became_visible_at).filter(|_| shown);
-    let lin = (at.map_or(0.0, |at| (now - at) as f32) + half) / dur;
-    if lin < 1.0 {
+    let plain = (at.map_or(0.0, |at| (now - at) as f32) + half) / scale();
+    if plain < until {
         ctx.request_repaint();
     }
-    ease(lin.min(1.0))
+    plain
+}
+
+/// Eased 0 -> 1 over `s` s since the area on `layer` became visible (egui's own record), for
+/// floats drawn only while open. Before or after its `show`.
+pub fn opened(ctx: &Context, layer: LayerId, s: f32) -> f32 {
+    ease((open_for(ctx, layer, s) / s).min(1.0))
 }
 
 /// 0 -> 1 while `on`, eased out over `open` s; back over `close` s along the same curve (an
@@ -119,18 +124,74 @@ pub fn pop(ctx: &Context, id: Id) {
     ctx.request_repaint();
 }
 
-/// The scale of the pop under `id` right now: 1 at rest (and with reduced motion), asking for
-/// frames only while it runs.
-pub fn popped(ctx: &Context, id: Id) -> f32 {
-    let Some(at) = ctx.data(|d| d.get_temp::<f64>(id)) else { return 1.0 };
-    let dur = secs(ctx, BASE);
+/// Linear 0 -> 1 over `s` since `pop(ctx, id)` stamped `id`; None at rest, once done (the stamp is
+/// dropped) and with reduced motion. One-shots: the pop, the island's connect ring, a digit roll.
+pub fn shot(ctx: &Context, id: Id, s: f32) -> Option<f32> {
+    let at = ctx.data(|d| d.get_temp::<f64>(id))?;
+    let dur = secs(ctx, s);
     let lin = (ctx.input(|i| i.time) - at) as f32 / dur;
     if dur == 0.0 || lin >= 1.0 {
         ctx.data_mut(|d| d.remove::<f64>(id));
-        return 1.0;
+        return None;
     }
     ctx.request_repaint();
-    1.0 + (POP - 1.0) * (lin * std::f32::consts::PI).sin()
+    Some(lin)
+}
+
+/// The scale of the pop under `id` right now: 1 at rest (and with reduced motion), asking for
+/// frames only while it runs.
+pub fn popped(ctx: &Context, id: Id) -> f32 {
+    shot(ctx, id, BASE).map_or(1.0, |t| 1.0 + (POP - 1.0) * (t * std::f32::consts::PI).sin())
+}
+
+/// Row hover (DESIGN §7): on at once, off over FAST along the ease-in exit, so a pointer moving
+/// down a list leaves a short trail. Frames only while it fades.
+#[allow(dead_code)] // the lanes use these
+pub fn trail(ctx: &Context, id: Id, hot: bool) -> f32 {
+    anim(ctx, id, hot, 0.0, FAST)
+}
+
+/// Eased 0 -> 1 over `s` since `key` last changed under `id`: content that replaced other content
+/// (a switched list, the hover toolbar on another message). The first key seen is at rest (1); 1
+/// with reduced motion; frames only while it runs.
+pub fn arrive(ctx: &Context, id: Id, key: u64, s: f32) -> f32 {
+    let now = ctx.input(|i| i.time);
+    let at = ctx.data_mut(|d| {
+        let e = d.get_temp_mut_or(id, (key, f64::NEG_INFINITY));
+        if e.0 != key {
+            *e = (key, now);
+        }
+        e.1
+    });
+    since(ctx, at, s)
+}
+
+/// `add` as content that arrives: at opacity `t`, painted `dy` lower (paint only: layout, ids and
+/// clicks are where it settles). Always one scope, so ids do not change when an arrival starts.
+#[allow(dead_code)]
+pub fn arriving<R>(ui: &mut Ui, (t, dy): (f32, f32), add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.scope(|ui| {
+        if t < 1.0 {
+            ui.multiply_opacity(t);
+        }
+        shifted(ui, dy, None, add)
+    })
+    .inner
+}
+
+/// When the house spring has settled (`springy`).
+#[allow(dead_code)]
+pub const SPRING_T: f32 = 0.25;
+/// The house spring's step response (damping 0.72, period 0.18 s): 0 -> 1 with a 3.8 % overshoot
+/// at 130 ms, pinned to 1 from SPRING_T on (it is 0.9986 there). The profile card springs on it.
+#[allow(dead_code)]
+pub fn springy(t: f32) -> f32 {
+    if t >= SPRING_T {
+        return 1.0;
+    }
+    let (w, z) = (std::f32::consts::TAU / 0.18, 0.72f32);
+    let wd = w * (1.0 - z * z).sqrt();
+    1.0 - (-z * w * t).exp() * ((wd * t).cos() + z * w / wd * (wd * t).sin())
 }
 
 /// 0 -> 1 for card `k` of a list that replaces a skeleton: `on == false` (the skeleton is
@@ -645,6 +706,7 @@ mod tests {
         assert_eq!(secs(&ctx, BASE), BASE * scale());
         ctx.all_styles_mut(|s| s.animation_time = 0.0);
         assert_eq!((secs(&ctx, BASE), opened(&ctx, LayerId::background(), BASE)), (0.0, 1.0));
+        assert_eq!(open_for(&ctx, LayerId::background(), BASE), f32::INFINITY);
     }
 
     #[test]
@@ -722,6 +784,62 @@ mod tests {
         assert_eq!((sizes[1], sizes[5]), (20.0, 20.0), "idle and released: full size");
         assert!(sizes.contains(&18.0), "held: a 20 px rect is 1 px smaller per side");
         assert_eq!(held(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::splat(100.0))).width(), 97.0, "a 100 px rect is 97 px");
+    }
+
+    #[test]
+    fn trail_is_instant_on_and_fades_out() {
+        let ctx = Context::default();
+        let id = Id::unique("trail");
+        run(&ctx, 0.0, 0.0, |c| trail(c, id, false));
+        let (on, _) = run(&ctx, 0.1, 0.0, |c| trail(c, id, true));
+        assert_eq!(on, 1.0);
+        let (mid, busy) = run(&ctx, 0.1 + 1.0 / 60.0, 0.03, |c| trail(c, id, false));
+        assert!(mid > 0.0 && mid < 1.0 && busy);
+        let (end, busy) = run(&ctx, 0.3, 0.3, |c| trail(c, id, false));
+        assert!(end == 0.0 && !busy);
+    }
+
+    #[test]
+    fn arrive_rests_first_runs_on_a_new_key_and_stops() {
+        let ctx = Context::default();
+        let id = Id::unique("arrive");
+        assert_eq!(run(&ctx, 0.0, 0.0, |c| arrive(c, id, 1, BASE)).0, 1.0);
+        let (mid, busy) = run(&ctx, 0.1, 0.05, |c| arrive(c, id, 2, BASE));
+        assert!(mid < 1.0 && busy);
+        let (end, busy) = run(&ctx, 0.2, 0.5, |c| arrive(c, id, 2, BASE));
+        assert!(end == 1.0 && !busy);
+        ctx.all_styles_mut(|s| s.animation_time = 0.0);
+        assert_eq!(run(&ctx, 1.0, 0.0, |c| arrive(c, id, 3, BASE)).0, 1.0);
+    }
+
+    #[test]
+    fn a_shot_runs_once_then_is_none() {
+        let ctx = Context::default();
+        let id = Id::unique("shot");
+        let some = |c: &Context| shot(c, id, BASE).unwrap_or(-1.0);
+        assert_eq!(run(&ctx, 0.0, 0.0, some).0, -1.0);
+        run(&ctx, 0.1, 0.0, |c| {
+            pop(c, id);
+            1.0
+        });
+        let (mid, busy) = run(&ctx, 0.15, 0.05, some);
+        assert!(mid > 0.0 && mid < 1.0 && busy);
+        let (end, busy) = run(&ctx, 0.4, 0.2, some);
+        assert!(end == -1.0 && !busy);
+        ctx.all_styles_mut(|s| s.animation_time = 0.0);
+        run(&ctx, 1.0, 0.0, |c| {
+            pop(c, id);
+            1.0
+        });
+        assert_eq!(run(&ctx, 1.01, 0.0, some).0, -1.0);
+    }
+
+    #[test]
+    fn springy_overshoots_a_little_and_is_pinned() {
+        assert_eq!(springy(0.0), 0.0);
+        let peak = (0..250).map(|i| springy(i as f32 * 0.001)).fold(0.0, f32::max);
+        assert!(peak > 1.0 && peak <= 1.05, "{peak}");
+        assert_eq!(springy(SPRING_T), 1.0);
     }
 
     #[test]

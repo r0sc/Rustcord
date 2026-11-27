@@ -7,6 +7,7 @@
 //! fields freely, don't remove/rename. Which file owns which surface: docs/SOCIAL_UI_DESIGN.md.
 
 pub mod aura;
+pub mod light;
 pub mod autocomplete;
 pub mod call;
 pub mod chrome;
@@ -944,6 +945,25 @@ impl RustcordApp {
                         let (member_count, online_count) = (users.len() as u32, online.len() as u32 + staff.len() as u32);
                         self.state.member_lists.insert(g, crate::state::MemberList { items, member_count, online_count, ..Default::default() });
                     }
+                    // Everyone gets a profile colour, so the aura effects show (local state only).
+                    "auras" => {
+                        let mut ids: Vec<Id> = self.state.users.keys().copied().collect();
+                        ids.sort_by_key(|i| i.0);
+                        let mut colors: HashMap<Id, u32> = ids.into_iter().zip([0x1A_BC_9C, 0xE8_74_3B, 0xD6_5D_B1, 0x3B_82_F6].into_iter().cycle()).collect();
+                        if let Some(me) = &self.state.me {
+                            colors.insert(me.id, 0x4F_A3_5F);
+                        }
+                        let paint = |u: &mut crate::model::User| u.accent_color = colors.get(&u.id).copied().or(u.accent_color);
+                        self.state.users.values_mut().for_each(paint);
+                        self.state.me.iter_mut().for_each(paint);
+                        for list in self.state.member_lists.values_mut() {
+                            for item in &mut list.items {
+                                if let crate::model::MemberListItem::Member { member, .. } = item {
+                                    member.user.iter_mut().for_each(paint);
+                                }
+                            }
+                        }
+                    }
                     s if let Some(status) = s.strip_prefix("status:") => sidebar::demo_status(&mut self.state, status),
                     s if let Some(id) = s.strip_prefix("channel:").and_then(|id| id.parse().ok()) => {
                         self.state.select_channel(Id(id));
@@ -1802,6 +1822,70 @@ fn scroll_fades<R>(ui: &egui::Ui, out: &egui::scroll_area::ScrollAreaOutput<R>, 
     }
 }
 
+/// Which way content came from: `1.0` when both ranks are known and the new one is later (the
+/// user went down: it comes up from below), `-1.0` when earlier, else `0.0` (fade only).
+fn side_of(old: Option<usize>, new: Option<usize>) -> f32 {
+    match (old, new) {
+        (Some(o), Some(n)) if n > o => 1.0,
+        (Some(o), Some(n)) if n < o => -1.0,
+        _ => 0.0,
+    }
+}
+
+/// `(opacity, dy)` of content that replaced other content under `id` when `key` changed: `s` long,
+/// `dist` px from the side the user went (`rank` is asked only on a change).
+fn moved(ctx: &egui::Context, id: egui::Id, key: u64, rank: impl FnOnce() -> Option<usize>, s: f32, dist: f32) -> (f32, f32) {
+    let t = motion::arrive(ctx, id, key, s);
+    let seen = ctx.data(|d| d.get_temp::<(u64, Option<usize>, f32)>(id.with("side")));
+    let side = match seen {
+        Some((k, _, side)) if k == key => side,
+        other => {
+            let rank = rank();
+            let side = other.map_or(0.0, |(_, old, _)| side_of(old, rank));
+            ctx.data_mut(|d| d.insert_temp(id.with("side"), (key, rank, side)));
+            side
+        }
+    };
+    (t, side * dist * (1.0 - t))
+}
+
+/// Where the open server sits on the rail: home 0, then 1 + its place in the bar (folders inline).
+fn rail_rank(state: &AppState) -> Option<usize> {
+    let Some(g) = state.selected_guild else { return Some(0) };
+    let flat = state.server_bar().into_iter().flat_map(|i| match i {
+        crate::state::account::ServerBarItem::Guild(id) => vec![id],
+        crate::state::account::ServerBarItem::Folder(f) => f.guild_ids,
+    });
+    flat.into_iter().position(|id| id == g).map(|p| p + 1)
+}
+
+/// Where the open channel sits in its list (the server's channels, or home's DMs).
+fn list_rank(state: &AppState, view: &ViewState) -> Option<usize> {
+    let c = state.selected_channel?;
+    match state.selected_guild {
+        Some(g) => sidebar::listed_channels(state, view, g).iter().position(|id| *id == c),
+        None => sidebar::listed_dms(state, view).0.iter().position(|id| *id == c),
+    }
+}
+
+/// Switched content arriving (DESIGN §7), `(opacity, dy)` for `motion::arriving`: the server's lists
+/// (channel rows, member list) and the chat over BASE from 12 px after a server switch; the chat
+/// over FAST from 6 px after a channel switch. From the side the user went: down the rail or the
+/// list, up from below; without an order (none found): fade only. Old content is gone at once.
+#[allow(dead_code)] // the sidebar, member and chat lanes read these
+struct Arrival {
+    guild: (f32, f32),
+    chat: (f32, f32),
+}
+
+/// Each pane calls this once per pass; the calls in one pass agree (same ids, same keys).
+#[allow(dead_code)] // see `Arrival`
+fn arrival(ctx: &egui::Context, state: &AppState, view: &ViewState) -> Arrival {
+    let guild = moved(ctx, egui::Id::unique("rc_arrive_guild"), state.selected_guild.map_or(0, |g| g.0), || rail_rank(state), motion::BASE, 12.0);
+    let chat = moved(ctx, egui::Id::unique("rc_arrive_chat"), state.selected_channel.map_or(0, |c| c.0), || list_rank(state, view), motion::FAST, 6.0);
+    Arrival { guild, chat: if guild.0 < 1.0 { guild } else { chat } }
+}
+
 /// Settings layer (user and server settings, FEATURES_NOTES §4.9, DESIGN §7): a floating panel
 /// (at most 1180 wide, inset from the window, radius 2.5r, E3) over the frozen picture
 /// `main_layout` draws: `nav` in the left column (sidebar colour), `page` in a ≤ 740 px scrolling
@@ -2026,6 +2110,14 @@ pub fn avatar_at(ui: &mut egui::Ui, images: &mut images::ImageCache, url: &str, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn content_comes_from_the_side_you_went() {
+        assert_eq!(side_of(Some(1), Some(3)), 1.0);
+        assert_eq!(side_of(Some(3), Some(1)), -1.0);
+        assert_eq!(side_of(None, Some(2)), 0.0);
+        assert_eq!(side_of(Some(2), Some(2)), 0.0);
+    }
 
     #[test]
     fn dialog_widths_snap_to_the_three_tiers() {
