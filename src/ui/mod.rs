@@ -361,18 +361,21 @@ impl ViewState {
     /// Open the profile card for a user (clicking the same user again closes it).
     /// Use this from every avatar / name / mention click.
     pub fn open_profile(&mut self, user_id: Id, guild_id: Option<Id>, anchor: egui::Pos2) {
-        if self.profile_card.is_some_and(|p| p.user_id == user_id) {
-            self.profile_card = None;
-        } else {
-            self.profile_card = Some(ProfileTarget { user_id, guild_id, anchor, pivot: egui::Align2::LEFT_TOP });
-        }
+        self.open_profile_at(user_id, guild_id, (anchor, egui::Align2::LEFT_TOP));
     }
 
     /// `open_profile` for a card that grows upward from `anchor` (its bottom-left corner).
     pub fn open_profile_above(&mut self, user_id: Id, guild_id: Option<Id>, anchor: egui::Pos2) {
-        self.open_profile(user_id, guild_id, anchor);
-        if let Some(p) = &mut self.profile_card {
-            p.pivot = egui::Align2::LEFT_BOTTOM;
+        self.open_profile_at(user_id, guild_id, (anchor, egui::Align2::LEFT_BOTTOM));
+    }
+
+    /// `open_profile` with the card's `pivot` corner at `anchor` (it grows from there; the member
+    /// list uses its top-right corner so the card opens beside the list).
+    pub fn open_profile_at(&mut self, user_id: Id, guild_id: Option<Id>, (anchor, pivot): (egui::Pos2, egui::Align2)) {
+        if self.profile_card.is_some_and(|p| p.user_id == user_id) {
+            self.profile_card = None;
+        } else {
+            self.profile_card = Some(ProfileTarget { user_id, guild_id, anchor, pivot });
         }
     }
 
@@ -1141,7 +1144,8 @@ impl eframe::App for RustcordApp {
     /// show the focus ring wherever it lands. RUSTCORD_NAV_DEMO=press:<shortcut> presses that
     /// combination once at frame 14 (Focus stays where it is, so it goes through a focused composer).
     /// RUSTCORD_POINTER_AT=<frame>:<x>x<y> moves the pointer there from that frame on (a hover that
-    /// starts after a card opened, as from the member list).
+    /// starts after a card opened, as from the member list); with RUSTCORD_CLICK=left2 it also
+    /// clicks there, a second left click.
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         // Runs for every viewport's pass; the pointer, click and focus hooks below are the root's.
         if raw.viewport_id != egui::ViewportId::ROOT {
@@ -1197,13 +1201,19 @@ impl eframe::App for RustcordApp {
         }
         if let (Some(pos), 10 | 11) = (*pointer, self.frame_no) {
             let button = match std::env::var("RUSTCORD_CLICK").as_deref() {
-                Ok("left") => egui::PointerButton::Primary,
+                Ok("left" | "left2") => egui::PointerButton::Primary,
                 Ok("right") => egui::PointerButton::Secondary,
                 Ok("middle") => egui::PointerButton::Middle,
                 _ => return,
             };
             let pressed = self.frame_no == 10;
             raw.events.push(egui::Event::PointerButton { pos, button, pressed, modifiers: egui::Modifiers::default() });
+        }
+        // left2: a second left click where and when RUSTCORD_POINTER_AT moved the pointer (press on that frame, release on the next).
+        if let (Some((frame, pos)), true) = (*later, std::env::var("RUSTCORD_CLICK").as_deref() == Ok("left2"))
+            && (frame..=frame + 1).contains(&self.frame_no)
+        {
+            raw.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: self.frame_no == frame, modifiers: egui::Modifiers::default() });
         }
     }
 
@@ -2124,5 +2134,11 @@ mod tests {
         assert_eq!(v.profile_card.map(|p| p.user_id), Some(Id(2)));
         v.open_profile(Id(2), Some(Id(9)), egui::Pos2::ZERO);
         assert!(v.profile_card.is_none());
+        v.open_profile_at(Id(3), None, (egui::Pos2::ZERO, egui::Align2::RIGHT_TOP));
+        assert_eq!(v.profile_card.map(|p| (p.user_id, p.pivot)), Some((Id(3), egui::Align2::RIGHT_TOP)));
+        v.open_profile_at(Id(3), None, (egui::Pos2::ZERO, egui::Align2::RIGHT_TOP));
+        assert!(v.profile_card.is_none());
+        v.open_profile_above(Id(4), None, egui::Pos2::ZERO);
+        assert_eq!(v.profile_card.map(|p| p.pivot), Some(egui::Align2::LEFT_BOTTOM));
     }
 }

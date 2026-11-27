@@ -360,6 +360,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Music section of the user panel appears / leaves | BASE: height 0 → 41 and opacity 0 → 1, ease-out; the row is laid out at its final size against the section's bottom edge and clipped, so the panel's rising top edge reveals it | BASE x OUT, the same curve backwards | `anim(.., BASE, BASE * OUT)` | 5, 8, 11, 18 |
 | Server folder, channel category open / close | BASE ease-out: the rows slide out from under the folder tile or header, rows below follow | BASE x OUT ease-in | `Fold` + `anim` | 5, 11, 17, 18 |
 | A message arriving in the open chat | BASE: 6 px rise + fade, ease-out; only the only new one, over 1 s after the last arrival, window focused, chat at the bottom | | `since`, `shifted` | 5, 20 |
+| Profile card to another person | BASE, cubic in-out from where it is | | `value` + `forget` | 5, 17 |
 | Server-bar mention badge, count up | pop 1 → 1.12 → 1 over BASE about its centre; not on first sight, not within 2 s of a connection change, at most once a second per tile, never for a muted server | | `pop` | 9 |
 | My message confirmed | BASE: body `text_muted` → `text`, ease-out; links and mentions keep their colours | | `since` | 16, 19 |
 
@@ -792,6 +793,10 @@ meta line, Ghost "Reset" and Primary "Save". For a friend the name is Discord's 
   `title_text`. Footer Primary "Message".
   Role pills: the colour dot, the role icon 14 when the role has one (4 px after the dot; the pill
   grows by 18), the name.
+  It opens beside what was clicked: left of a member-list row or an Active now card (its right
+  edge 8 px away; it grows from that corner), centred over a friend row or a call tile. Clicking
+  another person while it is open glides it there over BASE (cubic in-out); the content switches
+  at once.
 - Inbox, pins, pickers: radius float 16 (§5); inbox gets the sheen.
 - Modals (`dialog_closable`, mod.rs): E3, radius 20, padding 24, widths 440 / 520 / 640,
   title via `pal.title_text`, sheen, `Close` 32 top right. Footer: Ghost "Cancel" + one Primary

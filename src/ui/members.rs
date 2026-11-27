@@ -262,9 +262,9 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
         let pal = super::messages::Pal::new(cx.theme);
         super::messages::focus_ring(ui, &pal, row.shrink2(vec2(10.0, 3.0)), f32::from(pal.radius));
     }
-    // The anchor is the card's top-left; the card (300 wide, profile.rs) opens left of the list.
-    let anchor = pos2(row.left() - 8.0 - 300.0, row.top());
-    super::sidebar::user_context_menu(&resp, cx, user.id, guild_id, anchor);
+    // The card's top-right corner 8 px left of the row: it opens beside the list and grows from there.
+    let at = (pos2(row.left() - 8.0, row.top()), egui::Align2::RIGHT_TOP);
+    super::sidebar::user_context_menu(&resp, cx, user.id, guild_id, at);
     // Over a local name or friend nickname: who they really are.
     let real = cx.state.real_display_name(guild_id, user, member);
     let tip = (name != real && ui.rect_contains_pointer(name_rect)).then(|| format!("{real}
@@ -274,7 +274,7 @@ fn member_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Option<Id>, user: 
         None => resp,
     };
     if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-        cx.view.open_profile(user.id, guild_id, anchor);
+        cx.view.open_profile_at(user.id, guild_id, at);
     }
 }
 

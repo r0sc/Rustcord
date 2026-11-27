@@ -543,8 +543,8 @@ fn tile(ui: &mut egui::Ui, cx: &mut UiCx<'_>, t: &Tile, rect: Rect) {
     resp.widget_info(|| WidgetInfo::selected(Role::Button, true, focused, &what));
     // The user menu, as on their voice row (VolumeBooster's slider is one of its entries); the
     // profile card opens over the tile.
-    let anchor = pos2(rect.center().x - 150.0, rect.top() + 8.0);
-    super::sidebar::user_context_menu(&resp, cx, t.user, cx.state.selected_guild, anchor);
+    let at = (pos2(rect.center().x, rect.top() + 8.0), egui::Align2::CENTER_TOP);
+    super::sidebar::user_context_menu(&resp, cx, t.user, cx.state.selected_guild, at);
     if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
         cx.view.call_ui.focus = if focused { None } else { Some(t.key.clone()) };
     }

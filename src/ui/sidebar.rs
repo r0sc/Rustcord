@@ -571,9 +571,9 @@ pub(super) fn mark_read(cx: &mut UiCx<'_>, channels: impl IntoIterator<Item = Id
 
 /// `user_menu` on right-click. A click on its VolumeBooster slider keeps it open, so it closes
 /// on its own rows only (a submenu's rows keep theirs, as before).
-pub(super) fn user_context_menu(resp: &egui::Response, cx: &mut UiCx<'_>, user: Id, guild_id: Option<Id>, anchor: egui::Pos2) {
+pub(super) fn user_context_menu(resp: &egui::Response, cx: &mut UiCx<'_>, user: Id, guild_id: Option<Id>, at: (egui::Pos2, Align2)) {
     egui::Popup::context_menu(resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-        user_menu(ui, cx, user, guild_id, anchor);
+        user_menu(ui, cx, user, guild_id, at);
         let clicked = ui.ctx().data_mut(|d| d.remove_temp::<Option<egui::LayerId>>(super::messages::menu_click_id())).flatten();
         if clicked == Some(ui.layer_id()) {
             ui.close();
@@ -582,12 +582,12 @@ pub(super) fn user_context_menu(resp: &egui::Response, cx: &mut UiCx<'_>, user: 
 }
 
 /// A user's menu (member list, voice channel): profile, mention in the open channel, their DM
-/// if one exists, and the id. `anchor` places the profile card.
-fn user_menu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, user: Id, guild_id: Option<Id>, anchor: egui::Pos2) {
+/// if one exists, and the id. `at` (corner point, corner) places the profile card.
+fn user_menu(ui: &mut egui::Ui, cx: &mut UiCx<'_>, user: Id, guild_id: Option<Id>, at: (egui::Pos2, Align2)) {
     menu_setup(ui);
     let text = cx.theme.colors.text.to_color32();
     if menu_item(ui, "Profile", MenuIcon::Glyph("👤"), text) {
-        cx.view.open_profile(user, guild_id, anchor);
+        cx.view.open_profile_at(user, guild_id, at);
     }
     if let Some(ch) = cx.state.selected_channel.filter(|&ch| cx.state.can_send(ch))
         && menu_item(ui, "Mention", MenuIcon::Glyph("@"), text)
@@ -1656,10 +1656,10 @@ fn voice_user_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, guild_id: Id, u: &VoiceU
     };
     let (live, video) = (if u.live { ", live" } else { "" }, if u.video { ", camera on" } else { "" });
     resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("{}{state}{live}{video}", u.name)));
-    let anchor = pos2(row.right() + 8.0, row.top());
-    user_context_menu(&resp, cx, u.id, Some(guild_id), anchor);
+    let at = (pos2(row.right() + 8.0, row.top()), Align2::LEFT_TOP);
+    user_context_menu(&resp, cx, u.id, Some(guild_id), at);
     if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-        cx.view.open_profile(u.id, Some(guild_id), anchor);
+        cx.view.open_profile_at(u.id, Some(guild_id), at);
     }
 }
 

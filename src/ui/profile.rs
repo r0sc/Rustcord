@@ -98,10 +98,21 @@ pub fn show_popup(ctx: &egui::Context, cx: &mut UiCx<'_>) {
     let mut bounds = ctx.content_rect().shrink(16.0);
     // A frame's top staples stand above the card: their room too, not the title bar.
     bounds.min.y = ctx.content_rect().top() + super::TITLE_BAR_H + 8.0 + look.overflow_top(WIDTH);
+    // Another person while the card is open: it glides there (BASE, in-out, from where it is); a card
+    // opened afresh or from another corner starts at its spot (and grows, `motion::end_pass`).
+    let glide = egui::Id::unique("rc_profile_glide");
+    let layer = egui::LayerId::new(Order::Foreground, egui::Id::unique("rc_profile_card"));
+    let same = ctx.memory(|m| m.areas().visible_last_frame(&layer)) && ctx.data(|d| d.get_temp::<Align2>(glide)) == Some(t.pivot);
+    ctx.data_mut(|d| d.insert_temp(glide, t.pivot));
+    if !same {
+        super::motion::forget(ctx, glide.with("x"));
+        super::motion::forget(ctx, glide.with("y"));
+    }
+    let at = pos2(super::motion::value(ctx, glide.with("x"), t.anchor.x, super::motion::BASE), super::motion::value(ctx, glide.with("y"), t.anchor.y, super::motion::BASE));
     let resp = egui::Area::new(egui::Id::unique("rc_profile_card"))
         .order(Order::Foreground)
         .pivot(t.pivot)
-        .fixed_pos(t.anchor)
+        .fixed_pos(at)
         // Keep 16 px off the window edges, 8 px under the title bar (the user-panel anchor sits
         // near the bottom).
         .constrain_to(bounds)

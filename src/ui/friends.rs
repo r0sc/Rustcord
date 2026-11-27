@@ -312,13 +312,13 @@ fn friend_row(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, id: Id) {
     // Registered last so the row (outside its buttons) takes the click: their DM, else their card.
     let resp = ui.interact(row.with_max_x(right + 4.0), ui.make_persistent_id(("rc_friend_row", id)), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
-    let anchor = pos2(row.center().x - 150.0, row.top());
-    sidebar::user_context_menu(&resp, cx, id, None, anchor);
+    let at = (pos2(row.center().x, row.top()), egui::Align2::CENTER_TOP);
+    sidebar::user_context_menu(&resp, cx, id, None, at);
     if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() && !clicked_action {
         if kind == FRIEND {
             message_user(cx, id);
         } else {
-            cx.view.open_profile(id, None, anchor);
+            cx.view.open_profile_at(id, None, at);
         }
     }
 }
@@ -391,7 +391,7 @@ fn active_card(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal, id: Id) {
     ui.painter().set(fill_slot, egui::epaint::RectShape::new(rect, pal.card_radius(), fill, Stroke::new(1.0, pal.line()), egui::StrokeKind::Inside));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
     if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-        cx.view.open_profile(id, None, pos2(rect.left() - 316.0, rect.top()));
+        cx.view.open_profile_at(id, None, (pos2(rect.left() - 8.0, rect.top()), egui::Align2::RIGHT_TOP));
     }
     ui.add_space(8.0);
 }
