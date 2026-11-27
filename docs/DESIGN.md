@@ -28,20 +28,28 @@ signature, the speech corner.
 Rules:
 1. **Discord's layout, our material.** No control in the main window moves or resizes, except
    where the user asks for it: focus mode folds the rail and the channel list away (§10.9); the tab
-   bar (while two or more tabs are open) and the split view take room in the page (§10.10). (Exception: server folders and channel categories fold open and shut, §7; paint only, the layout changes in one step.)
+   bar (while two or more tabs are open) and the split view take room in the page (§10.10). (Exception: server folders and channel categories fold open and shut, §7; paint only, the layout changes in one step. Switched content arrives from up to 12 px away and the profile card springs from its row (§7): paint only, layout and clicks are at their final place at once.)
 2. **Purple budget.** One big purple fill per view: the primary button. Everything else purple
    is small (a 4 px pill, a 2 px ring or bar, an 18 px icon, a 40x24 switch, a caret) or soft (a
    tint). Hover is never purple, except the home tile, which is the logo. List selection
    (channels, DMs, members, settings nav fill) is never purple.
 3. **Colour plus a word or a shape.** Switches show a check or a cross. Status dots keep their
    shapes. The island says "Voice connected" or "Connecting…".
-4. **Light comes from above.** Raised layers have a 1 px lit top edge on dark themes. The logo is
-   lit from the top left. No other gradients in the UI (exception, approved: the 20 px fades at the
-   scrolled edges of long lists and settings columns, `scroll_fades`, flat themes). No glows.
+4. **Light comes from above, from what you picked, and from people.** Raised layers have a 1 px
+   lit top edge on dark themes; the user panel's catches the pointer (§6.2). The logo is lit from
+   the top left. Three glows, all in `ui/light.rs`, dark themes only: the selected rail pill's
+   light (§10.1), the profile card's aura light and lit edge (§9.6; Lilac: a 14 % aura-tinted
+   shadow and the edge), the speaking light on call tiles (§10.8; the stage is dark in every
+   theme). A mention of me that arrives flashes its bar once (§9.10). High Contrast: none.
+   Gradients only where they fade or light something: the scrolled edges of long lists and
+   settings columns and the chat's header veil and composer dissolve (`scroll_fades`, flat
+   themes), the aura ramps (§17), the lit edges above.
 5. **Calm by default, loud for exceptions.** Grey panes; colour means something happened.
-6. **Motion only answers an action** and always stops (0 % idle CPU). Exception (approved): the
-   user panel's music section eases in and out when the computer starts or stops playing, which
-   answers the user's own action in another app, not one inside Rustcord. Exceptions (approved): a message that arrives in a calm, followed chat rises in (§7); the server bar's mention badge pops when new mentions arrive (§7); a picture that arrives late fades in (§7).
+6. **Motion answers an action or a change** (a message, a mention of me, someone speaking) and
+   always stops (0 % idle CPU). Approved: the user panel's music section eases in and out when
+   the computer starts or stops playing; a message that arrives in a calm, followed chat rises
+   in; the server bar's mention badge pops and its digits roll; a picture that arrives late
+   fades in; a mention of me draws its bar; the speaking light blooms and then holds still (§7).
 
 ---
 
@@ -272,7 +280,7 @@ Rules: tracking only on display and title. Sentence case, no all caps, no colour
 | layer | **`modal_radius()` 2.5r (was 2r)** | 20 | 10 | modals and confirms, settings panel, quick switcher, login card, full profile, the drop overlay card |
 | full | | pill | pill | avatars, switches, badges, status dots, the island, the call dock |
 | fixed | | 12 | 12 | rail tiles (`ICON_R`) and the channel card corner (Discord's values) |
-| speech corner | | 2 | 2 | bottom-left corner of the selected rail tile (§10.1) |
+| speech corner | | 2 | 2 | bottom-left corner of the selected rail tile (§10.1); the profile card's corner nearest its row (§9.6) |
 
 Callers to switch (everything else keeps its helper):
 - `float_radius()`: profile.rs, user_settings/account.rs, inbox.rs, pins.rs,
@@ -319,12 +327,14 @@ frame's outer rect is `ui.min_rect().expand(24.0)` after the content), toasts, p
 inbox popout, settings panel, login card, call dock. Not on egui's own menus and tooltips (no
 hook): they get fill, rule and shadow only.
 
+The selection plate of the channel and DM lists (§9.11) has the same 1 px line along its top (at +0.5: no outline above it). The user panel's sheen is the rim light (`light::rim`): within 96 px of the pointer it brightens toward white @ 38 % around the pointer's x (k = 1 − distance / 96, falling off as 1 − (dx / 150)²). Paint only.
+
 ### 6.3 Hairlines
 
 `rule`, 1 px. Where: the channel card corner line (exists), the chat header bottom (exists),
 **new: the left edge of the right column** (member list, thread panel, search results; one
 `vline` in `main_layout` like the channel list's at), float outlines, the settings
-panel outline and its nav | page divider, menu separators (inset 8), date separators. Nowhere
+panel outline and its nav | page divider, menu separators (inset 8), date separators, member group headers (8 px after the label to 8 px before the count, fading to 30 %), the rings of the chat start (§10.3). Nowhere
 else.
 
 ---
@@ -335,14 +345,15 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 
 | What | In | Out | Helper | Principle |
 |---|---|---|---|---|
-| Rail pill height + colour (white → purple) + speech corner 12 → 2 | FAST, cubic in-out, retargets mid-way | FAST | `value` (existing; one value drives all three) | 5, 7, 17 |
+| Rail hover and unread pills (20 / 8 px, `text`) | FAST, cubic in-out, retargets | FAST | `value` | 5, 17 |
+| Rail selection: the 40 px purple pill travels from the old tile to the new one with its light; the old tile's speech corner relaxes 2 → 12 and the new one's tightens over the same time; a trip that starts or ends scrolled out of view grows in place (FAST) | BASE, cubic in-out, retargets mid-way | BASE | `value`, `slide` | 5, 7, 17 |
 | Rail and home tile morph (home: surface → purple) | FAST | FAST | existing `morph` | 8 |
 | Switch knob + track `edge` → `accent` | FAST slide, 15 % stretch | same | `slide` (existing) | 1, 5 |
-| Checkbox, radio, nav selection, hover colours, page switch, quick switcher | instant | instant | | 20 |
+| Checkbox, radio, settings nav selection, quick switcher | instant | instant | | 20 |
 | Settings panel (with backdrop and scrim) | LARGE: fade + 0.98 → 1 about the panel centre | instant | `anim(.., LARGE, 0.0)` + `about` (existing) | 8, 18 |
 | Backdrop picture | appears under the already fading scrim (ready by frame 2) | dropped at once | | 16 |
-| Call island appear / leave | BASE: fade + scale 0.92 → 1 about its centre; the label fades out | BASE x OUT fade; the label fades in | `anim(.., BASE, BASE * OUT)` | 5, 18 |
-| Call island connects | dot `attention` → `positive` over FAST + one pop 1 → 1.12 → 1 over BASE; the width glides over BASE (`island_width`) | | `anim`, `pop`, `value` + `forget` | 5, 7, 9, 19 |
+| Call island appear / leave | BASE: the pill grows out of the location label, from its width + 24 to its own, 28 tall; fill, edge and sheen fade in, the content (clipped to the pill) from 40 %; the label fades out | BASE x OUT, the same way back | `anim(.., BASE, BASE * OUT)` | 5, 11, 18 |
+| Call island connects | dot `attention` → `positive` over FAST + one pop 1 → 1.12 → 1 over BASE; the width glides over BASE (`island_width`); one ring from the dot, r 4 → 12 px, 1.5 px `positive` 70 % → 0, over 480 ms ease-out, once | | `anim`, `pop`, `shot`, `value` + `forget` | 5, 7, 9, 19 |
 | Focus mode panes (rail, channel list, user panel) | returning: LARGE ease-out | leaving: BASE ease-in; content slides left with its narrowing column | `anim(.., LARGE, BASE)` | 5, 8, 17, 18 |
 | Tab bar appears (second tab) | FAST: height 0 → 40 ease-out, tabs ride its bottom edge | at once | `anim(.., FAST, 0.0)` | 5, 8, 18 |
 | New tab | FAST: fade + grow 0.96 → 1 about its centre (`scaled`) | closes at once; the tabs to its right glide left over FAST in-out | `anim`, `value` on a slot index | 5, 11, 18 |
@@ -350,7 +361,7 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Tab drag | follows the pointer 1:1; the passed tab glides aside over FAST in-out; settles from where it was let go | | `value` + `set_value` | 5, 17 |
 | Split pane opens | BASE: fade + 16 px slide from the right, layout final at once | at once | `anim(.., BASE, 0.0)` | 5, 8, 18 |
 | Switching tabs, focus change between panes | instant | instant | | 20 |
-| Menus, tooltips, popovers, pickers | FAST, grow 0.96 from the trigger | instant | `end_pass` (existing) | 11, 18, 20 |
+| Menus, tooltips, popovers, pickers (the profile card springs instead, below) | FAST, grow 0.96 from the trigger | instant | `end_pass` (existing) | 11, 18, 20 |
 | Modals | BASE, grow from the click | BASE x OUT ghost | `modal` (existing) | 11, 18 |
 | Toasts | BASE, 8 px rise + fade | BASE x OUT | existing | 5, 18 |
 | Press (everything using `motion::pressed`) | instant: drawn at **97 %** about the centre, at least 1 px smaller per side | instant | change `pressed` + its test | 16, 20 (house ".97", no frames) |
@@ -365,16 +376,31 @@ Tokens unchanged: FAST 0.12, BASE 0.20, LARGE 0.30, OUT 0.5, GROW 0.96, POP 1.12
 | Profile card to another person | BASE, cubic in-out from where it is | | `value` + `forget` | 5, 17 |
 | Server-bar mention badge, count up | pop 1 → 1.12 → 1 over BASE about its centre; not on first sight, not within 2 s of a connection change, at most once a second per tile, never for a muted server | | `pop` | 9 |
 | My message confirmed | BASE: body `text_muted` → `text`, ease-out; links and mentions keep their colours | | `since` | 16, 19 |
+| Row hover (channel, DM, voice-user, member and message rows) | instant | FAST, ease-in: a short trail behind the pointer | `trail` | 16, 18, 20 |
+| Member row aura wash on hover | FAST ease-out: unfurls from the avatar, its end 30 % → 75 % of the row | FAST ease-in | `anim`, `row_wash(.., reach)` | 5, 7 |
+| List selection (channel and DM lists) | BASE, cubic in-out: one `selected` plate glides from the old row to the new one, retargets; the name turns `text` at once; a new list or a selected row not drawn: in place | | `value` | 5, 17 |
+| Channel and DM unread pill | FAST in-out: 0 → 8 px | FAST | `value` | 5 |
+| Server-bar badge count changes | FAST ease-out: the old number leaves 6 px up, the new one rises 6 px in, clipped to the badge | | `shot` | 7 |
+| Switched content (server: channel rows, member list, chat; channel: the chat) | server BASE from 12 px, channel FAST from 6 px, ease-out with a fade, from the side you went (down the rail or list: from below; no order: fade only); all panes together | old content goes at once | `arrive`, `arriving` (`ui::arrival`) | 5, 11, 18, 20 |
+| Hover toolbar | FAST ease-out: 4 px rise + fade | at once | `arrive` | 5, 18 |
+| A mention of me arriving (live, chat at the bottom, window focused) | BASE ease-out: the 2 px bar draws top → bottom; dark themes: one flash of light around it fading over BASE + LARGE | | `since` | 7, 9, 19 |
+| Profile card opens | 250 ms house spring (damping 0.72, 3.8 % overshoot): 0.94 → 1 about its anchor and 12 px from its row's side, egui's FAST fade; its parts (name, about and activity, the rest) rise 4 px and fade in over FAST, STAGGER apart from 40 ms (done by 240 ms) | at once | `springy`, `open_for`, `arriving` | 3, 4, 11, 18 |
+| User panel voice section | BASE in-out: grows from 0 to its height from the bottom up, laid out at its final size; the camera row once connected the same way | BASE x OUT | `value` | 5, 11, 18 |
+| Mute / deafen slash (user panel, island) | FAST ease-out: the slash draws from its top end, its colour and `danger` tint follow | FAST x OUT | `anim`, `icons::paint_slashed` | 7, 18 |
+| Speaking light (call tiles) | BASE ease-out bloom, then still while they speak (no frames) | FAST ease-in | `anim` | 5, 18, 20 |
+| Call tiles when the stage opens | BASE: 0.96 → 1 about their centres and fade, STAGGER apart (at most 6) | | `stagger` | 3, 11 |
 
 Folding is paint only: opening lays the rows out at once, closing keeps them laid out until shut, so hit-testing and drop targets never slide.
 
 Ending cleanly (0 % idle CPU):
-- Every row above ends and stops asking for frames. Nothing loops: no glow, no pulse, no
-  shimmer, no animated gradient. Existing loops stay: typing dots, incoming ring, spinners.
-- The sheen, the speech corner and the backdrop are static paint.
+- Every row above ends and stops asking for frames. Nothing loops: no pulse, no shimmer, no
+  animated gradient. Glows are static (the rail pill's light, the profile card's aura light and
+  edge) or one-shot (the flash of a mention of me); the speaking light holds still while someone
+  speaks. Existing loops stay: typing dots, incoming ring, spinners.
+- The sheen, the rim light, the plate's lit edge, the speech corners, the veil and dissolve, the chat start's rings and the backdrop are static paint.
 - The island repaints only while it fades, glides or pops. CallTimer (when on) keeps its existing 1 Hz tick.
 - Reduced motion (setting or Windows "Animation effects" off): every duration 0, final states
-  at once.
+  at once. Light stays; the flash and the connect ring are skipped.
 
 ### 7.1 Sound
 
@@ -397,19 +423,6 @@ the file (still capped at 60 s and stopped within one pass of Accept / Decline).
 - A sound never stands alone (7): each backs up something visible (call popup, notification,
   mute icons, speaking ring, LIVE tag).
 - Reduced motion does not apply; Settings > Notifications > Sounds does.
-
----|---|
-| rail pill | 150 ms (existing `ANIM`) |
-| switch knob, segmented selection, category chevron (0 ↔ −90°) | 120 ms |
-| modal open | 140 ms fade + scale 0.97 → 1 |
-| menu and popout open | 100 ms fade |
-
-- No hover tweens: hover changes colour instantly.
-- Repaints only through `request_repaint_after`.
-- `reduced_motion` sets every duration to 0. Static states stay.
-
----
-
 
 ---
 
@@ -799,6 +812,7 @@ meta line, Ghost "Reset" and Primary "Save". For a friend the name is Discord's 
   edge 8 px away; it grows from that corner), centred over a friend row or a call tile. Clicking
   another person while it is open glides it there over BASE (cubic in-out); the content switches
   at once.
+  It springs out of what was clicked (§7). Its corner nearest that row is the speech corner (2 px): top right beside the member list, top left right of a message author or voice user, bottom left above the user panel; none when the window edge pushed it more than 12 px off its anchor, or centred over a tile or friend row. A card in a person's colour (aura, §17): their light under it (`light::soft_glow`, offset [0,10], 6 px in, blur 56; dark 48 %, Lilac 14 %) and its 1 px edge lit in their colour (85 % along the top, 25 % at 38 % of the height, `rule` from 70 % down). Nitro-themed cards keep their gradient outline; High Contrast as before.
 - Inbox, pins, pickers: radius float 16 (§5); inbox gets the sheen.
 - Modals (`dialog_closable`, mod.rs): E3, radius 20, padding 24, widths 440 / 520 / 640,
   title via `pal.title_text`, sheen, `Close` 32 top right. Footer: Ghost "Cancel" + one Primary
@@ -814,7 +828,7 @@ right of the chat. 8 px dot: `danger` errors, `positive` done, muted info. Never
 
 | Thing | Look |
 |---|---|
-| Count badge | `danger_fill` pill 16 tall, 11/700, 4 px ring in the parent fill (unchanged; server bar: pops once when it goes up, §7) |
+| Count badge | `danger_fill` pill 16 tall, 11/700, 4 px ring in the parent fill (unchanged; server bar: pops once when it goes up and its digits roll, §7) |
 | "New" / "Live" tags | `danger_fill`, chip radius (unchanged) |
 | Mention / channel / @everyone / @here / slash pills (markdown.rs `pill`) | `chip` fill (purple), **`accent_ink` text** (was `link`). **Hover: the fill stays; the label gets a 1 px underline in `accent_ink`** (2 px in from both ends, 1 px above the bottom). The old hover fill (fg @ 28 %) drops ink to 4.4:1 |
 | App / bot tag | `chip` + `accent_ink` |
@@ -843,6 +857,8 @@ lines next to `button`.
 - Jumped-to flash: `link` (unchanged: it is navigation).
 - A new message in a calm chat rises in (§7); busy chats stay still.
 - My pending message (muted) turns to `text` over BASE when Discord confirms it.
+- Row hover fades out over FAST; the hover toolbar rises 4 px as it appears (§7).
+- A mention of me that arrives live draws its bar and, on dark themes, flashes once (§7).
 - Composer (composer.rs): E1 `surface`, radius 12, no border (HC `rule`), **sheen**.
 - Embeds, code, attachments, hover toolbar, separators, "New": unchanged.
 
@@ -854,6 +870,7 @@ lines next to `button`.
 - Member, channel and DM lists, the Inbox and Threads lists fade out 20 px at a scrolled edge in their
   pane colour (`scroll_fades`; the channel list's top fade takes the server band into account).
   Gradient themes: egui's own fade.
+- Channel and DM lists: the selected fill is one plate per list that glides (§7), with the sheen line along its top on dark themes. Row icons cut out in the colour under them at that moment (the plate's only where it covers the row), so a row the plate has not reached shows no ring. Hover fills fade out over FAST; the unread pill grows.
 - User panel (sidebar.rs `user_panel`): E1 `surface`, radius 12, 56 tall, 8 margin,
   **1 px `rule` outline on every theme** (today light/HC only), **sheen**. Content
   unchanged. Voice section words: "Voice connected" `positive_text`, "Connecting…"
@@ -938,10 +955,13 @@ fn tile_corners(t: f32) -> CornerRadius {
 }
 ```
 
-- Order: today `decorate` runs after the icon is painted. Move the pill tween
-  (`motion::value(ctx, resp.id.with("pill"), target, FAST)`, same id) up into `icon_slot`, return
-  the height, paint the tile with `tile_corners(pill_t(h))`, then `decorate` paints the pill, the
-  badge and the focus ring with that height.
+- The 40 px purple pill is one per rail (`guild_bar`), not per tile: it travels to the selected
+  tile's row over BASE (`value` in the rail's content space, so scrolling never moves it); each
+  tile's own pill shows only hover (20) and unread (8). A trip that starts or ends out of view
+  grows in place (FAST). Its light (dark themes, `light::glow`, additive, in a slot under the
+  tiles): the pill, blur 12, `accent` @ 75 %, and a wider rect from 8 px above to 8 px below it
+  reaching 8 px over the tile's left edge, blur 24, @ 35 %, both x `pill_t`. `tile_corners(t)`
+  takes the tile's own `slide(.., selected, BASE)`.
 - `paint_guild_icon(.., radius: f32, ..)` takes `CornerRadius` instead (callers: rail tiles pass `tile_corners(t)`, folder minis and the title bar's 16 px
   icon pass `CornerRadius::same(..)` as today). `egui::Image::corner_radius` takes it as is.
 - Every tile that can carry the 40 px pill uses `tile_corners`: home, servers, servers inside an
@@ -1071,17 +1091,21 @@ fn tile_corners(t: f32) -> CornerRadius {
 - `Plus` (attach menu) on the left. On the right: GIF badge, `Smile`, state chip.
 - The caret is `accent`.
 
+**Chat start:** a 64 px tile (`surface`, radius 16, 1 px `rule` inside, sheen) with the channel icon 32 in `text_muted`; three 1 px rings centred on it, 104 / 152 / 200 px across, `rule` at 100 / 55 / 25 %, under the tile and clipped by the pane; 16 px; the title and the sentence as before. A DM: the rings around its 80 px avatar. The forum's and Quests' empty pages use the same tile and rings.
+
+**Veil and dissolve:** under the header the list fades into a 20 px veil once scrolled from its top (dark: black @ 30 %; Lilac: `text` @ 7 %; High Contrast: the pane colour), and into the pane above the composer while scrolled up from the bottom (`scroll_fades`; gradient themes: egui's own fade).
+
 ### 10.4 Member list and DM list
 
 Edit name's colour replaces the role colour on a member row and its tag chip follows the name (its width is taken before the name is cut); the name's tooltip shows the real name.
 
 **Group header:**
-- Label role "Maintainers" on the left. The count is meta `text_muted`, right-aligned, so counts
+- Label role "Maintainers" on the left, then a 1 px `rule` hairline 8 px from the label and 8 px from the count, fading to 30 % at its right end. The count is meta `text_muted`, right-aligned, so counts
   form a column.
 - No em dash (members.rs:127 `group_row`).
 
-**Row:** 42 tall, avatar 32 with status, name body 15/500 in the role colour, line 2 meta
-`text_muted`. Role icon 16 after the name and server tag, 4 px apart; not on offline rows.
+**Row:** 42 tall, avatar 32 with status, name body 15/500 in the role colour, line 2 meta in `readable_on(text_muted, ring)` (ring: the fill and wash under it).
+Role icon 16 after the name and server tag, 4 px apart; not on offline rows.
 
 **Activities in rows (this fixes "no icons for some activities and music"):**
 
@@ -1118,7 +1142,7 @@ Edit name's colour replaces the role colour on a member row and its tag chip fol
 +------------------------------------------------------------+
 ```
 
-**Container:** E1 `surface`, radius container, 56 tall, 8 margin. Name 14/600.
+**Container:** E1 `surface`, radius container, 56 tall, 8 margin. Name 14/600. The sheen is the rim light (§6.2).
 
 **Line 2 (meta):**
 
@@ -1137,11 +1161,11 @@ Edit name's colour replaces the role colour on a member row and its tag chip fol
 
 **Controls:**
 - `Mic` / `Headphones` with a 12 px chevron (split buttons) and `Gear`.
-- Muted or deafened: the slashed icon in `danger` on a `danger` @ 12 % tint. Tooltip "Unmute" /
+- Muted or deafened: the slashed icon in `danger` on a `danger` @ 12 % tint; the slash draws (§7). Tooltip "Unmute" /
   "Undeafen".
 
 **Voice section** above the panel:
-- "Voice connected" in label role, `positive_text`.
+- Grows in and out (§7). "Voice connected" in label role, `positive_text`.
 - Channel and server in meta.
 - `Hangup` in `danger`.
 
@@ -1204,15 +1228,16 @@ Lives in `sidebar.rs` (new fn `call_island(ui, cx, row) -> f32`, about 120 lines
 `sidebar::title_bar`. No new module.
 
 - **When:** while `cx.state.voice.channel_id` is `Some` (connecting or connected, server voice or
-  DM call), also over settings. It takes the place of the centred location label. Cross-fade: the
-  island draws with opacity t and scale `lerp(0.92, 1, t)` about its centre, the label with
-  opacity 1 − t; t = `motion::anim(ctx, id, in_call, BASE, BASE * OUT)`. When t = 0 only the
-  label draws.
+  DM call), also over settings. It takes the place of the centred location label. Morph: the pill
+  grows out of the location label: its width goes from the label's (16 px icon, 8, name) + 24 to
+  its own as t = `motion::anim(ctx, id, in_call, BASE, BASE * OUT)` runs, 28 tall throughout; fill,
+  edge, contact shadow and sheen at opacity t, the content clipped to the pill from t = 0.4; the
+  label fades against it (gone by t = 0.5). When t = 0 only the label draws.
 - **Pill:** 28 tall (2 px above and below in the 32 px bar), radius 14, fill `raised`, 1 px `rule`
   (HC 1.5 px muted), sheen. Centred on the window. Width = its content, min 160, max
   `min(420, row.width() − 240)` (keeps clear of the inbox button and the update pill). If even
   160 does not fit, no island (label stays).
-- **Content, left to right:** 12 pad; 8 px dot (`positive` connected, `attention` connecting; on connect it blends over FAST and pops once 1 → 1.12 → 1 over BASE);
+- **Content, left to right:** 12 pad; 8 px dot (`positive` connected, `attention` connecting; on connect it blends over FAST, pops once 1 → 1.12 → 1 over BASE and sends one ring (§7));
   8; the state word, label 13/600: "Voice connected" in `positive_text` or "Connecting…" in
   `readable_on(attention, raised)`, through `plugins::sidebar::call_timer(ctx, state, word)` so
   the CallTimer plugin shows the time here too; 8; channel name ui 14/600 `text`; 6; server name
@@ -1228,7 +1253,7 @@ Lives in `sidebar.rs` (new fn `call_island(ui, cx, row) -> f32`, about 120 lines
 - **The text part** (dot to server name) is one button: hover `hover` over that part of the pill;
   click selects the call's channel and closes settings (same as voice_panel);
   tooltip "Open {channel}"; accessible name "Voice connected, {channel}, {server}"; focus ring.
-- No pulsing, no speaking halo. With CallTimer on, the existing 1 Hz tick of the user panel also
+- No pulsing, no speaking light in the title bar; one ring on connect. With CallTimer on, the existing 1 Hz tick of the user panel also
   updates the island (no extra repaint source).
 - The title bar drag area is registered first (chrome.rs), so the island's widgets win over
   it, like the inbox button.
@@ -1253,6 +1278,7 @@ Same in every theme, like a video player. Violet-black, no brown:
 - Speaking ring: 2 px `positive` (unchanged). Muted / camera off: `danger` icon on `danger` @ 12 %.
   Hang up `danger_fill`. "Live" pill `danger_fill`. "Watch stream" Primary. Tile tint toward the
   user's colour (30 %) unchanged.
+- **Speaking light:** a soft light around the speaker's tile in their colour (aura, else `positive`): `light::soft_glow(tile, 8, colour @ 55 % x t, blur 36)`, additive, under the tiles, clipped to the stage above the bar; t blooms over BASE, holds still while they speak, fades over FAST. High Contrast: the ring only. Tiles arrive one after another when the stage opens (§7).
 - DM call area and incoming card (dm_call.rs): the same constants.
 
 ### 10.9 Focus mode
@@ -1815,7 +1841,7 @@ in `docs/ARCHITECTURE.md`.
   tones, avatar initial hues, MoreUserTags chips; Windows `CLOSE_RED`; media tokens.
 - `ThemeColors` fields and the TOML format; `corner_radius` 8 / HC 4; font size 15 / HC 16; the
   23 gradient presets and their names; the Saturation setting.
-- Motion tokens and helpers (only `pressed` changes); reduced motion; sounds (only an internal
+- Motion tokens; helpers grow (`trail`, `arrive`, `arriving`, `shot`, `springy`, `open_for`) and `ui/light.rs` holds the light (§1 rule 4); reduced motion; sounds (only an internal
   name changes).
 - Behaviour: no read acks while settings are open (auto-acks stay gated on `!chat_hidden()`);
   keyboard shortcuts, menu contents, focus order; nothing new is sent to Discord.
@@ -1865,6 +1891,11 @@ D = Nightshade, L = Lilac, H = High Contrast, G = Chroma Glow, X = Hexagon.
 | icons | `NAV_DEMO=icons` | D | four new icons |
 | focus | `NAV_DEMO=focus:6` | D L H | purple focus ring |
 | installer | `RUSTCORD_SETUP_SCREEN=install,done` | (fixed) | Nightshade colours, purple checkbox |
+| rail-travel | `POINTER=<2nd server> CLICK=left MOTION_SCALE=10 SCREENSHOT_FRAME≈70` | D L H | the purple pill between the two tiles with its light (dark), both speech corners half way, channel rows low and half faded |
+| plate-glide | `POINTER=<#showcase> CLICK=left MOTION_SCALE=10` | D L H | the selected plate over the row between, no ring around the new row's icon |
+| profile-spring | `OPEN=members,auras POINTER=<member row> CLICK=left MOTION_SCALE=10` | D | the card half out of its row's side, aura light under it, lit edge |
+| island-morph | `NAV_DEMO=join:…14 MOTION_SCALE=10` | D L H | the pill half grown, the label half gone; the ring after connect |
+| speaking-light | `OPEN=voice:…14,channel:…14 CALL_DEMO=people,speak MOTION_SCALE=10` | D L H | the light around the speaker's tile (High Contrast: the ring only) |
 
 ### 16.2 Contrast
 
@@ -1880,7 +1911,7 @@ D = Nightshade, L = Lilac, H = High Contrast, G = Chroma Glow, X = Hexagon.
 
 - Idle: `RUSTCORD_FRAME_STATS=1` (no `RUSTCORD_SCREENSHOT`), wait 5 s, frames per 2 s = 0 in each
   state: main window; settings open (backdrop shown); in a voice call (island shown, CallTimer
-  off); after hovering the rail then moving away; after the island fades out (leave the call).
+  off); after hovering the rail then moving away; after the island fades out (leave the call); after a server switch, a channel switch, a profile card opening, the island morph and the user panel's voice section, after a mention of me arrives, and in a call while one person speaks steadily (after the bloom).
 - First frame < 1 s: `RUSTCORD_TRACE_STARTUP=<file>`.
 - RAM < 150 MB: `RUSTCORD_MEMSTATS=<file>` idle, and with settings open at 1280x800 and at a
   2560x1440 window (the capture spike is transient; the steady state adds ≤ 0.5 MB).
@@ -1913,8 +1944,8 @@ has none.
 | Colour, in order | Nitro profile theme primary; profile accent (banner) colour; the avatar's dominant colour (12 hue bins weighted by chroma², heaviest bin's mean, from the 64 px avatar already in the disk cache, decoded once on a worker thread); none (today's look). Default avatars give none. Servers: the icon's dominant colour. |
 | Normalised | HSV saturation 45-72 %, value 38-72 %; greys (s < 12 %) give none; a hue within 20° of the accent's 278° is set to 18 % saturation. Dark app themes: luma capped at 0.42 so the card stays dark. |
 | Popout, full profile | the aura as a profile theme (`cosmetics::theme_*`: gradient, contrast-checked text, avatar ring); dark themes: colour over 55 % darker, light themes: 72 % / 55 % toward white. Unlike a Nitro theme: the normal 1 px edge and sheen, no gradient outline. Subtle: colour half toward grey. |
-| Member and DM rows | hovered (75 %) or popout open / DM selected (100 %): the aura from the left edge fading out at 75 % of the width, over the row fill, at 55 % (light themes 35 %, Subtle half). The status-dot ring takes the wash colour. At rest: unchanged. |
+| Member and DM rows | hovered (75 %) or popout open / DM selected (100 %): the aura from the left edge fading out at 75 % of the width, over the row fill, at 55 % (light themes 35 %, Subtle half). The status-dot ring takes the wash colour. At rest: unchanged. Member rows: the wash unfurls from the avatar on hover (FAST ease-out, its end 30 % → 75 % of the row) and fades out over FAST; DM rows fade out with their hover fill; popout open or DM selected: full at once. |
 | User panel | my aura the same way, at full strength. |
 | Server | a band under the server name, the icon's aura fading out downward over 150 px, in the card's 12 px corner. |
 | Paint | one shared two-texel ramp texture per direction, tinted per shape: no texture per colour, no new traffic. |
-| Motion | none of its own: rows wash instantly on hover (ux-motion: frequent, no delay). A colour decoded while its card is open appears on the next frame. |
+| Motion | rows wash in at once (members: unfurling, §7) and fade out over FAST. A colour decoded while its card is open appears on the next frame. |
