@@ -74,7 +74,8 @@ pub fn guild_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
             let top = ui.max_rect().top();
             // Its clip reaches into the title bar's band (same colour), so the light fades there
             // instead of being cut by the rail's edge.
-            let light = ui.painter().with_clip_rect(ui.clip_rect().expand2(vec2(0.0, 40.0))).add(Shape::Noop);
+            let halo = ui.painter().with_clip_rect(ui.clip_rect().expand2(vec2(0.0, 40.0)));
+            let light = halo.add(Shape::Noop);
             ui.add_space(4.0);
             home_button(ui, cx);
             crate::plugins::sidebar::read_all_button(ui, cx);
@@ -94,7 +95,7 @@ pub fn guild_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
                 }
             }
             fold.row(ui, None, |ui| add_server_button(ui, cx));
-            travelling_pill(ui, light, top, cx.theme);
+            travelling_pill(ui, &halo, light, top, cx.theme);
             ui.add_space(16.0);
             finish_drag(ui, cx, target);
         });
@@ -480,7 +481,7 @@ fn rail_pill(p: &egui::Painter, pill: Rect, text: Color32, accent: Color32) {
 /// painted after the tiles; its light (dark themes) goes into `light`, under them. A trip that
 /// starts or ends out of view grows in place instead (`jumps`). Known lag: while a folder above the
 /// selected server folds, the pill follows the layout and catches up within BASE after the fold.
-fn travelling_pill(ui: &mut egui::Ui, light: egui::layers::ShapeIdx, top: f32, theme: &Theme) {
+fn travelling_pill(ui: &mut egui::Ui, halo: &egui::Painter, light: egui::layers::ShapeIdx, top: f32, theme: &Theme) {
     use super::motion::{BASE, FAST, forget, set_value, value};
     let ctx = ui.ctx().clone();
     let pass = ctx.cumulative_pass_nr();
@@ -511,7 +512,8 @@ fn travelling_pill(ui: &mut egui::Ui, light: egui::layers::ShapeIdx, top: f32, t
         // The mockup's `8px 0 24px 4px` and its Gaussian peak, not the literal numbers.
         let near = Rect::from_min_max(pos2(pill.left() + 4.0, pill.top() - 4.0), pos2(pill.left() + 16.0, pill.bottom() + 4.0));
         let glow = |r: Rect, radius: f32, a: f32, blur: f32| super::light::glow(r, radius, tk.accent.gamma_multiply(a * t).additive(), blur);
-        ui.painter().set(light, Shape::Vec(vec![glow(pill, 4.0, 0.45, 12.0), glow(near, 8.0, 0.15, 24.0)]));
+        // `set` keeps the calling painter's clip, so it goes through the one that added the slot.
+        halo.set(light, Shape::Vec(vec![glow(pill, 4.0, 0.45, 12.0), glow(near, 8.0, 0.15, 24.0)]));
     }
     rail_pill(ui.painter(), pill, theme.colors.text.to_color32(), tk.accent);
 }
