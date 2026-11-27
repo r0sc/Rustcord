@@ -340,7 +340,7 @@ fn demo_boost(state: &mut AppState) {
 /// (every vector icon over the window, `icons::sheet`), `no-tray` (Linux: the settings page as
 /// without a tray host, `user_settings/app.rs`), `press:<shortcut>` (that key combination,
 /// e.g. `Alt+Down`, pressed once at frame 14 where the focus is; `user_settings::parse` names),
-/// `unread` (3 s after start the open server's last text channel turns unread), `ping-again` (a second `ping` mention 1.5 s later), `long-list` (40 local channels in the open server's first category), `scroll:<px>` (the channel list opens
+/// `join:<voice channel id>[,leave]` (the call island and the user panel's voice section: join at 2 s, connected at 3 s, muted at 4 s, leave at 6 s), `unread` (3 s after start the open server's last text channel turns unread), `ping-again` (a second `ping` mention 1.5 s later), `long-list` (40 local channels in the open server's first category), `scroll:<px>` (the channel list opens
 /// scrolled by that much), `ping` (3 s after start one mention reaches a server that is not open), `collapsed` (the open server's first category folded at start; a click opens it), `music` / `music:paused` (the user panel's music row with a demo track; the real media session is
 /// not read; a click on Play / Pause flips it).
 pub(super) fn nav_demo(flag: &str) -> bool {
@@ -741,7 +741,29 @@ pub(super) fn paint_guild_icon(ui: &mut egui::Ui, cx: &mut UiCx<'_>, index: usiz
 
 /// Title bar: the current location (server, DM or home) centred as a 16 px icon and its name;
 /// the inbox button on the right (FEATURES_NOTES §4.5), except under a settings layer.
+/// The island's connect ring: peak-end, once.
+const RING: f32 = 0.48;
+
+/// RUSTCORD_NAV_DEMO=join:<voice channel id>[,leave]: I join that channel 2 s after start, am
+/// connected at 3 s and muted at 4 s; with `leave` I leave at 6 s (local state only, nothing sent).
+fn demo_call(ctx: &egui::Context, cx: &mut UiCx<'_>) {
+    let Some(id) = nav_demo_value("join").and_then(|v| v.parse::<u64>().ok()).map(Id) else { return };
+    let (t, leave) = (ctx.input(|i| i.time), nav_demo("leave"));
+    if let Some(next) = [2.0, 3.0, 4.0, 6.0].into_iter().find(|s| *s > t) {
+        ctx.request_repaint_after(Duration::from_secs_f64(next - t));
+    }
+    if t >= 2.0 && !(leave && t >= 6.0) {
+        cx.state.voice.channel_id = Some(id);
+        cx.state.voice.connected = t >= 3.0;
+        cx.view.self_mute |= t >= 4.0;
+    } else if leave && t >= 6.0 {
+        cx.state.voice.channel_id = None;
+        cx.state.voice.connected = false;
+    }
+}
+
 pub fn title_bar(ui: &mut egui::Ui, cx: &mut UiCx<'_>) {
+    demo_call(ui.ctx(), cx);
     if nav_demo("icons") {
         icons::sheet(ui.ctx(), cx.theme.colors.text_muted.to_color32(), cx.theme.colors.background.to_color32());
     }
@@ -786,6 +808,8 @@ fn location(ui: &mut egui::Ui, cx: &mut UiCx<'_>, rect: Rect) {
         }
         (None, None) => logo_mark(ui.painter(), icon, SMALL_MARK, c.accent.to_color32(), c.accent_text.to_color32()),
     }
+    // The island grows out of this label (`call_island`).
+    ui.data_mut(|d| d.insert_temp(egui::Id::unique("rc_location_w"), 24.0 + g.size().x));
     ui.painter().galley(pos2(icon.right() + 8.0, rect.center().y - g.size().y / 2.0), g, muted);
 }
 
@@ -861,41 +885,56 @@ fn call_island(ui: &mut egui::Ui, cx: &mut UiCx<'_>, row: Rect) -> f32 {
     let chan_w = chan_full.size().x.min(room.max(0.0));
     let width = island_width(&ctx, key, (info.connected, info.channel, show_server), (fixed + chan_w + if show_server { server_w } else { 0.0 }).max(160.0));
 
-    let pill = Rect::from_center_size(row.center(), vec2(width, 28.0));
-    let scale = egui::lerp(0.92..=1.0, t);
-    let to_gap = pill.right() - 2.0 - 52.0;
-    let unmute = Rect::from_min_size(pos2(to_gap, pill.center().y - 12.0), Vec2::splat(24.0));
+    // The island grows out of the location label (§7): `full` is where its parts sit; `pill` is how
+    // much of it shows now, from the label's width + 24 to `width`.
+    let full = Rect::from_center_size(row.center(), vec2(width, 28.0));
+    let label_w = ctx.data(|d| d.get_temp::<f32>(egui::Id::unique("rc_location_w"))).unwrap_or(160.0);
+    let pill = Rect::from_center_size(row.center(), vec2(egui::lerp((label_w + 24.0)..=width, t), 28.0));
+    let to_gap = full.right() - 2.0 - 52.0;
+    let unmute = Rect::from_min_size(pos2(to_gap, full.center().y - 12.0), Vec2::splat(24.0));
     let hang = unmute.translate(vec2(28.0, 0.0));
-    let place = Rect::from_min_max(pill.min, pos2(unmute.left() - 4.0, pill.max.y));
+    let place = Rect::from_min_max(full.min, pos2(unmute.left() - 4.0, full.max.y));
     // Connected: the dot blends to green over FAST and pops once (docs/DESIGN.md §7); the first sight just shows it.
     let dot = super::motion::anim(&ctx, key.with("dot"), info.connected, super::motion::FAST, super::motion::FAST);
     let was = ctx.data(|d| d.get_temp::<bool>(key.with("was")));
     ctx.data_mut(|d| d.insert_temp(key.with("was"), info.connected));
     if was == Some(false) && info.connected {
         super::motion::pop(&ctx, key.with("pop"));
+        super::motion::pop(&ctx, key.with("ring"));
     }
     let pop = super::motion::popped(&ctx, key.with("pop"));
+    let ring = super::motion::shot(&ctx, key.with("ring"), RING);
     let pal = super::messages::Pal::new(cx.theme);
     let mut action = None;
-    ui.with_visual_transform(super::motion::about(pill.center(), scale), |ui| {
-        ui.multiply_opacity(((t - 0.3) / 0.7).clamp(0.0, 1.0));
+    // The chrome fades in with the growth, the content from 40 % of it.
+    ui.scope(|ui| {
+        ui.multiply_opacity(t);
         let p = ui.painter().clone();
         let stroke = if tk.mode == crate::theme::Mode::HighContrast { Stroke::new(1.5, muted) } else { Stroke::new(1.0, tk.rule) };
         p.add(super::messages::contact(pill, CornerRadius::same(14), ctx.global_style().visuals.popup_shadow.color));
         p.rect_filled(pill, 14, tk.raised);
         p.rect_stroke(pill, 14, stroke, egui::StrokeKind::Inside);
         super::messages::sheen(&p, pill, 14.0, &tk);
+    });
+    ui.scope(|ui| {
+        ui.multiply_opacity(((t - 0.4) / 0.6).clamp(0.0, 1.0));
+        let p = ui.painter().with_clip_rect(pill.intersect(ui.painter().clip_rect()));
 
         // The text part is one button: select the call's channel.
         let go = ui.interact(place, ui.make_persistent_id("call_island_place"), Sense::click());
         if go.hovered() && live {
-            p.rect_filled(place, CornerRadius { nw: 14, sw: 14, ne: 4, se: 4 }, tk.hover);
+            p.rect_filled(place.intersect(pill), CornerRadius { nw: 14, sw: 14, ne: 4, se: 4 }, tk.hover);
         }
-        let mid = pill.center().y;
+        let mid = full.center().y;
         // The text is laid out for the final width: cut it at the buttons while the pill catches up.
         let q = p.with_clip_rect(place.intersect(p.clip_rect()));
-        q.circle_filled(pos2(pill.left() + 12.0 + 4.0, mid), 4.0 * pop, tk.attention.lerp_to_gamma(tk.positive, dot));
-        let mut x = pill.left() + 12.0 + 8.0 + 8.0;
+        let dot_at = pos2(full.left() + 12.0 + 4.0, mid);
+        if let Some(lin) = ring {
+            // One ring from the dot as it turns connected: r 4 -> 12, 70 % -> 0.
+            q.circle_stroke(dot_at, egui::lerp(4.0..=12.0, super::motion::ease(lin)), Stroke::new(1.5, tk.positive.gamma_multiply(0.7 * (1.0 - lin))));
+        }
+        q.circle_filled(dot_at, 4.0 * pop, tk.attention.lerp_to_gamma(tk.positive, dot));
+        let mut x = full.left() + 12.0 + 8.0 + 8.0;
         q.galley(pos2(x, mid - word_g.size().y / 2.0), word_g.clone(), word_color);
         x += word_g.size().x + 8.0;
         let chan = if chan_w < chan_full.size().x { one_line(ui, info.place.clone(), super::semibold(14.0), text, chan_w) } else { chan_full.clone() };
