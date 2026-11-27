@@ -157,7 +157,8 @@ fn contents(ui: &mut egui::Ui, cx: &mut UiCx<'_>, pal: &Pal) {
         });
     // Faded into the popout at the scrolled edges, off its rounded corners (flat themes).
     if flat {
-        let r = f32::from(pal.float_radius());
+        // Inset by the list's card margin: the fade covers the whole card, off the rounded edge.
+        let r = 12.0;
         super::scroll_fades(ui, &out, out.inner_rect, (out.inner_rect.left() + r, out.inner_rect.right() - r), (pal.surface, pal.surface));
     }
 }
