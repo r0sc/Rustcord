@@ -632,23 +632,28 @@ pub(super) fn paint_guild_icon(ui: &mut egui::Ui, cx: &mut UiCx<'_>, index: usiz
     let (static_url, anim_url) = (cdn::guild_icon_url(g, ICON_PX, false), cdn::guild_icon_url(g, ICON_PX, true).filter(|_| animate));
     let ctx = ui.ctx().clone();
     let anim_tex = anim_url.and_then(|u| cx.images.get(&ctx, &u, ICON_PX, true));
-    let tex = anim_tex.or_else(|| static_url.and_then(|u| cx.images.get(&ctx, &u, ICON_PX, false)));
+    let animated = anim_tex.is_some();
+    let tex = anim_tex.or_else(|| static_url.as_ref().and_then(|u| cx.images.get(&ctx, u, ICON_PX, false)));
+    // A static icon that arrived late fades in over the initials (an animated one replaces it at once).
+    let a = match (&tex, &static_url) {
+        (Some(_), Some(u)) if !animated => cx.images.fade(&ctx, u),
+        (Some(_), _) => 1.0,
+        _ => 0.0,
+    };
     let c = &cx.theme.colors;
-    match tex {
-        Some(tex) => {
-            let tint = if unavailable { Color32::from_gray(110) } else { Color32::WHITE };
-            egui::Image::from_texture(tex).corner_radius(radius).tint(tint).paint_at(ui, rect);
-        }
-        None => {
-            let (fill, fg) = if unavailable {
-                (c.surface.to_color32(), c.text_muted.to_color32())
-            } else {
-                (tile_fill(ui, c, morph), c.text.to_color32())
-            };
-            ui.painter().rect_filled(rect, radius, fill);
-            let size = rect.height() * if text.chars().count() > 2 { 0.33 } else { 0.4 };
-            ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, super::semibold(size), fg);
-        }
+    if a < 1.0 {
+        let (fill, fg) = if unavailable {
+            (c.surface.to_color32(), c.text_muted.to_color32())
+        } else {
+            (tile_fill(ui, c, morph), c.text.to_color32())
+        };
+        ui.painter().rect_filled(rect, radius, fill);
+        let size = rect.height() * if text.chars().count() > 2 { 0.33 } else { 0.4 };
+        ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, super::semibold(size), fg);
+    }
+    if let Some(tex) = tex {
+        let tint = if unavailable { Color32::from_gray(110) } else { Color32::WHITE };
+        egui::Image::from_texture(tex).corner_radius(radius).tint(tint.gamma_multiply(a)).paint_at(ui, rect);
     }
 }
 

@@ -1,6 +1,6 @@
 //! UI-side image cache: URL -> GPU textures (all frames for animations), request-on-miss
 //! via `Command::LoadImage`, frame selection by time, LRU eviction under a memory budget,
-//! and avatar/image widgets.
+//! and avatar/image widgets. A picture that arrives late fades in over its placeholder (`fade`).
 //! OWNERSHIP: cache implementer (together with cache/images.rs).
 
 use crate::backend::{Command, CommandSender, DecodedImage, ImageFrame};
@@ -8,7 +8,7 @@ use crate::model::{Id, Member, User};
 use egui::load::SizedTexture;
 use egui::{Sense, TextureHandle, Vec2};
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// A texture costs ~2.7x its size in process memory (GL driver copies; measured with
 /// `RUSTCORD_MEMTEST=textures:<MB>`), so this stays small for the 150 MB RAM target.
@@ -19,6 +19,15 @@ const KEEP_RECENT_SECS: f64 = 2.0;
 /// revisit cheap), so idle memory comes back down after browsing image-heavy channels.
 const IDLE_EVICT_SECS: f64 = 60.0;
 const RETRY_FAILED_SECS: f64 = 60.0;
+/// A picture that takes longer than this after it was asked for fades in (DESIGN §7); a disk-cache
+/// hit is quicker and shows at once.
+const LATE: Duration = Duration::from_millis(100);
+
+/// Test hook `RUSTCORD_IMAGE_LATE=1`: every arrival counts as late (offline the fixture's pictures come from disk).
+fn late_hook() -> bool {
+    static S: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *S.get_or_init(|| std::env::var_os("RUSTCORD_IMAGE_LATE").is_some())
+}
 /// After startup / a (re)connect: the snapshot or READY temporaries are gone by then.
 const TRIM_DELAY_SECS: f64 = 3.0;
 
@@ -75,6 +84,12 @@ struct Entry {
     last_used: f64,
     /// `max_side` of the last load sent; drawn bigger, a texture that load capped is loaded again.
     side: u32,
+    /// When the load was asked for (a miss or a retry).
+    asked: Instant,
+    /// It arrived later than `LATE` after that and has not finished fading in: `shown_at` is the
+    /// ctx time of the first frame that drew it.
+    late: bool,
+    shown_at: Option<f64>,
 }
 
 pub struct ImageCache {
@@ -110,10 +125,13 @@ impl ImageCache {
             },
             State::Failed { .. } => return,
         };
+        let first = matches!(entry.state, State::Loading);
         entry.state = match result {
             Ok(img) if !img.frames.is_empty() => upload(ctx, &url, img),
             _ => State::Failed { at: now(ctx) },
         };
+        // Only the first arrival fades: a sharper reload replaces a picture already shown.
+        entry.late = first && matches!(entry.state, State::Ready { .. }) && (entry.asked.elapsed() > LATE || late_hook());
         self.bytes -= old;
         if let State::Ready { bytes, .. } = entry.state {
             self.bytes += bytes;
@@ -130,7 +148,7 @@ impl ImageCache {
         let request = |cmd: &CommandSender| cmd.send(Command::LoadImage { url: url.to_owned(), max_side });
         let Some(entry) = self.entries.get_mut(url) else {
             request(&self.cmd);
-            self.entries.insert(url.to_owned(), Entry { state: State::Loading, last_used: now, side: max_side });
+            self.entries.insert(url.to_owned(), Entry { state: State::Loading, last_used: now, side: max_side, asked: Instant::now(), late: false, shown_at: None });
             return None;
         };
         entry.last_used = now;
@@ -141,6 +159,7 @@ impl ImageCache {
                     request(&self.cmd);
                     entry.state = State::Loading;
                     entry.side = max_side;
+                    entry.asked = Instant::now();
                 }
                 None
             }
@@ -166,6 +185,16 @@ impl ImageCache {
                 Some(SizedTexture::from_handle(&frames[index].0))
             }
         }
+    }
+
+    /// Opacity 0 -> 1 of the picture at `url` over FAST once it arrived late (`LATE`); 1 for one that
+    /// was there at once and after it has faded in. Asks for frames only while it runs.
+    pub fn fade(&mut self, ctx: &egui::Context, url: &str) -> f32 {
+        let Some(e) = self.entries.get_mut(url).filter(|e| e.late) else { return 1.0 };
+        let at = *e.shown_at.get_or_insert(now(ctx));
+        let t = super::motion::since(ctx, at, super::motion::FAST);
+        e.late = t < 1.0;
+        t
     }
 
     /// Starts the streamed animation at `url` over at its first frame (an effect layer whose window opens).
@@ -277,7 +306,7 @@ pub fn mem_hooks(ctx: &egui::Context, state: &mut crate::state::AppState, images
                 if let State::Ready { bytes, .. } = state {
                     images.bytes += bytes;
                 }
-                images.entries.insert(format!("memtest:{i}"), Entry { state, last_used: now, side: side as u32 });
+                images.entries.insert(format!("memtest:{i}"), Entry { state, last_used: now, side: side as u32, asked: Instant::now(), late: false, shown_at: None });
                 images.sweep_at = now + IDLE_EVICT_SECS;
             }
         }
@@ -502,12 +531,19 @@ pub fn avatar(ui: &mut egui::Ui, images: &mut ImageCache, url: &str, size: f32, 
     // Off-screen widgets don't load anything (long scrolled lists).
     if ui.is_rect_visible(rect) {
         let max_side = (size * ui.ctx().pixels_per_point()).ceil() as u32;
-        match (images.get(ui.ctx(), url, max_side, animate), who) {
-            (Some(tex), _) => egui::Image::new(tex).corner_radius(size / 2.0).paint_at(ui, rect),
-            (None, Some((id, name))) => paint_initial(ui.painter(), rect, size / 2.0, id.0, name, ui.visuals().dark_mode),
-            (None, None) => {
-                ui.painter().circle_filled(rect.center(), size / 2.0, placeholder_color(ui));
+        let tex = images.get(ui.ctx(), url, max_side, animate);
+        // A picture that arrived late fades in over the placeholder.
+        let a = tex.map_or(0.0, |_| images.fade(ui.ctx(), url));
+        if a < 1.0 {
+            match who {
+                Some((id, name)) => paint_initial(ui.painter(), rect, size / 2.0, id.0, name, ui.visuals().dark_mode),
+                None => {
+                    ui.painter().circle_filled(rect.center(), size / 2.0, placeholder_color(ui));
+                }
             }
+        }
+        if let Some(tex) = tex {
+            egui::Image::new(tex).corner_radius(size / 2.0).tint(egui::Color32::WHITE.gamma_multiply(a)).paint_at(ui, rect);
         }
     }
     response
@@ -707,6 +743,43 @@ mod tests {
         assert_eq!(size(&cache), 60);
         let sides: Vec<u32> = std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|c| if let Command::LoadImage { max_side, .. } = c { Some(max_side) } else { None }).collect();
         assert_eq!(sides, [48, 60, 120]);
+    }
+
+    #[test]
+    fn late_pictures_fade_in_cached_ones_do_not() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut cache = ImageCache::new(CommandSender(tx));
+        let ctx = egui::Context::default();
+        let img = |side: usize| {
+            let image = egui::ColorImage::new([side, side], vec![egui::Color32::WHITE; side * side]);
+            Ok(DecodedImage { frames: vec![crate::backend::ImageFrame { image, delay_ms: 0 }], stream: None })
+        };
+        // One pass at ctx time `t`; `f` runs inside it. Returns whether the pass asked for another frame.
+        let pass = |cache: &mut ImageCache, t: f64, f: &dyn Fn(&mut ImageCache, &egui::Context)| {
+            ctx.begin_pass(egui::RawInput { time: Some(t), ..Default::default() });
+            f(cache, &ctx);
+            let mut out = ctx.end_pass();
+            out.textures_delta.clear();
+            out.viewport_output.get(&egui::ViewportId::ROOT).is_some_and(|o| o.repaint_delay.is_zero())
+        };
+        for url in ["fast", "slow"] {
+            pass(&mut cache, 1.0, &|c, ctx| assert!(c.get(ctx, url, 48, false).is_none()));
+        }
+        // "slow" was asked for 0.5 s ago, "fast" just now.
+        cache.entries.get_mut("slow").unwrap().asked -= Duration::from_millis(500);
+        pass(&mut cache, 2.0, &|c, ctx| {
+            c.on_loaded(ctx, "fast".into(), img(48));
+            c.on_loaded(ctx, "slow".into(), img(48));
+        });
+        assert!(!pass(&mut cache, 2.0, &|c, ctx| assert_eq!(c.fade(ctx, "fast"), 1.0)), "a quick one shows at once");
+        assert!(pass(&mut cache, 2.5, &|c, ctx| assert_eq!(c.fade(ctx, "slow"), 0.0)), "a late one starts from nothing");
+        assert!(pass(&mut cache, 2.56, &|c, ctx| assert!(c.fade(ctx, "slow") > 0.0 && c.fade(ctx, "slow") < 1.0)));
+        pass(&mut cache, 2.7, &|c, ctx| assert_eq!(c.fade(ctx, "slow"), 1.0));
+        assert!(!pass(&mut cache, 2.8, &|c, ctx| assert_eq!(c.fade(ctx, "slow"), 1.0)), "done: no more frames");
+        // A sharper reload does not start it again.
+        pass(&mut cache, 3.0, &|c, ctx| _ = c.get(ctx, "slow", 96, false));
+        pass(&mut cache, 3.1, &|c, ctx| c.on_loaded(ctx, "slow".into(), img(96)));
+        assert!(!pass(&mut cache, 3.2, &|c, ctx| assert_eq!(c.fade(ctx, "slow"), 1.0)));
     }
 
     #[test]
